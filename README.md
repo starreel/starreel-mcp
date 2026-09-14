@@ -37,7 +37,7 @@ Or install the **Claude Code plugin** — MCP server + agent skill in one step
 (set `STARREEL_API_KEY` in your shell first):
 
 ```text
-/plugin marketplace add waydaxp/starreel-mcp
+/plugin marketplace add starreel/starreel-mcp
 /plugin install starreel@starreel
 ```
 
@@ -163,7 +163,7 @@ and [70+ agents](https://github.com/vercel-labs/skills#supported-agents)) via
 the [`skills`](https://skills.sh) CLI:
 
 ```bash
-npx skills add waydaxp/starreel-mcp
+npx skills add starreel/starreel-mcp
 ```
 
 ## Environment variables
@@ -179,17 +179,17 @@ Prefer plain REST? The full production facade is described in
 [`openapi.json`](./openapi.json) (OpenAPI 3.1, 100+ operations — generated from
 this package's tool surface, so `operationId`s match MCP tool names 1:1).
 Browse it rendered at
-[waydaxp.github.io/starreel-mcp](https://waydaxp.github.io/starreel-mcp/), or
+[starreel.github.io/starreel-mcp](https://starreel.github.io/starreel-mcp/), or
 generate a typed client for any language:
 
 ```bash
-npx openapi-typescript https://raw.githubusercontent.com/waydaxp/starreel-mcp/main/openapi.json -o starreel.d.ts
+npx openapi-typescript https://raw.githubusercontent.com/starreel/starreel-mcp/main/openapi.json -o starreel.d.ts
 ```
 
 ## Links
 
 - Website: [starreel.ai](https://starreel.ai)
-- API reference (OpenAPI): [waydaxp.github.io/starreel-mcp](https://waydaxp.github.io/starreel-mcp/)
+- API reference (OpenAPI): [starreel.github.io/starreel-mcp](https://starreel.github.io/starreel-mcp/)
 - Full MCP / REST docs: [api.shortreelai.com/docs/mcp](https://api.shortreelai.com/docs/mcp)
 - npm: [@starreel/mcp](https://www.npmjs.com/package/@starreel/mcp)
 - 中文文档: [README.zh-CN.md](./README.zh-CN.md)

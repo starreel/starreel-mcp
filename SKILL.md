@@ -173,12 +173,15 @@ content that will be rejected.
    reveal), via `generate_frames` with `frame_type=last_frame` or, for a single
    shot, `generate_shot_frame`. `generate_videos` needs at
    least one first frame in the episode.
-   **Image model**: images use a drama-level model (default **Nano Banana 2** =
-   `gemini-3.1-flash-image`), set via `create_drama` / `update_project_settings`
-   field `image_model` for one consistent look across the whole drama;
-   `generate_frames` / `generate_shot_frame` may override per call. Options:
-   `gemini-3-pro-image` (Nano Banana Pro, finer, pricier), `gemini-3.1-flash-lite-image`
-   (Lite, cheap), `doubao-seedream-5-0-260128` (Seedream 5.0), `gpt-image-2`.
+   **Image model**: images use a drama-level model (default **ChatGPT Image 2.5
+   Flare** = `gpt-image-2.5-flare`), set via `create_drama` /
+   `update_project_settings` field `image_model` for one consistent look across
+   the whole drama; `generate_frames` / `generate_shot_frame` may override per
+   call. Options: `gpt-image-2.5-sunburst` (same price, sharper Chinese
+   glyphs/detail), `gemini-3.1-flash-image` (Nano Banana 2), `gemini-3-pro-image`
+   (Nano Banana Pro, finer, pricier), `gemini-3.1-flash-lite-image` (Lite, cheap),
+   `doubao-seedream-5-0-260128` (Seedream 5.0). Note the 2.5 models bill by input
+   volume (base 11 pts + 18 pts per reference image); the others are flat-rate.
    **Video engine**: videos use a drama-level engine, set via `create_drama` /
    `update_project_settings` field `video_engine`. Four options — surface the
    choice to the customer with the price gaps and let them decide:

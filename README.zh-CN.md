@@ -13,7 +13,7 @@ StarReel 的 MCP 服务器 —— 把 AI 短剧**编排产线**暴露给 Claude 
 (Claude Code / Codex / Cursor / OpenCode 等 70+ 工具):
 
 ```bash
-npx skills add waydaxp/starreel-mcp
+npx skills add starreel/starreel-mcp
 ```
 
 ## 接入
@@ -29,7 +29,7 @@ claude mcp add starreel -e STARREEL_API_KEY=srk_live_xxx -- npx -y @starreel/mcp
 (先在 shell 里 `export STARREEL_API_KEY=srk_live_xxx`):
 
 ```text
-/plugin marketplace add waydaxp/starreel-mcp
+/plugin marketplace add starreel/starreel-mcp
 /plugin install starreel@starreel
 ```
 
@@ -97,7 +97,7 @@ env = { "STARREEL_API_KEY" = "srk_live_xxx" }
 
 想直接裸调 REST?整个产线门面见 [`openapi.json`](./openapi.json)
 (OpenAPI 3.1,100+ 操作,从本包工具面生成,operationId 与 MCP 工具名一一对应)。
-在线渲染版:[waydaxp.github.io/starreel-mcp](https://waydaxp.github.io/starreel-mcp/);
+在线渲染版:[starreel.github.io/starreel-mcp](https://starreel.github.io/starreel-mcp/);
 也可用它给任意语言生成带类型客户端(如 `npx openapi-typescript`)。
 
 ## 环境变量

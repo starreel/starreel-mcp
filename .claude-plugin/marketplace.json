@@ -9,7 +9,7 @@
       "name": "starreel",
       "source": {
         "source": "github",
-        "repo": "waydaxp/starreel-mcp"
+        "repo": "starreel/starreel-mcp"
       },
       "description": "StarReel MCP server (120+ production tools) + the drama-production agent skill. Requires STARREEL_API_KEY.",
       "homepage": "https://starreel.ai",

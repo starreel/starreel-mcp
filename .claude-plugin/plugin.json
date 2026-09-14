@@ -6,7 +6,7 @@
     "url": "https://starreel.ai"
   },
   "homepage": "https://starreel.ai",
-  "repository": "https://github.com/waydaxp/starreel-mcp",
+  "repository": "https://github.com/starreel/starreel-mcp",
   "license": "MIT",
   "keywords": [
     "mcp",
@@ -16,5 +16,5 @@
     "storyboard"
   ],
   "mcpServers": "./.mcp.json",
-  "version": "0.1.63"
+  "version": "0.1.64"
 }

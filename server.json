@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "ai.starreel/starreel",
   "description": "Turn a script into a finished, downloadable short-drama episode — via MCP or REST.",
-  "version": "0.1.63",
+  "version": "0.1.64",
   "websiteUrl": "https://starreel.ai",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@starreel/mcp",
-      "version": "0.1.63",
+      "version": "0.1.64",
       "transport": {
         "type": "stdio"
       },
@@ -23,7 +23,7 @@
     }
   ],
   "repository": {
-    "url": "https://github.com/waydaxp/starreel-mcp",
+    "url": "https://github.com/starreel/starreel-mcp",
     "source": "github"
   }
 }

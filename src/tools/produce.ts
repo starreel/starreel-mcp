@@ -108,8 +108,10 @@ const WORKFLOW_HINT =
   '别在出场景图前做场景 Bible。' +
   '★音频默认用视频原声(use_clip_audio 默认开、跳过 TTS 直接用 AI 视频自带声):' +
   '建剧/改设定时 AI 应主动告知客户「默认用视频原声,如需 TTS 配音把 use_clip_audio 设 false」,让客户选。' +
-  '★图片模型默认香蕉2(Nano Banana 2 = gemini-3.1-flash-image·整剧统一画风):create_drama/update_project_settings 的 image_model 设,不传即默认香蕉2;' +
-  '可选 gemini-3-pro-image(香蕉Pro·更精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream5.0)/gpt-image-2(ChatGPT Image2);generate_frames 可临时覆盖某次。' +
+  '★图片模型默认 ChatGPT Image 2.5 Flare(gpt-image-2.5-flare·整剧统一画风):create_drama/update_project_settings 的 image_model 设,不传即默认它;' +
+  '可选 gpt-image-2.5-sunburst(同价·中文字形与细节更准)/gemini-3.1-flash-image(香蕉2·71点)/gemini-3-pro-image(香蕉Pro·更精细·175点)/' +
+  'gemini-3.1-flash-lite-image(香蕉2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream5.0);generate_frames 可临时覆盖某次。' +
+  '★2.5 按输入量计费(基础11点+每张参考图18点),香蕉/Seedream 是一口价——参考图多的镜头要把这笔算进预算。' +
   '★视频引擎四选一(drama级·AI 建剧时必须主动按剧选型引导并给价差让客户定):' +
   '【选型决策树】①写实真人剧→seedance-2.5(默认·指令遵循/人脸细节最强·720p 212点/秒),预算敏感可 hailuo-3(约1/3成本70点/秒·强保真编辑·但单镜约6分钟);' +
   '②风格化/动画/3D卡通剧·空镜·产品镜→wan3.0(约4折84点/秒·最长30秒·最短2秒计费·单镜约2分钟),赶交付用 wan3.0-prime(126点/秒·约1分钟);' +
@@ -176,10 +178,11 @@ const VIDEO_ENGINES = ['seedance-2.5', 'hailuo-3', 'wan3.0', 'wan3.0-prime'] as 
 // 后端内部 PUT /dramas 已接受写库,facade 白名单 Wave3 已放行(produce-create-fields.ts)。
 // 不含内部产线/成本开关(strict_mode/best_of_n/shoppable/budget_points 等,需产品决策)。
 const PROJECT_SETTINGS_FIELDS = {
-  // drama 级图片模型(整剧统一画风):默认 Nano Banana 2(香蕉2)
-  image_model: z.string().optional().describe('图片模型(★drama级·整剧统一画风·默认香蕉2 Nano Banana 2)。可选:' +
-    'gemini-3.1-flash-image(香蕉2·默认·71点)/gemini-3-pro-image(香蕉Pro·精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·31点)/' +
-    'doubao-seedream-5-0-260128(Seedream 5.0)/gpt-image-2(ChatGPT Image 2)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图'),
+  // drama 级图片模型(整剧统一画风):默认 ChatGPT Image 2.5 Flare(v0.9.1558)
+  image_model: z.string().optional().describe('图片模型(★drama级·整剧统一画风·默认 ChatGPT Image 2.5 Flare)。可选:' +
+    'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准·慢约5秒)/' +
+    'gemini-3.1-flash-image(香蕉2·71点)/gemini-3-pro-image(香蕉Pro·精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·31点)/' +
+    'doubao-seedream-5-0-260128(Seedream 5.0)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图'),
   // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它)
   video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→seedance-2.5 或降本 hailuo-3;风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒):' +
     'seedance-2.5(默认·全能力:帧链/场景组/就地编辑/延长/参考图锚·720p约212点/秒) / ' +
@@ -734,7 +737,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     {
       episode_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;last_frame=补尾帧;both=首尾都补'),
-      image_model: z.string().optional().describe('按这个模型报价(须与随后 generate_frames 传的一致;不传=用 drama 级设定,默认香蕉2)'),
+      image_model: z.string().optional().describe('按这个模型报价(须与随后 generate_frames 传的一致;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
     },
     async ({ episode_id, frame_type, image_model }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/frames/quote`, { frame_type, image_model })),
@@ -759,9 +762,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       quote_id: z.string().describe('来自 quote_frames'),
       ...REVIEW_ARGS,
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame,须与报价时一致'),
-      image_model: z.string().optional().describe('临时覆盖本次出图模型(不传=用 drama 级设定,默认香蕉2)。可选:' +
-        'gemini-3.1-flash-image(Nano Banana 2·默认·71点)/gemini-3-pro-image(Nano Banana Pro·更精细·175点)/' +
-        'gemini-3.1-flash-lite-image(Nano Banana 2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream 5.0)/gpt-image-2(ChatGPT Image 2)'),
+      image_model: z.string().optional().describe('临时覆盖本次出图模型(不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)。可选:' +
+        'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准)/' +
+        'gemini-3.1-flash-image(Nano Banana 2·71点)/gemini-3-pro-image(Nano Banana Pro·更精细·175点)/' +
+        'gemini-3.1-flash-lite-image(Nano Banana 2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream 5.0)'),
     },
     async ({ episode_id, quote_id, frame_type, image_model, review_token, acknowledge_review }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/frames/generate`, {
@@ -778,7 +782,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     {
       storyboard_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;both=首尾各一张'),
-      image_model: z.string().optional().describe('按这个模型报价(须与随后 generate_shot_frame 传的一致;不传=用 drama 级设定,默认香蕉2)'),
+      image_model: z.string().optional().describe('按这个模型报价(须与随后 generate_shot_frame 传的一致;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
     },
     async ({ storyboard_id, frame_type, image_model }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/quote`, { frame_type, image_model })),
@@ -800,7 +804,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame,须与报价时一致;传了 reopen_pair_id 时会被忽略'),
       replace_user_frame: z.boolean().optional().describe('默认 true(显式重生允许覆盖已上传帧);传 false 则保护已上传帧'),
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
-      image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(不传=用 drama 级设定,默认香蕉2);取值同 generate_frames'),
+      image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
     },
     async ({ storyboard_id, quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model })),
