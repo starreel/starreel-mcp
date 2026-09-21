@@ -1664,6 +1664,23 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       })),
   )
   server.tool(
+    'get_dialogue_repair_status',
+    '查台词修复的进度(免费)。repair_episode_dialogue 是后台异步串行跑的,用这个轮询。'
+      + '\n★这个工具此前**不存在**,而 repair_episode_dialogue 的描述里却写着「进度用 '
+      + 'dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) =>
+      jsonResult(await client.produceGet(`/episodes/${episode_id}/dialogue-repair-status`)),
+  )
+  server.tool(
+    'get_shot_name_card',
+    '读这一镜的**人物名片**现值(免费):名字、头衔、显示位置那些。'
+      + '\n★改之前先读一遍——set_shot_name_card 是**整体覆盖**,不读就改会把没打算动的字段清掉。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) =>
+      jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/name-card`)),
+  )
+  server.tool(
     'generate_bgm',
     '给整集生成/更换 AI 配乐(按情绪弧线)。后台异步,按用量后付不欠费。返回情绪弧线段数与预估耗时;' +
       '用 get_bgm_status 轮询生成进度。★配乐生成/改动**不会自动进已有成片**——完成后必须重新 ' +

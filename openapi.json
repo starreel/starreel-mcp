@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.68",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.68 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.69",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.69 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -3336,6 +3336,53 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/dialogue-repair-status": {
+      "get": {
+        "operationId": "get_dialogue_repair_status",
+        "summary": "查台词修复的进度(免费)",
+        "description": "查台词修复的进度(免费)。repair_episode_dialogue 是后台异步串行跑的,用这个轮询。\n★这个工具此前**不存在**,而 repair_episode_dialogue 的描述里却写着「进度用 dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -8595,6 +8642,51 @@
       }
     },
     "/storyboards/{storyboard_id}/name-card": {
+      "get": {
+        "operationId": "get_shot_name_card",
+        "summary": "读这一镜的**人物名片**现值(免费):名字、头衔、显示位置那些",
+        "description": "读这一镜的**人物名片**现值(免费):名字、头衔、显示位置那些。\n★改之前先读一遍——set_shot_name_card 是**整体覆盖**,不读就改会把没打算动的字段清掉。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
       "put": {
         "operationId": "set_shot_name_card",
         "summary": "给某一镜加/改/清「版式字卡」(终拼时烧进成片,含预览一致的书法字体与朱红印章)",

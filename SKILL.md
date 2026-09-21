@@ -509,6 +509,8 @@ cost is lip sync: the picture was acted to the original audio. On shots where
 the mouth isn't readable (back turned, wide, off-screen) that is invisible; on
 sustained close-ups, regenerate instead. Reach for `regenerate_shot_video` when
 the shot is a close-up, or when the picture itself is also wrong.
+`repair_episode_dialogue` runs in the background — poll it with
+`get_dialogue_repair_status`.
 Either way, `compose_episode` afterwards — the final cut still holds the old audio until you do.
 
 Four distinct causes; they need **opposite** fixes, so identify the family first.
