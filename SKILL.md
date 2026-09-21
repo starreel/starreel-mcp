@@ -91,6 +91,18 @@ Don't ask the user at every step. Sort work into three tiers:
    `video_style_prompt`) are all free and the foundation that steers every later
    generation. Set them up front via `create_drama` / `update_project_settings`
    — don't build an empty shell, or all downstream generation drifts.
+   **Set the structured era contract for anything non-contemporary.**
+   `setting_brief` is free text: it supplies background but cannot hold the
+   frame. The one mechanism that outranks the visual lock is the structured
+   contract — `set_era_contract` per episode (`get_era_contract` reads it back),
+   one of `modern` / `republican` / `historical` / `fantasy`. Leave it empty and
+   the platform can only fight drift with prose in the prompt body; contemporary
+   objects bleeding into period frames almost always traces back to an empty
+   contract. **Xianxia / mythic-otherworld projects must use `fantasy`, not
+   `historical`** — the latter demands period-accurate realism and will judge
+   glowing energy, floating landforms and non-human forms as "wrong era",
+   dragging the look toward literal historical drama. A single scene can break
+   away via `update_scene`'s `era_contract` (scene level outranks episode level).
    **Never pin a specific character's wardrobe / hair / look inside
    `visual_lock` or `art_bible`** — those hold scene-level and world-level locks
    only. The **single source of truth** for a character's appearance is the

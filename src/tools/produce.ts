@@ -76,6 +76,13 @@ const WORKFLOW_HINT =
   '★visual_lock/art_bible 只写画面级/世界级锁(镜头语言·环境·美术基调·禁入元素),**绝不为具体角色钉服装/发型/外观细节**——' +
   '角色外观的唯一真相源是 extract_assets 产出的人物档案(要改走 update_character);两处都写必然互相矛盾,' +
   '定妆图跟档案、设定图跟视觉锁,一致性闸按定妆图拒收 → 设定图/镜头帧**结构性连拒**,重掷多少次都过不了、纯白花钱。' +
+  '★★【时代契约·免费·非现代题材出图前必设】setting_brief 里的世界观是**自由文本**,只能提供背景、压不住画面;' +
+  '真正能压过视觉锁的是**结构化时代契约**:用 set_era_contract 设本集档位' +
+  '(modern/republican/historical/fantasy),get_era_contract 读现值。**不设就是空着**——' +
+  '平台只能靠提示词正文堆字对抗,现代物件混进古代画面、场景图画成别的时代,基本都由这里空着导致。' +
+  '★仙侠/奇幻/仙境类**必须填 fantasy,别填 historical**:后者要求考据写实,会把发光灵气、悬浮地貌、' +
+  '非人化形一并判成「不合时代」,把画面往写实古代拽。某一场要破例(如奇幻世界里一场现代回忆)' +
+  '用 update_scene 的 era_contract 单独覆写,场级压过集级。' +
   '★★【逐环节审查协议·全部免费·这是防废片的主线,不是可选项】每个环节产出后先审查、把结论原样告诉客户,再进下一步。' +
   '**三道硬闸(不过会被 400 拒)**:①改写稿产出后 → review_script(在 extract_assets / generate_storyboards 之前);' +
   '②分镜产出后 → review_storyboards(在 generate_frames 之前);③镜头图片产出后 → review_frames(在 generate_videos 之前)。' +
@@ -1221,7 +1228,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       atmosphere: z.string().optional().describe('氛围'),
       director_note: z.string().optional().describe('导演注释'),
       shot_intent: z.string().optional().describe('这镜为什么存在(叙事意图)'),
-      image_prompt: z.string().optional().describe('首帧画面提示词**正文**(全量覆盖本镜现值)。★先 get_shot_prompts 读现值再改;★原样保留其中的 @char:N / @scene:M 引用标记,删了就不注入对应定妆图/场景图。出图时平台会在正文之上再拼身份锚与一致性约束,不必你写'),
+      image_prompt: z.string().optional().describe('首帧画面提示词**正文**(全量覆盖本镜现值)。★先 get_shot_prompts 读现值再改;★原样保留其中的 @char:N / @scene:M 引用标记,删了就不注入对应定妆图/场景图。出图时平台会在正文之上再拼身份锚与一致性约束,不必你写。★写法坑:别写「no X / without X / 不要 X / 没有 X」这类否定式约束——图像模型把名词当正向线索,反而把 X 画出来;要正向写出那块画面该有什么(材质/形状/颜色/远近)。保存响应带 image_prompt_negation_advisory 即命中,按其 note 改写'),
       video_prompt: z.string().optional().describe('视频(动态/运镜/表演)提示词**正文**(全量覆盖本镜现值)。★同 image_prompt:先读现值、保留 @char/@scene 标记'),
     },
     async ({ storyboard_id, ...fields }) => {
@@ -1317,21 +1324,59 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'set_shot_name_card',
-    '给某一镜加/改/清「角色名卡」(画面侧边竖排人物名+朱红印章,终拼时烧进成片,含预览一致的书法字体)。' +
-      'name 传空字符串=清除本镜名卡。免费(纯数据,填了就显示)。适合群像出场镜逐个标注人物名。' +
+    '给某一镜加/改/清「版式字卡」(终拼时烧进成片,含预览一致的书法字体与朱红印章)。' +
+      'name 传空字符串=清除本镜字卡。免费(纯数据,填了就显示)。' +
+      '两种用法:①不填 orient/placement/font_size = 角色名卡(画面侧边单列竖排人物名,适合群像出场镜);' +
+      '②填了其中任意一个 = 通用版式字卡,name 可以是**整句台词或旁白**(按标点自动切列、按最高列拟合字号)。' +
+      'placement="auto" 会按背景亮度与粗糙度自动挑位置(躲开人脸/亮部);orient="auto" 在背景太花时自动回退横排。' +
       '★别自己下载视频叠字再上传——那会绕开渲染机字体与印章素材,预览/成片不一致。',
     {
       storyboard_id: z.number().int().positive(),
-      name: z.string().describe('人物名(竖排渲染);空字符串=清除名卡'),
+      name: z.string().describe('字卡正文(人物名,或版式模式下的任意文案/整句台词);空字符串=清除字卡'),
       seal: z.string().optional().describe('印章文字(默认取名字末字)'),
-      side: z.enum(['left', 'right']).optional().describe('名卡在画面哪一侧,默认 right'),
+      side: z.enum(['left', 'right']).optional().describe('名卡在画面哪一侧,默认 right;placement="auto" 时仅作兜底'),
       duration_ms: z.number().int().positive().optional().describe('显示时长毫秒,默认 3000'),
+      orient: z.enum(['vertical', 'horizontal', 'auto']).optional()
+        .describe('排版方向。不填=单列竖排(旧行为);auto=背景太花时自动回退横排'),
+      placement: z.enum(['fixed', 'auto']).optional()
+        .describe('选位方式。不填=贴 side 那一边的固定位;auto=按背景亮度/粗糙度滑窗选位,躲开人和亮部'),
+      font_size: z.number().int().positive().optional()
+        .describe('字号上限(默认 72);实际字号按最高列拟合,不会超过它'),
     },
-    async ({ storyboard_id, name, seal, side, duration_ms }) =>
+    async ({ storyboard_id, name, seal, side, duration_ms, orient, placement, font_size }) =>
       jsonResult(await client.producePut(`/storyboards/${storyboard_id}/name-card`, {
         name, ...(seal !== undefined ? { seal } : {}), ...(side !== undefined ? { side } : {}),
         ...(duration_ms !== undefined ? { duration_ms } : {}),
+        ...(orient !== undefined ? { orient } : {}),
+        ...(placement !== undefined ? { placement } : {}),
+        ...(font_size !== undefined ? { font_size } : {}),
       })),
+  )
+  server.tool(
+    'extract_segment_to_library',
+    '把某一镜（或某集成片）的某个时间区间抽出来，存成可复用的素材，进我的素材库。免费（纯剪切，不走厂商）。' +
+      '典型用法:闪回/回忆蒙太奇——画面全用已有镜头，边际成本为 0。' +
+      '区间是相对**该来源视频**的秒数;末端超出片长会自动夹回来并在 span 里回显实际区间。' +
+      '同源同区间重复调用会命中内容哈希、复用已有素材（reused=true），不会在库里堆重复行。' +
+      '★别自己下载视频再用本地 ffmpeg 切——厂商产物的 GOP 长达 10s，按关键帧切必然偏，' +
+      '这里走的是平台已经趟平的精确切点。',
+    {
+      source_kind: z.enum(['storyboard', 'episode']).describe('从某一镜抽，还是从某集成片抽'),
+      source_id: z.number().int().positive().describe('storyboard_id 或 episode_id，与 source_kind 对应'),
+      start_sec: z.number().nonnegative().describe('区间起点（秒，相对该来源视频）'),
+      end_sec: z.number().positive().describe('区间终点（秒）；超出片长会被夹回来'),
+      name: z.string().optional().describe('素材名；不填自动生成（剧名·来源·区间）'),
+      tags: z.string().optional().describe('逗号分隔的标签，会与自动标签合并'),
+    },
+    async ({ source_kind, source_id, start_sec, end_sec, name, tags }) =>
+      jsonResult(await client.producePost(
+        `/${source_kind === 'episode' ? 'episodes' : 'storyboards'}/${source_id}/extract-segment`,
+        {
+          start_sec, end_sec,
+          ...(name !== undefined ? { name } : {}),
+          ...(tags !== undefined ? { tags } : {}),
+        },
+      )),
   )
   server.tool(
     'get_bgm_status',
@@ -1489,8 +1534,51 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       mood: z.string().optional(),
       image_prompt: z.string().optional()
         .describe('这一场**空景图**的提示词正文(全量覆盖本场现值)。★先 get_scene_prompt 读现值再改;★写空景——这张是场景基板,画面里不该有人物(人物由镜头帧那层注入)。出图时平台会在正文之上再拼画风块、空景约束与时代锁,不必你写'),
+      era_contract: z.object({
+        era: z.string().describe('modern / republican / historical / fantasy(也收中文「现代 / 民国 / 古代 / 仙侠」)'),
+        positive: z.array(z.string()).optional().describe('本场额外的正向约束(可留空,平台自带该档基线)'),
+        negative: z.array(z.string()).optional().describe('本场额外的禁止项(可留空)'),
+      }).nullable().optional()
+        .describe('**本场**的时代契约,非空时**压过**集级契约(set_era_contract 设的那条)。'
+          + '只在这一场要破例时才填——例如奇幻世界里插一场现代回忆。'
+          + '传 null 清空本场覆写、回到跟随集级。整集统一的时代**不要**逐场填,用 set_era_contract 设一次即可'),
     },
     async ({ scene_id, ...fields }) => jsonResult(await client.producePut(`/scenes/${scene_id}`, fields)),
+  )
+  server.tool(
+    'set_era_contract',
+    '设**本集**的时代契约(免费,纯文本写库)。★这是唯一压得过视觉锁的时代机制——'
+      + '古装/民国/仙侠类项目**出图前必设**,不设的话平台只能靠提示词正文堆字对抗,'
+      + '时代错乱(现代物件混进古代画面、仙境被画成写实古代)基本都是这里空着导致的。\n'
+      + '四档怎么选:\n'
+      + '· modern —— 现代/当代都市。不确定时用这档。\n'
+      + '· republican —— 民国、二十世纪早期。\n'
+      + '· historical —— 可考据的历史朝代;这档会要求画面向**考据写实**靠拢。\n'
+      + '· fantasy —— ★仙侠/奇幻/仙境:修真世界、妖灵化形一类**非写实**的东方奇幻。'
+      + '这类项目**别填 historical**——那档要求考据写实,会把发光灵气、悬浮地貌、非人化形'
+      + '一并判成「不合时代」,把画面往写实古代拽。\n'
+      + '★设完不会自动重出已生成的图:要让画面跟上,得再调 generate_frames / regenerate_scene_image。'
+      + '★某一场要破例,用 update_scene 的 era_contract 单独覆写(场级压过集级)。',
+    {
+      episode_id: z.number().int().positive(),
+      era: z.string().nullable()
+        .describe('modern / republican / historical / fantasy(也收中文「现代 / 民国 / 古代 / 仙侠」)。传 null 清空本集契约'),
+      positive: z.array(z.string()).optional()
+        .describe('额外的正向约束(可留空,平台自带该档基线)。写世界观独有的东西,别重复该档已有的常识'),
+      negative: z.array(z.string()).optional()
+        .describe('额外的禁止项(可留空)。写该档基线没覆盖、但本项目必须禁的东西'),
+    },
+    async ({ episode_id, ...rest }) =>
+      jsonResult(await client.producePut(`/episodes/${episode_id}/era-contract`, rest)),
+  )
+  server.tool(
+    'get_era_contract',
+    '读本集的时代契约现值 + 各场的场级覆写清单 + 四个可选档位的用途说明。免费。'
+      + '改之前先读一次:能看清「集级设的是哪档、哪几场被单独覆写过」,避免整集统一的时代被逐场填乱。'
+      + '★era_contract 为 null 就是**没设**——古装/仙侠项目看到 null 应当先 set_era_contract 再出图。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) =>
+      jsonResult(await client.produceGet(`/episodes/${episode_id}/era-contract`)),
   )
   server.tool(
     'get_scene_prompt',
