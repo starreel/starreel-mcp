@@ -288,7 +288,16 @@ content that will be rejected.
 
     **Soft checkpoints** (not enforced, also free, still expected): `run_precheck`
     before any image or video generation (it catches shots the vendor will
-    reject — pure wasted spend otherwise); `get_health_report` after
+    reject — pure wasted spend otherwise). **When it flags contradictory
+    instructions, don't patch them blind with `update_shot`.** Call
+    `plan_precheck_fix` to have the platform work out what to change, walk the
+    proposals through with the user shot by shot, and apply the ones they accept
+    with `apply_precheck_fix`. That path keeps the optimistic lock and the
+    pre-write re-checks; editing by hand skips both. The platform deliberately
+    offers no one-click auto-fix — these heuristics carry false positives, and a
+    silent rewrite would damage shots that were already correct. Categories the
+    platform will *not* touch come back under `blocked`; those are the ones that
+    genuinely need a human. `get_health_report` after
     storyboards; `get_characters` after portraits to confirm every on-screen
     character has an image and a sheet; `get_storyboards` after frames and after
     videos to read `frame_status` / `video_status` / `fail_reason` / `fail_hint`

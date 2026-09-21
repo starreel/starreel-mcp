@@ -89,7 +89,8 @@ const WORKFLOW_HINT =
   '每次审查返回 review_token,把它随下游收费工具一起传;findings 逐条讲给客户(code=问题类型·shots=命中镜号·action=该调哪个工具修),' +
   '按 action 修完后**复审**再走。审查后又改了内容 → token 自动失效,复审一次即可(免费)。' +
   '有 error 时默认拦截,只有客户明确知情并坚持才带 acknowledge_review:true——别替客户做这个决定。' +
-  '**软引导(不阻断但强烈建议,同样免费)**:出图/出视频前跑 run_precheck(揪出必被厂商拒的镜,防白花钱);' +
+  '**软引导(不阻断但强烈建议,同样免费)**:出图/出视频前跑 run_precheck(揪出必被厂商拒的镜,防白花钱)——' +
+  '★揪出来之后别自己盲改:plan_precheck_fix 让平台算出提案 → 逐条讲给客户 → 客户点头后 apply_precheck_fix 落库;' +
   '分镜后跑 get_health_report;定妆图出完用 get_characters 核对每个出场角色都有 image/sheet;' +
   '出帧后用 get_storyboards 看 frame_status 与 fail_reason/fail_hint(failed 的镜先修再往下,别带着废帧出视频);' +
   '出视频后同样看 video_status;成片前用 get_pipeline_status 确认没有缺镜。' +
@@ -664,9 +665,54 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '④**指令自相矛盾(kind=prompt-conflict)**——同一镜里互斥的要求(如宽景别却标了特写主体、' +
       '既要站立又要坐姿),这类镜**任何正确的图都满足不了**,不改就会反复被拒并反复扣费,' +
       '出现时应先按提示改分镜再出图,而不是重试。\n' +
+      '★**怎么改不用你猜**:调 plan_precheck_fix 让平台算出提案(哪一镜、把什么改成什么),' +
+      '讲给客户、客户点头后用 apply_precheck_fix 落库——比你自己用 update_shot 盲改稳,' +
+      '那条路绕开了乐观锁与落库前复核。部分类别系统不替你改(提案里的 blocked),那些才需要人工调。\n' +
       '⚠️ 它**不**检查首帧是否处在"动作发生前"(平台暂无该契约字段),也不替代 get_health_report。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/precheck`)),
+  )
+  server.tool(
+    'plan_precheck_fix',
+    '让平台**算出**该怎么改 run_precheck 揪出的「指令自相矛盾」类问题(第①步,只算不改)。'
+      + '按文本用量计费(很小),不走报价确认。\n'
+      + '★两段式,这一步不动任何数据:拿到提案后**逐条讲给客户**(哪一镜、把什么改成什么、为什么),'
+      + '客户点头后再把采纳的那几条**原样**传给 apply_precheck_fix 落库。\n'
+      + '★**不要替客户决定**:这些判据有假阳,平台刻意不做「一键自动修」——'
+      + '曾实测同一批提案里近半是判据误报,静默改会把本来正确的分镜改坏。\n'
+      + '★返回的 blocked 列出「系统不替你改」的类别:那些要人工按 run_precheck 的提示调整分镜。'
+      + '看到 blocked 不等于没问题,反而是**必须人工处理**的那部分。\n'
+      + '不传 shot_id 就算整集;只想修某一镜就传它。',
+    {
+      episode_id: z.number().int().positive(),
+      shot_id: z.number().int().positive().optional()
+        .describe('只算这一镜的提案;不传则整集。注意首帧类判据始终要看上一镜,所以上下文仍取整集'),
+    },
+    async ({ episode_id, shot_id }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/precheck-fix/plan`, shot_id ? { shot_id } : {})),
+  )
+  server.tool(
+    'apply_precheck_fix',
+    '把客户**确认过**的提案落库(第②步)。免费(纯文本写库)。'
+      + '入参就是 plan_precheck_fix 回的提案对象,**原样传回**即可——只传客户勾选采纳的那几条。\n'
+      + '★落库前平台还会再过三道闸:乐观锁(库里的值变了就跳过,绝不覆盖别人的改动)、'
+      + '准入复判、自净闸(改完判据没转绿也跳过)。所以部分条目进 skipped 是正常的,不是失败。\n'
+      + '★返回的 remaining = 本集**还剩几条**预检问题,不是「改了几个字段」。'
+      + '改完重跑 run_precheck 确认,再往下出图。',
+    {
+      episode_id: z.number().int().positive(),
+      proposals: z.array(z.object({
+        shot_id: z.number().int().positive(),
+        task: z.string().optional(),
+        changes: z.array(z.object({
+          field: z.string(),
+          old_value: z.string().nullable().optional().describe('★必须是 plan 给的原值:落库时做乐观锁,库里已经不是它了就跳过'),
+          new_value: z.string().nullable().optional(),
+        })),
+      })).describe('plan_precheck_fix 回的提案,原样传回;只放客户点头采纳的那几条'),
+    },
+    async ({ episode_id, proposals }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/precheck-fix/apply`, { proposals })),
   )
   server.tool(
     'get_health_report',
