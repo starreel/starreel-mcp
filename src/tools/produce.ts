@@ -914,6 +914,38 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/export`)),
   )
   server.tool(
+    'review_final_cut',
+    '**成片体检**:导出前把整集过一遍——没出图的镜、字幕一屏放不下、人物没有身份锚、'
+      + '镜头连续性(跳轴)、以及一次错别字通读。'
+      + '\n★**建议式,不阻断**:can_export=false 只代表有 block 级问题值得先看,'
+      + '平台不会拦着你 compose_episode / get_export。把 findings 逐条讲给客户'
+      + '(code=问题类型、shots=命中的镜号、action=该调哪个工具去修),**由客户决定修还是照发**。'
+      + '\n★费用:本身免费,但默认会跑一次 LLM 错别字通读——那一步**要花钱**。'
+      + '不需要通读就传 proofread=false(更快也不扣费)。'
+      + '\n★字幕与错别字那几项的**原文**在官网体检面板里看,这里只给结论与镜号。',
+    {
+      episode_id: z.number().int().positive(),
+      proofread: z.boolean().optional()
+        .describe('是否跑 LLM 错别字通读(默认 true,**要花钱**);传 false 跳过这一步'),
+    },
+    async ({ episode_id, proofread }) =>
+      jsonResult(await client.produceGet(
+        `/episodes/${episode_id}/qc${proofread === false ? '?proofread=0' : ''}`)),
+  )
+  server.tool(
+    'audit_silent_shot_audio',
+    '查**无台词镜里的异常发声**:本该沉默的反应镜,音轨却比同场说话镜还响——'
+      + '成片里的表现是「有人在画外乱说话」。免费。'
+      + '\n★用在**原声剧**上(use_clip_audio=true,即直接用 AI 视频自带声音那种)。'
+      + '走 TTS 配音的片子不会有这个问题。'
+      + '\n★**很慢**:每镜要完整解码音轨,实测 6~10 秒/镜(后端限并发 4),整集几十镜要等几分钟。'
+      + '别在产线中途反复调,放在成片前查一次。'
+      + '\n★shots_probe_failed 是**没测成**的镜数,不代表那些镜有问题。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) =>
+      jsonResult(await client.produceGet(`/episodes/${episode_id}/silent-shot-audio-audit`)),
+  )
+  server.tool(
     'get_asset_recovery',
     '列本集可恢复的**历史产物**(免费·只读):以前生成过、后来被覆盖掉的成片与候选帧。'
       + '\n用途:客户说「上一版那个好」「前天那张图比现在这张好」时,从这里找回来。'

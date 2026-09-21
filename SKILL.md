@@ -652,6 +652,16 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   each**: `apply_recovered_final`, or `apply_recovered_candidate` (which
   requires an explicit `target_storyboard_id` — the platform will not guess
   which shot a recovered frame belongs to). `rollback_asset_recovery` undoes one.
+- **Final-cut review (advisory, not a gate)**: `review_final_cut` — unrendered
+  shots, subtitles that won't fit on screen, characters without an identity
+  anchor, axis jumps, plus one LLM proofreading pass (that pass **costs money**;
+  send `proofread: false` to skip it). `can_export: false` only means something
+  is worth a look — the platform will **not** block `compose_episode` or
+  `get_export`. Walk the findings past the user and let them decide.
+  `audit_silent_shot_audio` catches reaction shots that should be silent but are
+  louder than the speaking shots around them (only relevant when the drama uses
+  clip audio); it is **slow** — 6–10s per shot — so run it once before the final
+  cut, not repeatedly mid-pipeline.
 - **Marketing export**: `export_sheet_compare` / `get_sheet_compare` — the
   character-sheet-vs-frame comparison sheet. **Off by default per drama**; a 403
   or `enabled: false` means the user has to switch it on in the drama settings.

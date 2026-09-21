@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.67",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.67 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.68",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.68 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -4925,6 +4925,53 @@
         }
       }
     },
+    "/episodes/{episode_id}/qc": {
+      "get": {
+        "operationId": "review_final_cut",
+        "summary": "**成片体检**:导出前把整集过一遍——没出图的镜、字幕一屏放不下、人物没有身份锚、镜头连续性(跳轴)、以及一次错别字通读",
+        "description": "**成片体检**:导出前把整集过一遍——没出图的镜、字幕一屏放不下、人物没有身份锚、镜头连续性(跳轴)、以及一次错别字通读。\n★**建议式,不阻断**:can_export=false 只代表有 block 级问题值得先看,平台不会拦着你 compose_episode / get_export。把 findings 逐条讲给客户(code=问题类型、shots=命中的镜号、action=该调哪个工具去修),**由客户决定修还是照发**。\n★费用:本身免费,但默认会跑一次 LLM 错别字通读——那一步**要花钱**。不需要通读就传 proofread=false(更快也不扣费)。\n★字幕与错别字那几项的**原文**在官网体检面板里看,这里只给结论与镜号。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/episodes/{episode_id}/re-render": {
       "post": {
         "operationId": "rerender_episode",
@@ -5717,6 +5764,53 @@
         "operationId": "generate_sfx",
         "summary": "给整集自动匹配+生成音效(SFX)",
         "description": "给整集自动匹配+生成音效(SFX)。后台异步,按用量后付。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/silent-shot-audio-audit": {
+      "get": {
+        "operationId": "audit_silent_shot_audio",
+        "summary": "查**无台词镜里的异常发声**:本该沉默的反应镜,音轨却比同场说话镜还响——成片里的表现是「有人在画外乱说话」",
+        "description": "查**无台词镜里的异常发声**:本该沉默的反应镜,音轨却比同场说话镜还响——成片里的表现是「有人在画外乱说话」。免费。\n★用在**原声剧**上(use_clip_audio=true,即直接用 AI 视频自带声音那种)。走 TTS 配音的片子不会有这个问题。\n★**很慢**:每镜要完整解码音轨,实测 6~10 秒/镜(后端限并发 4),整集几十镜要等几分钟。别在产线中途反复调,放在成片前查一次。\n★shots_probe_failed 是**没测成**的镜数,不代表那些镜有问题。",
         "tags": [
           "episodes"
         ],
