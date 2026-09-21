@@ -624,6 +624,37 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   shots in one call)
 - **Identity & consistency**: `generate_character_portraits`, `upload_image`,
   `set_character_portrait`, `generate_character_sheet`, `extract_visual_lock`
+- **Wardrobe**: `list/create/get/update/delete_wardrobe`,
+  `regenerate_wardrobe_image`, and the two-step timeline
+  `build_wardrobe_timeline` (LLM, **billed** — computes per-shot change
+  suggestions, changes nothing) → walk the diff past the user → `apply_wardrobe_timeline`
+  (or `apply_wardrobe_appearances` when several characters share a frame).
+  **What an outfit actually is here is a structured binding**
+  (`active_wardrobe_id` / `appearances[].wardrobeAssetId`), not prose in the
+  shot description — editing the text via `update_shot` and leaving the binding
+  alone leaves the character in the old outfit.
+- **Continuity ledger**: `get_world_state` (which props / garments / injuries
+  are tracked, and where two shots disagree), `rebuild_world_state` (LLM,
+  **billed** — rerun it when `stale=true`), `add/delete_world_state_event`
+  (explain away a conflict the AI mis-read instead of editing shots),
+  `link_world_state_scene_variant`, `derive_pose_chain` (LLM, **billed** — fills
+  only the shots whose poses are blank, so cuts connect).
+- **Era contract**: `set_era_contract` / `get_era_contract` — see the project
+  settings tier above. Non-contemporary projects must set this before frames.
+- **Lengthen a finished cut**: `quote_extend_final` (free, quote first) →
+  `extend_final` (**billed** per round) → `get_extend_final` → `apply_extend_final`.
+  The extension is *not* the episode cut until you apply it, and applying
+  **replaces** the current cut. A 403 means the drama's video engine isn't
+  eligible — don't retry.
+- **Recover an older asset**: `get_asset_recovery` lists cuts and candidate
+  frames that were superseded. Reach for it when the user says "the previous
+  version was better". Apply them **one at a time, only after the user confirms
+  each**: `apply_recovered_final`, or `apply_recovered_candidate` (which
+  requires an explicit `target_storyboard_id` — the platform will not guess
+  which shot a recovered frame belongs to). `rollback_asset_recovery` undoes one.
+- **Marketing export**: `export_sheet_compare` / `get_sheet_compare` — the
+  character-sheet-vs-frame comparison sheet. **Off by default per drama**; a 403
+  or `enabled: false` means the user has to switch it on in the drama settings.
 - **Shots → video**: `quote/generate_storyboards`, `get_storyboards`,
   `quote/generate_frames`, `chain_frames`, `quote/generate_videos`
 - **Audio**: `generate_tts` (required before final cut), `clone_voice`,

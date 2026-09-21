@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.66",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.66 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.67",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.67 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -82,6 +82,10 @@
     {
       "name": "voice-clones",
       "description": "Operations under /voice-clones"
+    },
+    {
+      "name": "wardrobe",
+      "description": "Operations under /wardrobe"
     },
     {
       "name": "auth",
@@ -2405,6 +2409,53 @@
         }
       }
     },
+    "/dramas/{drama_id}/wardrobe": {
+      "get": {
+        "operationId": "list_wardrobe",
+        "summary": "列本剧的**服装资产库**(免费)",
+        "description": "列本剧的**服装资产库**(免费)。每件服装是一个可被镜头引用的结构化资产,不是分镜里的文字描述。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/dramas/{drama_id}/world-concept": {
       "post": {
         "operationId": "generate_world_concept",
@@ -2424,6 +2475,266 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/asset-recovery": {
+      "get": {
+        "operationId": "get_asset_recovery",
+        "summary": "列本集可恢复的**历史产物**(免费·只读):以前生成过、后来被覆盖掉的成片与候选帧",
+        "description": "列本集可恢复的**历史产物**(免费·只读):以前生成过、后来被覆盖掉的成片与候选帧。\n用途:客户说「上一版那个好」「前天那张图比现在这张好」时,从这里找回来。\n★这一步只看不改。把候选逐条讲给客户,**客户逐条点头**之后再 apply。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/asset-recovery/candidates/{generation_id}/apply": {
+      "post": {
+        "operationId": "apply_recovered_candidate",
+        "summary": "把某张**历史候选帧**回填到指定镜头(免费)",
+        "description": "把某张**历史候选帧**回填到指定镜头(免费)。\n★**必须显式指定 target_storyboard_id**:这张图要回到哪一镜只有客户知道,平台不替你猜——猜错目标镜比不做更糟(会把另一镜正在用的帧换掉)。\n★同样是**逐条确认**:一次只回填一张,先把「哪张图、回到第几镜」讲给客户听。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "generation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "取自 get_asset_recovery 的 candidates[].id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target_storyboard_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "description": "回填到哪一镜(必填,不猜)"
+                  }
+                },
+                "required": [
+                  "target_storyboard_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/asset-recovery/events/{event_id}/rollback": {
+      "post": {
+        "operationId": "rollback_asset_recovery",
+        "summary": "把一次已应用的恢复**退回去**(免费)",
+        "description": "把一次已应用的恢复**退回去**(免费)。apply 错了就用它撤销,恢复到应用之前的状态。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "取自 get_asset_recovery 的恢复事件 id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/asset-recovery/finals/{merge_id}/apply": {
+      "post": {
+        "operationId": "apply_recovered_final",
+        "summary": "把某个**历史终拼**设为本集当前成片(免费,指针切换)",
+        "description": "把某个**历史终拼**设为本集当前成片(免费,指针切换)。\n★这会**覆盖**本集现在对外的那一版成片。先用 get_asset_recovery 列出来、把是哪一版(时间/时长)讲清楚,**客户逐条确认**再调——不要凭「看起来更好」自己决定。\n★之后重新 compose_episode(终拼)会再把它覆盖回去。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "merge_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "取自 get_asset_recovery 的 finals[].id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -2865,6 +3176,64 @@
         }
       }
     },
+    "/episodes/{episode_id}/derive-pose-chain": {
+      "post": {
+        "operationId": "derive_pose_chain",
+        "summary": "派生**姿态链**(Action Graph)：从相邻镜的动作推出每镜的起止姿态，让镜间衔接不跳",
+        "description": "派生**姿态链**(Action Graph)：从相邻镜的动作推出每镜的起止姿态，让镜间衔接不跳。**要花钱**(走 LLM)。\n★只填**空着**的那些镜，已经写了姿态的不动;黑场镜自动跳过。\n出图前做，能减少「上一镜站着下一镜突然坐着」这类接不上的情况。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/episodes/{episode_id}/dialogue-coverage": {
       "get": {
         "operationId": "scan_dialogue_coverage",
@@ -3180,6 +3549,376 @@
             "schema": {
               "type": "integer",
               "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/export/sheet-compare": {
+      "post": {
+        "operationId": "export_sheet_compare",
+        "summary": "导出**设定图对照版**(角色设定图与成片画面的对照拼版,营销/交付用)",
+        "description": "导出**设定图对照版**(角色设定图与成片画面的对照拼版,营销/交付用)。触发后台合成,用 get_sheet_compare 轮询。\n★这个能力**默认关**:它是剧集级开关(不是所有片子都允许这样对外输出),关着时回 **403**。看到 403 别重试、也别当成失败——告诉客户去官网的**剧集设置**里打开它。\n不传 character_id 就导出整集;传了只导这一个角色。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "character_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_sheet_compare",
+        "summary": "轮询设定图对照版的导出状态",
+        "description": "轮询设定图对照版的导出状态。免费。回 enabled(剧集开关是否打开)/processing/result/error。\n★enabled=false 就是那个剧集开关没开——不是出错,去官网剧集设置里打开再导。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/extend-final": {
+      "post": {
+        "operationId": "extend_final",
+        "summary": "发起成片续写(**收费**,每轮走视频生成扣费链)",
+        "description": "发起成片续写(**收费**,每轮走视频生成扣费链)。后台串行跑,立即返回会话 id,用 get_extend_final 轮询。\n★调之前**必须**先 quote_extend_final 报价并让客户确认点数——不要替客户决定花钱。\n★续写只是「在成片后面接片段」,不改前面已有的内容;接出来的片段也**不会**自动成为本集成片,满意之后要显式调 apply_extend_final 才生效。\n★403 = 本剧没开(引擎需 2.5 系),别重试。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rounds": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "duration": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "model": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "rounds",
+                  "duration"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_extend_final",
+        "summary": "查本集所有续写会话的进度与产物",
+        "description": "查本集所有续写会话的进度与产物。免费。每条会话回 status(pending/processing/completed/partial/failed)、rounds_completed、final_url(产物直链)、applied(该产物**当前是不是**本集成片)、error_msg。\n★status=processing 时耐心轮询,别重复发起 extend_final(那会再扣一次钱)。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/extend-final/{session_id}/apply": {
+      "post": {
+        "operationId": "apply_extend_final",
+        "summary": "把某个续写产物**设为本集成片**(免费,纯指针切换)",
+        "description": "把某个续写产物**设为本集成片**(免费,纯指针切换)。\n★这一步会**覆盖**本集当前的成片链接:之前的成片不再是对外那一版。先用 get_extend_final 看 final_url、确认客户满意再调。\n★之后若重新 compose_episode(终拼),成片会被终拼结果覆盖回去,applied 自动变 false。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "取自 get_extend_final 返回的 sessions[].id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/extend-final/quote": {
+      "get": {
+        "operationId": "quote_extend_final",
+        "summary": "★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长",
+        "description": "★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长。回 rounds(轮数)/duration_per_round(每轮秒数)/max_rounds(上限)/estimated_points(预估点数)。\n★**必须先报价、把点数讲给客户、客户确认后再调 extend_final**——每轮都真扣厂商的钱。\n★回 403 = 本剧没开这个能力(要求剧集视频引擎是 2.5 系)。这不是调用错误,别重试;告诉客户换引擎或走别的加长方式。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "rounds",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "续写几轮"
+            }
+          },
+          {
+            "name": "duration",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "每轮秒数"
+            }
+          },
+          {
+            "name": "model",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -5762,6 +6501,505 @@
         }
       }
     },
+    "/episodes/{episode_id}/wardrobe-timeline": {
+      "post": {
+        "operationId": "build_wardrobe_timeline",
+        "summary": "算**服装时间线**:从剧本与分镜推出每个角色在各镜应该穿哪一身,并给出逐镜建议 diff",
+        "description": "算**服装时间线**:从剧本与分镜推出每个角色在各镜应该穿哪一身,并给出逐镜建议 diff。**要花钱**(走 LLM)。这是第①步,**只算不改**。\n★两段式:算完把 diff **逐条讲给客户**(哪一镜、从哪身换成哪身、为什么),客户勾选后再用 apply_wardrobe_timeline 落库。别替客户全盘应用。\n★**这一步解决的是「文字改了不生效」**:决定出图穿什么的是结构化绑定(active_wardrobe_id / appearances[].wardrobeAssetId),不是 update_shot 里的文字描述。只改文字、不改绑定,出图照旧穿原来那身。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/wardrobe-timeline/apply": {
+      "post": {
+        "operationId": "apply_wardrobe_timeline",
+        "summary": "把客户勾选的换装建议落库(第②步,免费)",
+        "description": "把客户勾选的换装建议落库(第②步,免费)。改的是每镜的 **active_wardrobe_id 结构化绑定**,不是文字描述——这正是「改了 update_shot 的文字却不生效」那个坑的正解。\n★只传客户点头的那几条;一次最多 200 条。\n★多角色同框的镜头单列装不下,那些走 apply_wardrobe_appearances。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "description": "build_wardrobe_timeline 给的建议,只放客户勾选的那几条"
+                  }
+                },
+                "required": [
+                  "items"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/wardrobe-timeline/apply-appearances": {
+      "post": {
+        "operationId": "apply_wardrobe_appearances",
+        "summary": "逐角色回填 appearances 的服装绑定(第②步的多角色版,免费)",
+        "description": "逐角色回填 appearances 的服装绑定(第②步的多角色版,免费)。用于**多角色同框**的镜头:单个 active_wardrobe_id 装不下几个人各穿各的,这条按角色逐个绑。同样只传客户勾选的那几条,一次最多 200 条。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "description": "build_wardrobe_timeline 给的建议,只放客户勾选的那几条"
+                  }
+                },
+                "required": [
+                  "items"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/world-state": {
+      "get": {
+        "operationId": "get_world_state",
+        "summary": "读本集的**世界状态账本**：被追踪的实体(道具/服装/伤痕一类)在各镜之间的状态，以及对不上的地方(conflicts，带命中的两个镜号)",
+        "description": "读本集的**世界状态账本**：被追踪的实体(道具/服装/伤痕一类)在各镜之间的状态，以及对不上的地方(conflicts，带命中的两个镜号)。免费。\n★stale=true = 分镜改过但账本没重建，先 rebuild_world_state 再看，否则看的是旧账。\n★账本目前只是**报表**：不拦生成、也不自动注入出图。看到 conflicts 要自己决定改分镜(update_shot)还是加一条手工事件说明(add_world_state_event)。\n逐条事件的文字详情在官网面板看，这里给结构化概览。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/world-state/events/{event_id}/scene-variant": {
+      "put": {
+        "operationId": "link_world_state_scene_variant",
+        "summary": "把账本里的某条事件关联到一个**场景变体**(免费)",
+        "description": "把账本里的某条事件关联到一个**场景变体**(免费)。用途：同一场景在事件前后长得不一样(灯亮/灯灭、完好/破损),关联之后出图会取对应那版场景图。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "variant_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                },
+                "required": [
+                  "variant_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/world-state/manual": {
+      "post": {
+        "operationId": "add_world_state_event",
+        "summary": "往账本里加一条**手工事件**(免费)",
+        "description": "往账本里加一条**手工事件**(免费)。用途：AI 没抽到、或抽错了的状态变化，由你补一条说明。\n典型场景：conflicts 报「同一件道具在两镜之间变了」，但剧情里确实发生过交接/损坏——补一条手工事件，冲突即被解释掉，不必去改分镜。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "entity_key": {
+                    "type": "string",
+                    "description": "实体标识(与账本里的 entity_key 对齐)"
+                  },
+                  "shot_number": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "entity_key"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/world-state/manual/{event_id}": {
+      "delete": {
+        "operationId": "delete_world_state_event",
+        "summary": "删掉一条手工事件(免费)",
+        "description": "删掉一条手工事件(免费)。只能删手工加的,AI 抽取出来的要靠 rebuild_world_state 重算。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/world-state/rebuild": {
+      "post": {
+        "operationId": "rebuild_world_state",
+        "summary": "重建世界状态账本(**要花钱**：走 LLM 从分镜里抽取实体与状态变化)",
+        "description": "重建世界状态账本(**要花钱**：走 LLM 从分镜里抽取实体与状态变化)。\n改完分镜、或 get_world_state 回 stale=true 时才需要重建;没改过就别重复跑。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/products/{product_id}/sheet": {
       "post": {
         "operationId": "generate_product_sheet",
@@ -7900,6 +9138,332 @@
                 "required": [
                   "text"
                 ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/wardrobe": {
+      "post": {
+        "operationId": "create_wardrobe",
+        "summary": "新建一件服装资产(免费,纯文本写库)",
+        "description": "新建一件服装资产(免费,纯文本写库)。建好之后要**绑到镜头上**才会影响出图——用 apply_wardrobe_timeline / apply_wardrobe_appearances,或在官网逐镜挑。",
+        "tags": [
+          "wardrobe"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "drama_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "这件服装叫什么(角色在剧里的某一身)"
+                  },
+                  "character_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "episode_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "palette_hint": {},
+                  "reference_image_urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "product_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "sort_order": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "drama_id",
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/wardrobe/{wardrobe_id}": {
+      "get": {
+        "operationId": "get_wardrobe",
+        "summary": "读一件服装资产的详情(免费)",
+        "description": "读一件服装资产的详情(免费)。",
+        "tags": [
+          "wardrobe"
+        ],
+        "parameters": [
+          {
+            "name": "wardrobe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "put": {
+        "operationId": "update_wardrobe",
+        "summary": "改服装资产(免费)",
+        "description": "改服装资产(免费)。改完**不会**自动重出已生成的图:要让画面跟上得再调 regenerate_wardrobe_image,已出的镜头帧还要逐镜重出。",
+        "tags": [
+          "wardrobe"
+        ],
+        "parameters": [
+          {
+            "name": "wardrobe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "character_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "episode_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "palette_hint": {},
+                  "reference_image_urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "notes": {
+                    "type": "string"
+                  },
+                  "product_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "sort_order": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_wardrobe",
+        "summary": "软删一件服装资产(免费)",
+        "description": "软删一件服装资产(免费)。已绑定它的镜头不会被自动改,先确认没有镜头还在用。",
+        "tags": [
+          "wardrobe"
+        ],
+        "parameters": [
+          {
+            "name": "wardrobe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/wardrobe/{wardrobe_id}/regenerate": {
+      "post": {
+        "operationId": "regenerate_wardrobe_image",
+        "summary": "重出这件服装的资产图(**收费**,图片步按用量后付)",
+        "description": "重出这件服装的资产图(**收费**,图片步按用量后付)。改完 description/参考图之后用它让图跟上。",
+        "tags": [
+          "wardrobe"
+        ],
+        "parameters": [
+          {
+            "name": "wardrobe_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
               }
             }
           }
