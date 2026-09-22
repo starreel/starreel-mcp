@@ -1425,6 +1425,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '登记后该镜不再 AI 出图/出视频（generate_videos 会跳过它,单镜重生会被拒),终拼原样使用,镜头时长按素材真实长度回写,' +
       '首/尾帧从素材抽帧供帧链与预览用。免费。适用:宣传片里的到账界面录屏、后台大屏实录、产品实拍、客户已有的成片片段。' +
       '⚠️ 别用它把外部 AI 生成的视频贴进来"改画面"——那不带本片身份锚/画风锚,人物·画风必漂;要改画面走 regenerate_shot_video。' +
+      '⚠️★**会覆盖这一镜已有的 AI 成片**(video_url 被替换成你传的素材;旧成片仍在但不再是本镜的在用视频,终拼将拼进素材)。' +
+      '⚠️★**要拿一段视频当「动作/运镜参考」让 AI 照着重绘,用的不是本工具**——那是 edit_video_shot 的 reference_video_urls' +
+      '(或 generate_videos 的参考视频通道)。本工具的语义是「这段视频**就是**成片本身,不再生成」。' +
+      '两者传的是同一个文件,结果天差地别:走本工具会让该镜从此被出视频守卫拒(含 edit_video_shot),' +
+      '得先 clear_shot_footage 或显式 replace_user_footage 才能继续。' +
       '要换回 AI 生成请先 clear_shot_footage。',
     {
       storyboard_id: z.number().int().positive(),
@@ -1479,6 +1484,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换。' +
       '可用 model 为本次编辑单独选引擎(与剧引擎可不同):hailuo-3=MiniMax H3 强保真编辑约1/3成本;wan3.0/wan3.0-prime=WAN 3.0 强语义编辑约4折(环境可能跟随指令扩写);' +
       'H3/WAN 均不支持 start_sec/end_sec 区间(传了会 400),编辑/续写的输入视频在 H3/WAN 上另按秒计费。' +
+      '\n★收到 **409「本镜是用户上传的实拍素材」** = 这一镜被 upload_shot_footage 登记成了实拍素材镜,不是模型或引擎的问题,换引擎重试无用。' +
+      '两条出路:要以该素材为源做 AI 重绘 → 带 replace_user_footage=true 重发;要恢复成普通 AI 镜 → 先 clear_shot_footage。' +
       CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
@@ -1490,6 +1497,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       reference_audio_urls: z.array(z.string()).max(3).optional(),
       start_sec: z.number().optional().describe('区间替换起点秒'),
       end_sec: z.number().optional().describe('区间替换终点秒'),
+      replace_user_footage: z.boolean().optional().describe(
+        '本镜是实拍素材镜(upload_shot_footage 传过)时,显式允许以它为源做编辑并用 AI 产物覆盖它。' +
+        '不传则被守卫拒(409,带中文出路)。想保留素材就别传,改用 clear_shot_footage 换回 AI 生成。'),
     },
     async ({ storyboard_id, ...rest }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/edit/generate`, rest)),
@@ -1502,14 +1512,23 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'regenerate_shot_video',
-    '确认后重生某镜视频(可选新 prompt)。' + CONFIRM_HINT,
+    '确认后重生某镜视频(可选新 prompt)。' +
+      '\n★收到 **409「本镜是用户上传的实拍素材」** = 该镜被 upload_shot_footage 登记成实拍素材镜,不是模型问题,换引擎无用;' +
+      '要用 AI 视频覆盖它就带 replace_user_footage=true,要保留素材就别重生。' +
+      CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_regenerate_shot_video'),
       prompt: z.string().optional().describe('可选:覆盖该镜视频 prompt'),
+      replace_user_footage: z.boolean().optional().describe(
+        '本镜是实拍素材镜时,显式允许用 AI 重生的视频覆盖它(不传则被守卫拒 409)。'),
     },
-    async ({ storyboard_id, quote_id, prompt }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/regen/generate`, prompt ? { quote_id, prompt } : { quote_id })),
+    async ({ storyboard_id, quote_id, prompt, replace_user_footage }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/regen/generate`, {
+        quote_id,
+        ...(prompt ? { prompt } : {}),
+        ...(replace_user_footage !== undefined ? { replace_user_footage } : {}),
+      })),
   )
   server.tool(
     'split_shot',
