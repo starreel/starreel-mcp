@@ -1484,6 +1484,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换。' +
       '可用 model 为本次编辑单独选引擎(与剧引擎可不同):hailuo-3=MiniMax H3 强保真编辑约1/3成本;wan3.0/wan3.0-prime=WAN 3.0 强语义编辑约4折(环境可能跟随指令扩写);' +
       'H3/WAN 均不支持 start_sec/end_sec 区间(传了会 400),编辑/续写的输入视频在 H3/WAN 上另按秒计费。' +
+      '\n★回执里出现 `edit_instruction_negation_advisory` = 你的指令里有**否定式约束**(「不能采用X」「不要出现X」)。' +
+      '视频模型把名词当正向线索,写「不要 X」往往反而把 X 演出来——被否定的那个动作/物件恰恰是模型先验里最显眼的。' +
+      '这不是拦截,任务已照常提交;但**下一轮改指令时务必删掉否定句,改成正向描述**(把该做什么写具体:起手动作、手的位置、每一拍的时值),' +
+      '否则同一个毛病会一直复现。已实测:客户写「不能采用参考图举手单脚的静态舞姿」,成片开头的抬臂手势就被参考图那个举手带跑了。' +
       '\n★收到 **409「本镜是用户上传的实拍素材」** = 这一镜被 upload_shot_footage 登记成了实拍素材镜,不是模型或引擎的问题,换引擎重试无用。' +
       '两条出路:要以该素材为源做 AI 重绘 → 带 replace_user_footage=true 重发;要恢复成普通 AI 镜 → 先 clear_shot_footage。' +
       CONFIRM_HINT,

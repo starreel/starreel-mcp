@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.70",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.70 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.71",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.71 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -8244,7 +8244,7 @@
       "post": {
         "operationId": "edit_video_shot",
         "summary": "确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换",
-        "description": "确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换。可用 model 为本次编辑单独选引擎(与剧引擎可不同):hailuo-3=MiniMax H3 强保真编辑约1/3成本;wan3.0/wan3.0-prime=WAN 3.0 强语义编辑约4折(环境可能跟随指令扩写);H3/WAN 均不支持 start_sec/end_sec 区间(传了会 400),编辑/续写的输入视频在 H3/WAN 上另按秒计费。\n★收到 **409「本镜是用户上传的实拍素材」** = 这一镜被 upload_shot_footage 登记成了实拍素材镜,不是模型或引擎的问题,换引擎重试无用。两条出路:要以该素材为源做 AI 重绘 → 带 replace_user_footage=true 重发;要恢复成普通 AI 镜 → 先 clear_shot_footage。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。",
+        "description": "确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换。可用 model 为本次编辑单独选引擎(与剧引擎可不同):hailuo-3=MiniMax H3 强保真编辑约1/3成本;wan3.0/wan3.0-prime=WAN 3.0 强语义编辑约4折(环境可能跟随指令扩写);H3/WAN 均不支持 start_sec/end_sec 区间(传了会 400),编辑/续写的输入视频在 H3/WAN 上另按秒计费。\n★回执里出现 `edit_instruction_negation_advisory` = 你的指令里有**否定式约束**(「不能采用X」「不要出现X」)。视频模型把名词当正向线索,写「不要 X」往往反而把 X 演出来——被否定的那个动作/物件恰恰是模型先验里最显眼的。这不是拦截,任务已照常提交;但**下一轮改指令时务必删掉否定句,改成正向描述**(把该做什么写具体:起手动作、手的位置、每一拍的时值),否则同一个毛病会一直复现。已实测:客户写「不能采用参考图举手单脚的静态舞姿」,成片开头的抬臂手势就被参考图那个举手带跑了。\n★收到 **409「本镜是用户上传的实拍素材」** = 这一镜被 upload_shot_footage 登记成了实拍素材镜,不是模型或引擎的问题,换引擎重试无用。两条出路:要以该素材为源做 AI 重绘 → 带 replace_user_footage=true 重发;要恢复成普通 AI 镜 → 先 clear_shot_footage。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。",
         "tags": [
           "storyboards"
         ],

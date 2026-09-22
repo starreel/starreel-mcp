@@ -214,6 +214,16 @@ content that will be rejected.
    on hailuo-3 / wan3.0 / wan3.0-prime — `edit_video_shot` rejects
    `start_sec`/`end_sec` on them. `edit_video_shot` also takes a per-call
    `model` so one shot can be edited on a different engine than the drama's.
+   **Negative phrasing backfires.** If the receipt carries
+   `edit_instruction_negation_advisory`, the instruction contained phrases like
+   "don't use X" / "不能采用X". Video models read nouns as positive cues, so the
+   thing you forbade is often exactly what gets performed — the forbidden item is
+   the most salient one in the model's prior. It is advisory only (the job was
+   submitted), but on the next pass **replace the negation with a positive
+   description** — state what the shot should do (the opening gesture, where the
+   hands are, the beat timing). Measured: an instruction saying "do not use the
+   reference image's raised-arm pose" produced exactly that raised arm at the
+   opening, overriding the source video's motion.
    **How to choose (guide the customer proactively)**: ① realistic live-action
    dramas → `seedance-2.5` (best instruction-following and face detail), or
    `hailuo-3` to cut cost to ~1/3 (slower, ~6 min/shot); ② stylized / animated /
