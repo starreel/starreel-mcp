@@ -209,6 +209,17 @@ content that will be rejected.
    frames in (`generate_frames` with `frame_type=last_frame`, or
    `generate_shot_frame` for a single shot) before `review_frames`. `generate_videos` needs at
    least one first frame in the episode.
+   **If a tail frame is refused with `TERMINAL_DESC_GATE`** ("this shot is marked as a
+   state change, but nothing says what it ends up looking like"), the fix is text, not a
+   retry: write the ending state into that shot's `last_frame_prompt` via `update_shot`,
+   then generate the tail frame again. `get_shot_prompts` flags these shots with
+   `terminal_desc_missing: true`. Retrying without filling it in cannot work — the prompt
+   sent to the vendor has no terminal-state section at all, so the model paints the opening
+   pose again and the terminal check rejects it, every time, and every attempt is billed.
+   Measured in production: tail frames on shots with no terminal description succeed
+   **9.4%** of the time versus **40.2%** with one. `generate_shot_frame` does accept
+   `allow_missing_terminal: true` for the rare shot that genuinely should barely change,
+   but reach for the text fix first.
    **Image model**: images use a drama-level model (default **ChatGPT Image 2.5
    Flare** = `gpt-image-2.5-flare`), set via `create_drama` /
    `update_project_settings` field `image_model` for one consistent look across

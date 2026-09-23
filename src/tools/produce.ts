@@ -128,6 +128,10 @@ const WORKFLOW_HINT =
   '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
   '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
   '跳过不报错、不拦你——代价是那些镜出视频时只有首帧一个锚,末态由模型自由发挥:动作做不到位、大运镜结束又回到起点构图。生产实测 32 集里 30 集整集只出了首帧,其中 23 集一路出完了视频。' +
+  '★★【尾帧被 TERMINAL_DESC_GATE 拦下时:改文本,不是重试】报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」的镜,'  +
+  '用 update_shot 把**结束时画面什么样**写进该镜 last_frame_prompt,再重出尾帧;get_shot_prompts 的 terminal_desc_missing=true 就是这个标记。' +
+  '不补描述直接重试是无效的——送厂商的提示词里根本没有终态段,画出来仍是首帧那个姿态、必然再次被终态审核拒,而每次都照常扣费' +
+  '(生产实测:没写终态的镜尾帧成功率 9.4%,写了的 40.2%)。确实该「几乎不变」的镜才用 generate_shot_frame 的 allow_missing_terminal 放行。' +
   '★★【空景基板别跳·这一步长期被第三方漏掉】场景图是**背景锚**:同一场的每个镜头帧都锚在它上面。' +
   '不出基板照样能出帧、不报错、不拦你——代价是**每个场景的第一镜完全没有背景锚**(平台的兜底补图是' +
   '「发现缺图就后台补一张」,补的那张给同场景后续镜用,触发它的那一镜自己等不到),而首镜往往正是定调的那一镜;' +
@@ -909,7 +913,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '真正有问题的那一侧——另一侧此前已经生成好的候选原样保留,不重新生成、不重新计费。传了它就' +
       '不用再传 frame_type(会被忽略,由平台判定该重哪一侧);quote_id 仍要用 quote_shot_frame 报价' +
       '(frame_type 传 first_frame 或 last_frame 均可,单帧同价)。若该镜没有 reopen_pair_id 字段' +
-      '(不满足继承条件),这个参数不要传,走常规 frame_type 重试。' + CONFIRM_HINT,
+      '(不满足继承条件),这个参数不要传,走常规 frame_type 重试。\n' +
+      '★★出尾帧若被拦下并提示「此镜标为状态改变,但没有任何地方说明结束时是什么样子」:' +
+      '正解是用 update_shot 把结束状态写进 last_frame_prompt 再出,**别直接加 allow_missing_terminal 硬上**——' +
+      '这类镜照现状出尾帧的历史成功率只有 9.4%(有终态描述的 40.2%),硬上多半是白扣一次钱。' +
+      '只有确认这一镜就是要「几乎不变」的画面时才带那个参数。' + CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_shot_frame'),
@@ -917,9 +925,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       replace_user_frame: z.boolean().optional().describe('默认 true(显式重生允许覆盖已上传帧);传 false 则保护已上传帧'),
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
       image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
+      allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
     },
-    async ({ storyboard_id, quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model })),
+    async ({ storyboard_id, quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal })),
   )
 
   // ---------- 出视频(videos,大额) ----------
@@ -1682,8 +1691,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,' +
       '不重生就终拼,成片里念的仍是改动前的台词(典型现象:台词像是跑到了别的镜头上)。' +
       'compose_episode 会以 advisory `stale_video_after_edit` 列出这些镜;正确处置是先 regenerate_shot_video 再终拼。' +
-      '★也可直接改本镜的两条提示词正文(image_prompt/video_prompt):改前先用 get_shot_prompts 读现值,' +
-      '别凭空覆盖——正文里的 @char:N / @scene:M 是角色/场景参考图的引用标记,删掉本镜就不注入对应定妆图/场景图(形象漂移)。',
+      '★也可直接改本镜的四条提示词正文(image_prompt/video_prompt/first_frame_prompt/last_frame_prompt):' +
+      '改前先用 get_shot_prompts 读现值,' +
+      '别凭空覆盖——正文里的 @char:N / @scene:M 是角色/场景参考图的引用标记,删掉本镜就不注入对应定妆图/场景图(形象漂移)。' +
+      '★★【出尾帧被拦下就是来改这里】出尾帧若报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」' +
+      '(TERMINAL_DESC_GATE),修法是把**结束时画面是什么样**写进本镜 last_frame_prompt,然后重新出尾帧。' +
+      '别去重试出图——这类镜(action_motion_class=state_change 却没写终态)的尾帧历史成功率 9.4%,' +
+      '有终态描述的是 40.2%;不补描述就重生,送厂商的提示词里根本没有终态段,画出来仍和首帧一样、' +
+      '还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。',
     {
       storyboard_id: z.number().int().positive(),
       character_ids: z.array(z.number().int().positive()).optional()
@@ -1702,6 +1717,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       shot_intent: z.string().optional().describe('这镜为什么存在(叙事意图)'),
       image_prompt: z.string().optional().describe('首帧画面提示词**正文**(全量覆盖本镜现值)。★先 get_shot_prompts 读现值再改;★原样保留其中的 @char:N / @scene:M 引用标记,删了就不注入对应定妆图/场景图。出图时平台会在正文之上再拼身份锚与一致性约束,不必你写。★写法坑:别写「no X / without X / 不要 X / 没有 X」这类否定式约束——图像模型把名词当正向线索,反而把 X 画出来;要正向写出那块画面该有什么(材质/形状/颜色/远近)。保存响应带 image_prompt_negation_advisory 即命中,按其 note 改写'),
       video_prompt: z.string().optional().describe('视频(动态/运镜/表演)提示词**正文**(全量覆盖本镜现值)。★同 image_prompt:先读现值、保留 @char/@scene 标记'),
+      first_frame_prompt: z.string().optional().describe('本镜**开始时**画面是什么样(首帧目标状态正文,全量覆盖现值)。送达提示词里作为 [START FRAME] 段排在最前,优先级高于 image_prompt——所以 image_prompt 改了不生效时,往往是这条在压着它。★同 image_prompt:先 get_shot_prompts 读现值、原样保留 @char/@scene 标记'),
+      last_frame_prompt: z.string().optional().describe('本镜**结束时**画面是什么样(尾帧目标状态正文,全量覆盖现值)。送达提示词里作为 [END FRAME] 段。★★出尾帧被 TERMINAL_DESC_GATE 拦下时就是补这一条:写清结束时的状态(什么变了/变成什么样),再重新出尾帧。不补而直接重试必然重复被拒且照常扣费。get_shot_prompts 的 terminal_desc_missing=true 即本镜需要它'),
     },
     async ({ storyboard_id, ...fields }) => {
       const payload = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined))
@@ -1710,7 +1727,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_shot_prompts',
-    '读某一镜的两条提示词**正文**(image_prompt=首帧画面 / video_prompt=动态表演),供直接微调后用 update_shot 写回。免费。' +
+    '读某一镜的四条提示词**正文**(image_prompt=首帧画面 / video_prompt=动态表演 / ' +
+      'first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 update_shot 写回。免费。' +
+      '★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——' +
+      '出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。' +
       '★逐镜按需:改哪镜读哪镜(整集列表 get_storyboards 是纯进度视图,不含提示词)。' +
       '★返回的 asset_tokens 是正文里的角色/场景参考图引用标记(@char:N / @scene:M)——改写时原样保留,' +
       '删掉本镜就不注入对应定妆图/场景图,画面会漂。' +
