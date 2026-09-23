@@ -132,7 +132,9 @@ const WORKFLOW_HINT =
   '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
   '跳过不报错、不拦你——代价是那些镜出视频时只有首帧一个锚,末态由模型自由发挥:动作做不到位、大运镜结束又回到起点构图。生产实测 32 集里 30 集整集只出了首帧,其中 23 集一路出完了视频。' +
   '★★【尾帧被 TERMINAL_DESC_GATE 拦下时:改文本,不是重试】报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」的镜,'  +
-  '用 update_shot 把**结束时画面什么样**写进该镜 last_frame_prompt,再重出尾帧;get_shot_prompts 的 terminal_desc_missing=true 就是这个标记。' +
+  '用 update_shot 把**结束时画面什么样**写进该镜 last_frame_prompt,再重出尾帧。' +
+  '★更好的是**别撞**:出尾帧前先 get_storyboards 看一眼,terminal_desc_missing=true 的镜整集一次就列出来了(免费),' +
+  '先把它们的 last_frame_prompt 补齐再出,一次都不用被拒。逐镜也能问(get_shot_prompts 同名字段),但一集几十镜别那么干。' +
   '不补描述直接重试是无效的——送厂商的提示词里根本没有终态段,画出来仍是首帧那个姿态、必然再次被终态审核拒,而每次都照常扣费' +
   '(生产实测:没写终态的镜尾帧成功率 9.4%,写了的 40.2%)。确实该「几乎不变」的镜才用 generate_shot_frame 的 allow_missing_terminal 放行。' +
   '★★【空景基板别跳·这一步长期被第三方漏掉】场景图是**背景锚**:同一场的每个镜头帧都锚在它上面。' +
@@ -664,6 +666,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★pair_collateral=同镜另一帧未通过、本帧随批结束——**本帧自身没被判不合格,别去改它**:有 reopen_pair_id 就用它只重掷有过错的一侧,否则直接重生本镜。' +
       '★若某镜带 degraded_frames:[{frame_type,reason,reason_label,since,hint}],表示该帧是系统在同因连拒熔断后**放行**的(判据照记未拒),' +
       'URL 上与干净帧无区别但需人工复核;不满意按 hint 修正输入后 generate_shot_frame 重生该帧。' +
+      '★terminal_desc_missing=true:该镜标为「状态改变」却三处都没说结束时什么样——**出尾帧前**就能看出来,' +
+      '现在整集一次拿到(此前只有 get_shot_prompts 能逐镜问,一集几十次没人会去问)。' +
+      '先 update_shot 把结束状态写进 last_frame_prompt 再出尾帧:照现状硬出的历史成功率 9.4%,写了终态的 40.2%,' +
+      '而每次被拒都照常扣费。确实该「几乎不变」的镜才用 generate_shot_frame 的 allow_missing_terminal 放行。' +
       '★first_frame_source/last_frame_source=\'upload\' 表示该帧是**外部上传图**(绕开了身份锚/画风锚/' +
       'best-of-N/帧审计整条质量链路)——人物·服装·画风漂移排查先看这些镜;外部图导致的漂移不是平台生成质量问题,' +
       '修复正路是删掉外部图改走 generate_shot_frame 平台重生。' +
@@ -1050,8 +1056,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_asset_recovery',
-    '列本集可恢复的**历史产物**(免费·只读):以前生成过、后来被覆盖掉的成片与候选帧。'
-      + '\n用途:客户说「上一版那个好」「前天那张图比现在这张好」时,从这里找回来。'
+    '列本集可恢复的**历史视频产物**(免费·只读):以前生成过、后来被覆盖掉的整集成片与逐镜视频。'
+      + '\n用途:客户说「上一版那个成片好」「这一镜前天那条视频比现在这条好」时,从这里找回来。'
+      + '\n★★只管视频,**不含图片帧**:首尾帧不在这里,列表里也永远不会出现。'
+      + '客户想换回某一帧 → 用 generate_shot_frame 重出(平台带身份锚),'
+      + '或 upload_shot_frame 登记指定图片 URL(注意它会让该帧从此不被批量重生覆盖)。'
       + '\n★这一步只看不改。把候选逐条讲给客户,**客户逐条点头**之后再 apply。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/asset-recovery`)),
@@ -1071,13 +1080,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'apply_recovered_candidate',
-    '把某张**历史候选帧**回填到指定镜头(免费)。'
-      + '\n★**必须显式指定 target_storyboard_id**:这张图要回到哪一镜只有客户知道,平台不替你猜——'
-      + '猜错目标镜比不做更糟(会把另一镜正在用的帧换掉)。'
-      + '\n★同样是**逐条确认**:一次只回填一张,先把「哪张图、回到第几镜」讲给客户听。',
+    '把某条**历史镜头视频**回填到指定镜头(免费,指针切换)。★它换的是那一镜的**视频**,不是首尾帧。'
+      + '\n★**必须显式指定 target_storyboard_id**:这条视频要回到哪一镜只有客户知道,平台不替你猜——'
+      + '猜错目标镜比不做更糟(会把另一镜正在用的视频换掉)。'
+      + '\n★同样是**逐条确认**:一次只回填一条,先把「哪条视频(时长/提示词)、回到第几镜」讲给客户听。',
     {
       episode_id: z.number().int().positive(),
-      generation_id: z.number().int().positive().describe('取自 get_asset_recovery 的 candidates[].id'),
+      generation_id: z.number().int().positive().describe('取自 get_asset_recovery 的 candidates[].source_generation_id(响应里没有 id 这个键)'),
       target_storyboard_id: z.number().int().positive().describe('回填到哪一镜(必填,不猜)'),
     },
     async ({ episode_id, generation_id, target_storyboard_id }) =>
@@ -1088,7 +1097,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'rollback_asset_recovery',
-    '把一次已应用的恢复**退回去**(免费)。apply 错了就用它撤销,恢复到应用之前的状态。',
+    '把一次已应用的恢复**退回去**(免费)。apply 错了就用它撤销,恢复到应用之前的状态(同样只涉及视频)。',
     {
       episode_id: z.number().int().positive(),
       event_id: z.number().int().positive().describe('取自 get_asset_recovery 的恢复事件 id'),

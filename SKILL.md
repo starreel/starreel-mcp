@@ -212,8 +212,11 @@ content that will be rejected.
    **If a tail frame is refused with `TERMINAL_DESC_GATE`** ("this shot is marked as a
    state change, but nothing says what it ends up looking like"), the fix is text, not a
    retry: write the ending state into that shot's `last_frame_prompt` via `update_shot`,
-   then generate the tail frame again. `get_shot_prompts` flags these shots with
-   `terminal_desc_missing: true`. Retrying without filling it in cannot work — the prompt
+   then generate the tail frame again. Better still, do not hit the gate at all: call
+   `get_storyboards` before generating tail frames — it flags every such shot in the
+   episode at once (free) with `terminal_desc_missing: true`, so you can fill them all in
+   first. (`get_shot_prompts` carries the same field per shot, but do not poll it across
+   dozens of shots.) Retrying without filling it in cannot work — the prompt
    sent to the vendor has no terminal-state section at all, so the model paints the opening
    pose again and the terminal check rejects it, every time, and every attempt is billed.
    Measured in production: tail frames on shots with no terminal description succeed
