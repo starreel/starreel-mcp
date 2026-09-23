@@ -32,6 +32,9 @@ create_drama → set_script(raw) → rewrite_script(AI draft, user may edit)
   → [review_script] → extract_assets(cast/scenes/props)
   → storyboards → [review_storyboards]
   → generate_portraits_and_sheets(portraits + sheets = the shot consistency anchor)
+  → scene-images(empty-set plates = the background anchor — every shot in a scene
+    anchors on its plate; skip it and each scene's FIRST shot has no background
+    anchor at all, and the backdrop drifts from shot to shot)
   → frames → [review_frames] → videos → generate_tts(voiceover) → compose_episode → final cut (.mp4 link)
 ```
 
@@ -133,12 +136,19 @@ content that will be rejected.
    and tell the user to recharge. Never loop-retry a 402 — it will never
    succeed and only spins.
 
-2. **Quote before you spend; the quote is the charge.** Big-ticket stages
-   (portraits, storyboards, frames, videos, scene-images) are `quote_*` then
-   `generate_*` — show the quote and get an explicit yes; for video, quote ==
-   actual charge. Other AI-generation steps (TTS, posters, sheets, style locks,
-   MV story/script …) have no quote and bill by usage — still tell the user
-   before running them. Never auto-approve large spends on the user's behalf.
+2. **Quote before you spend.** Big-ticket stages (portraits, storyboards,
+   frames, videos, scene-images) are `quote_*` then `generate_*` — show the
+   quote and get an explicit yes. For **video**, quote == actual charge.
+   For **images**, the quote is a *range*, because models like gpt-image-2.5
+   and FLUX.2 bill per reference image actually sent and the quote is computed
+   before those are assembled: `estimated_points` is the **upper bound** (size
+   the user's balance by this one and a run will never die half-way with a 402)
+   and `typical_points` is what it usually costs. Give the user both — the upper
+   bound alone reads as far more expensive than the job really is, and the
+   typical figure alone under-funds the run. Fixed-price models (the Nano Banana
+   family) return the two equal. Other AI-generation steps (TTS, posters, sheets,
+   style locks, MV story/script …) have no quote and bill by usage — still tell
+   the user before running them. Never auto-approve large spends for the user.
 
 3. **`retryable` decides retry-vs-change — never blind-retry.** On failure read
    the structured `fail_reason` / `retryable` (from `get_storyboards`) or the

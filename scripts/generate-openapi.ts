@@ -266,9 +266,9 @@ const spec = {
     description: [
       'Turn a script into a finished, downloadable short-drama episode over REST.',
       '',
-      'Pipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).',
+      'Pipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).',
       '',
-      '**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.',
+      '**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.',
       '',
       'Auth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.',
       '',

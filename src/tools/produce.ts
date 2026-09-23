@@ -44,7 +44,24 @@ function jsonResult(data: unknown) {
 
 const CONFIRM_HINT =
   '⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,' +
-  '用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。'
+  '用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。' +
+  '★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**' +
+  '(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);' +
+  '同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多' +
+  '(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。' +
+  '固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。'
+
+/**
+ * 出图类报价的「上界 / 通常」两个数(v0.9.1892)。挂在四个出图 quote 工具上。
+ *
+ * 为什么会有区间:gpt-image-2.5 与 FLUX.2 按**实际发出的参考图张数**计费(基础档 +
+ * 每张),而报价发生在参考图装配之前、张数还不知道。方向必须是宁可高报——低报的后果
+ * 不是「便宜」,是按错预算开跑、出到一半 402 中断。
+ */
+const QUOTE_RANGE_HINT =
+  '★返回两个数:estimated_points 是**上界**(按参考图张数上限估,拿它准备余额就不会中途 402),' +
+  'typical_points 是**通常花费**。两个都告诉客户,只报上界会让人以为贵得多。' +
+  '固定价模型(如 Nano Banana 系列)下两者相等。'
 
 // ★分阶段审查硬闸(v0.9.1076):三个大额收费步必须先过本层审查才放行。
 // 设计意图=防「盲推产废片」:改写稿的问题会被资产/分镜/出图逐层放大,等成片才发现
@@ -105,7 +122,14 @@ const WORKFLOW_HINT =
   '且新版不保证保留旧版已改好的地方(三版实测会来回摆)。要修就 edit_rewritten_script 点改' +
   '(get_script 取全文 → 只改那几场、其余逐字照抄 → 提交整篇),免费秒级、结果确定;' +
   '误重跑用 get_script(include_previous=1) 回捞上一版。' +
-  'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→assign_voices(分配音色)→frames→★review_frames→videos→generate_tts→compose;' +
+  'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→assign_voices(分配音色)→' +
+  '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames→★review_frames→videos→generate_tts→compose;' +
+  '★★【空景基板别跳·这一步长期被第三方漏掉】场景图是**背景锚**:同一场的每个镜头帧都锚在它上面。' +
+  '不出基板照样能出帧、不报错、不拦你——代价是**每个场景的第一镜完全没有背景锚**(平台的兜底补图是' +
+  '「发现缺图就后台补一张」,补的那张给同场景后续镜用,触发它的那一镜自己等不到),而首镜往往正是定调的那一镜;' +
+  '后续镜之间背景也会漂。它跟定妆图是一对:定妆图锚人、场景图锚景,缺哪个漂哪个。' +
+  '进度自检看 `get_pipeline_status` 的 generate_scene_images 步(completed/total),' +
+  '`review_storyboards` 也会在出帧前把缺口报成 scene_plate_missing。' +
   '★别先建角色形象/道具设定图/动作模板再分镜——分镜是纯文本步、不依赖任何图;资产在分镜后建更省更准(动作模板本就必须分镜后)。收费步照现有 quote 报价确认流程。' +
   '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script。' +
   '★世界观概念图=默认必做(提升整剧一致性、很多第三方平台漏做这步):分镜后默认调 generate_world_concept,' +
@@ -556,7 +580,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'quote_character_portraits',
     '报价:给缺定妆图的角色批量出定妆图要多少点。返回 portraits_to_generate、estimated_points、quote_id。零扣费。' +
-      '定妆图是身份一致性的锚(缺它角色会漂移),强烈建议出视频前先出。',
+      '定妆图是身份一致性的锚(缺它角色会漂移),强烈建议出视频前先出。' + QUOTE_RANGE_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/portraits/quote`)),
   )
@@ -792,7 +816,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '报价:给某一集批量出帧要多少点。返回 frames_to_generate、estimated_points、quote_id。零扣费。' +
       'frame_type 默认 first_frame(只给缺首帧的镜出);last_frame 只给「已有首帧且缺尾帧」的镜出;both 两者都补。' +
       '★报价按**实际会用的模型与分辨率**分档,响应带 price_breakdown(逐档张数与单价);' +
-      '打算在 generate_frames 里临时换模型,报价时就要把同一个 image_model 传进来,否则两边不是一个价。',
+      '打算在 generate_frames 里临时换模型,报价时就要把同一个 image_model 传进来,否则两边不是一个价。' +
+      QUOTE_RANGE_HINT,
     {
       episode_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;last_frame=补尾帧;both=首尾都补'),
@@ -808,6 +833,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '**pending=还在生成(继续耐心等,别当失败、别重复调 generate_frames,重复触发=白花钱)**、' +
       'ready=完成、failed=才是真失败。别因为「等了一会儿还没出」就判定生成失败或重试。' +
       '出视频前必须先出帧,否则视频会退化成无一致性锚点的画面。' +
+      '★**出帧前先把两个锚备齐**:定妆图(generate_portraits_and_sheets,锚人)与' +
+      '空景基板(generate_scene_images,锚景)。缺基板不会拦你,但每个场景的第一镜会没有背景锚' +
+      '(平台的兜底补图只惠及同场景后续镜),背景从首镜起就开始漂。' +
+      '用 get_pipeline_status 的 generate_scene_images 步核对 completed/total。' +
       'frame_type 要与 quote_frames 用的一致(默认 first_frame)。' +
       '★这是**批量补缺帧**:只给「缺该帧」的镜出图,已有首帧的镜会跳过——这是正常设计、不是"系统拒绝重出"。' +
       '要**重出/重画某一镜已有的帧**(如换了定妆图要让新图生效),用 generate_shot_frame(单镜重生,平台带身份锚),不是这个工具、更不是自制图 upload_shot_frame。' +
@@ -841,7 +870,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'quote_shot_frame',
     '报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)。返回 estimated_points、quote_id。零扣费。' +
       '客户说「第 N 镜画错了/要改」时用它,而不是拿别的图像平台出图再 upload_shot_frame。' +
-      '★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。',
+      '★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。' +
+      QUOTE_RANGE_HINT,
     {
       storyboard_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;both=首尾各一张'),
@@ -1367,13 +1397,25 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'quote_scene_images',
-    '报价:给缺图场景批量出场景图要多少点。返回 images_to_generate、estimated_points、quote_id。零扣费。',
+    '报价:给缺图场景批量出**空景基板**要多少点。返回 images_to_generate、estimated_points、quote_id。零扣费。' +
+      '★这是出镜头图(frames)**之前**的一步,不是可选增强:场景图是背景锚,同一场的每个镜头帧都锚在它上面。' +
+      '★只给「还没有图」的场景报价,已有图的不重复算钱;整剧一次报完(按 drama_id 不是 episode_id)。' +
+      '★想先看缺多少,用 get_pipeline_status 的 generate_scene_images 步(completed/total,免费)。' +
+      QUOTE_RANGE_HINT,
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.producePost(`/dramas/${drama_id}/scene-images/quote`)),
   )
   server.tool(
     'generate_scene_images',
-    '确认后批量出场景图:后台异步。' + CONFIRM_HINT,
+    '确认后批量出**空景基板**(每场一张无人物的场景底图):后台异步,只补「还没有图」的场景。' +
+      '★**出镜头图前做这一步**。跳过不会报错、不会被拦,但代价是实打实的:' +
+      '平台的兜底是「出帧时发现该场景缺图 → 后台补一张」,补的那张只惠及同场景的**后续**镜,' +
+      '触发它的那一镜等不到,于是**每个场景的第一镜没有背景锚**——而首镜往往正是定调的那一镜;' +
+      '后续镜之间背景也会一路漂。它与定妆图是一对:定妆图锚人、场景图锚景。' +
+      '★出得不对不要重调本工具(它只补缺图的场景、已有图的一律跳过):' +
+      '`get_scene_prompt` 读正文 → `update_scene` 改 image_prompt → `regenerate_scene_image` 单场重出。' +
+      '★非现代题材先设 `set_era_contract`,否则基板会画成别的时代,下游整场的镜头帧跟着错。' +
+      '★进度看 `get_pipeline_status` 的 generate_scene_images 步。' + CONFIRM_HINT,
     { drama_id: z.number().int().positive(), quote_id: z.string().describe('来自 quote_scene_images') },
     async ({ drama_id, quote_id }) =>
       jsonResult(await client.producePost(`/dramas/${drama_id}/scene-images/generate`, { quote_id })),

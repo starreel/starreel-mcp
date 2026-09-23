@@ -12,8 +12,9 @@ whole factory — **120+ tools** covering every stage — so an AI agent can tak
 script all the way to a finished `.mp4`:
 
 ```
-script → AI rewrite → cast / scenes / props extraction → character portraits & sheets
-       → storyboards → keyframes → video shots → voiceover (TTS) → final cut (.mp4 link)
+script → AI rewrite → cast / scenes / props extraction → storyboards
+       → character portraits & sheets (anchor the people) + scene plates (anchor the backdrops)
+       → keyframes → video shots → voiceover (TTS) → final cut (.mp4 link)
 ```
 
 It is a thin, open client: all the heavy lifting (character-consistency gates,

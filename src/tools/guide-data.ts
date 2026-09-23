@@ -219,14 +219,19 @@ export const PIPELINE: PipelineStep[] = [
       'get_scene_prompt(读某场空景图的提示词正文,免费)', 'update_scene(image_prompt 改正文)', 'regenerate_scene_image(单场重出)',
     ],
     billing: '报价确认后扣点',
-    note: '分镜后建只给出场角色出图更省;动作模板本就必须分镜后。',
+    note: '分镜后建只给出场角色出图更省;动作模板本就必须分镜后。' +
+      '★这一步的两个锚缺一不可:定妆图锚人(generate_portraits_and_sheets)、空景基板锚景(generate_scene_images)。' +
+      '基板长期被第三方漏掉——跳过不报错、不被拦,但每个场景的第一镜会完全没有背景锚' +
+      '(平台的兜底补图只惠及同场景后续镜),而首镜往往定调。',
   },
   {
     step: '7 出帧(镜头图)',
     tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'chain_frames', 'upload_shot_frame'],
     billing: '报价确认后扣点',
     gate: 'review_frames(镜头图审查;免费;generate_videos 前必过)',
-    note: '默认只出首帧;尾帧按需(frame_type=last_frame)。pending=还在生成,别重复调 `generate_frames`(重复扣费)。',
+    note: '默认只出首帧;尾帧按需(frame_type=last_frame)。pending=还在生成,别重复调 `generate_frames`(重复扣费)。' +
+      '★开跑前用 `get_pipeline_status` 核对 generate_scene_images 的 completed/total——缺基板照样能出帧,' +
+      '但背景从每个场景的首镜起就开始漂;`review_storyboards` 也会把缺口报成 scene_plate_missing。',
   },
   {
     step: '8 出视频',
@@ -277,7 +282,6 @@ export const OPTIONAL_BOOSTS = [
   { what: '美术圣经 / 视觉锁 / 世界观 Brief 抽取', tool: 'generate_art_bible', when: '建剧后;或 `extract_visual_lock` / `extract_setting_brief` 从剧本反推' },
   { what: '动作模板(统一全片运动语言)', tool: 'generate_motion_templates', when: '分镜后、出图前;漏了动作会散乱' },
   { what: '色彩脚本(统一色调)', tool: 'generate_color_script', when: '分镜后、出图前' },
-  { what: '场景图(空景基板)', tool: 'generate_scene_images', when: '出镜头图前;先 `quote_scene_images`。出得不对:`get_scene_prompt` 读正文 → `update_scene` 改 image_prompt → `regenerate_scene_image` 单场重出' },
   { what: '场景组(同场景多镜一次成组出视频)', tool: 'generate_scene_groups', when: '先 `get_scene_group_plan` 看方案' },
   { what: '口型同步', tool: 'lipsync_episode', when: 'TTS 配音项目需要对口型时' },
   { what: '海报 / 封面', tool: 'generate_episode_poster', when: '成片后;`generate_drama_poster` / `generate_cover` 同族' },
@@ -290,6 +294,8 @@ export const BILLING = {
   prepaid: '预付费、永不透支。余额不足返回 402(带 needed),停下来让客户充值,绝不循环重试。',
   quote_flow:
     '大额步(定妆图 / 分镜 / 出帧 / 出视频 / 场景图)一律 quote_* → 把 estimated_points **原样**告诉客户 → 客户明确同意 → generate_*(带 quote_id)。' +
+    '★出图类报价给两个数:estimated_points 是**上界**(拿它准备余额就不会中途 402)、typical_points 是**通常花费**,两个都要说;' +
+    '固定价模型下两者相等,出视频的报价与扣费同函数、不存在区间。' +
     'quote_id 一次性、约 15 分钟过期;绝不擅自确认,视频报价可能上万点。',
   pay_as_you_go: '文本步(改写 / 提取 / 自动填充 / 增强提示词)按 token 后付,无需报价但要事先告知。',
   free_families: [
@@ -455,7 +461,9 @@ export function buildInstructions(): string {
     '',
     '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 世界观图 / 动作模板 / 色彩脚本 → run_precheck → quote/generate_frames → ★review_frames → quote/generate_videos → 音频 → compose_episode → get_final_cut。用 get_pipeline_status 查进度。',
     '三道免费硬闸(跳过 → 400):review_script(extract_assets/分镜前)· review_storyboards(出图前)· review_frames(出视频前);review_token 随下游收费工具传,findings 逐条原样告诉客户。',
-    '计费纪律:预付费不透支;大额步 quote_* → 把 estimated_points 原样告诉客户 → 客户同意后 generate_*(quote_id),绝不擅自确认;文本步按 token 后付;402 就停下让客户充值,别重试。',
+    '计费纪律:预付费不透支;大额步 quote_* → 把 estimated_points 原样告诉客户 → 客户同意后 generate_*(quote_id),绝不擅自确认;' +
+    '出图类报价给 estimated_points(上界,按它准备余额)与 typical_points(通常花费),两个都说;' +
+    '文本步按 token 后付;402 就停下让客户充值,别重试。',
     '长任务异步:generate_* 立即返回,用 get_pipeline_status / get_storyboards / get_run_status 轮询;图片 pending = 还在生成,别重复调(重复扣费)。',
     '改写成功后只 edit_rewritten_script 点改,别重跑 rewrite_script;角色外观唯一真相源是人物档案(update_character),别写进 visual_lock/art_bible。',
     '不确定该用哪个工具、客户问「你们能做什么」→ 先调 get_capabilities_guide(免费、本地、不联网)。',

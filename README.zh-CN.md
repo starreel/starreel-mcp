@@ -79,6 +79,7 @@ env = { "STARREEL_API_KEY" = "srk_live_xxx" }
 | 建剧 | `create_drama`(建剧壳+自动建集,返回 episode_id) |
 | 灌本 | `set_script` |
 | 拆镜 | `quote_storyboards` → `generate_storyboards` → `get_storyboards`(审阅) |
+| 出图前的两个锚 | `generate_portraits_and_sheets`(定妆图·锚人) + `quote_scene_images` → `generate_scene_images`(空景基板·锚景) |
 | 出首帧 | `quote_frames` → `generate_frames` |
 | 出视频 | `quote_videos` → `generate_videos`(大额,报价与扣费同函数) |
 | 成片 | `compose_episode`(免费终拼) → `get_final_cut`(拿 COS 下载链接) |
