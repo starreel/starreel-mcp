@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.77",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.77 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.78",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.78 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -4261,7 +4261,7 @@
       "post": {
         "operationId": "quote_frames",
         "summary": "报价:给某一集批量出帧要多少点",
-        "description": "报价:给某一集批量出帧要多少点。返回 frames_to_generate、estimated_points、quote_id。零扣费。frame_type 默认 first_frame(只给缺首帧的镜出);last_frame 只给「已有首帧且缺尾帧」的镜出;both 两者都补。★报价按**实际会用的模型与分辨率**分档,响应带 price_breakdown(逐档张数与单价);打算在 generate_frames 里临时换模型,报价时就要把同一个 image_model 传进来,否则两边不是一个价。★返回两个数:estimated_points 是**上界**(按参考图张数上限估,拿它准备余额就不会中途 402),typical_points 是**通常花费**。两个都告诉客户,只报上界会让人以为贵得多。固定价模型(如 Nano Banana 系列)下两者相等。",
+        "description": "报价:给某一集批量出帧要多少点。返回 frames_to_generate、estimated_points、quote_id。零扣费。frame_type 默认 first_frame(只给缺首帧的镜出);last_frame 只给「已有首帧且缺尾帧」的镜出;both 两者都补。★报价按**实际会用的模型与分辨率**分档,响应带 price_breakdown(逐档张数与单价);打算在 generate_frames 里临时换模型,报价时就要把同一个 image_model 传进来,否则两边不是一个价。★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。★返回两个数:estimated_points 是**上界**(按参考图张数上限估,拿它准备余额就不会中途 402),typical_points 是**通常花费**。两个都告诉客户,只报上界会让人以为贵得多。固定价模型(如 Nano Banana 系列)下两者相等。",
         "tags": [
           "episodes"
         ],
@@ -8668,7 +8668,7 @@
       "post": {
         "operationId": "quote_shot_frame",
         "summary": "报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)",
-        "description": "报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)。返回 estimated_points、quote_id。零扣费。客户说「第 N 镜画错了/要改」时用它,而不是拿别的图像平台出图再 upload_shot_frame。★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。★返回两个数:estimated_points 是**上界**(按参考图张数上限估,拿它准备余额就不会中途 402),typical_points 是**通常花费**。两个都告诉客户,只报上界会让人以为贵得多。固定价模型(如 Nano Banana 系列)下两者相等。",
+        "description": "报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)。返回 estimated_points、quote_id。零扣费。客户说「第 N 镜画错了/要改」时用它,而不是拿别的图像平台出图再 upload_shot_frame。★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。★返回两个数:estimated_points 是**上界**(按参考图张数上限估,拿它准备余额就不会中途 402),typical_points 是**通常花费**。两个都告诉客户,只报上界会让人以为贵得多。固定价模型(如 Nano Banana 系列)下两者相等。",
         "tags": [
           "storyboards"
         ],

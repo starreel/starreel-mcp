@@ -870,11 +870,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'frame_type 默认 first_frame(只给缺首帧的镜出);last_frame 只给「已有首帧且缺尾帧」的镜出;both 两者都补。' +
       '★报价按**实际会用的模型与分辨率**分档,响应带 price_breakdown(逐档张数与单价);' +
       '打算在 generate_frames 里临时换模型,报价时就要把同一个 image_model 传进来,否则两边不是一个价。' +
+      '★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。' +
       QUOTE_RANGE_HINT,
     {
       episode_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;last_frame=补尾帧;both=首尾都补'),
-      image_model: z.string().optional().describe('按这个模型报价(须与随后 generate_frames 传的一致;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
+      image_model: z.string().optional().describe('按这个模型报价(★须与随后 generate_frames 传的一致,否则 generate 会 400;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
     },
     async ({ episode_id, frame_type, image_model }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/frames/quote`, { frame_type, image_model })),
@@ -910,7 +911,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       quote_id: z.string().describe('来自 quote_frames'),
       ...REVIEW_ARGS,
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame,须与报价时一致'),
-      image_model: z.string().optional().describe('临时覆盖本次出图模型(不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)。可选:' +
+      image_model: z.string().optional().describe('临时覆盖本次出图模型(★必须与 quote_frames 传的那个一致,否则 400;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)。可选:' +
         'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准)/' +
         'gemini-3.1-flash-image(Nano Banana 2·71点)/gemini-3-pro-image(Nano Banana Pro·更精细·175点)/' +
         'gemini-3.1-flash-lite-image(Nano Banana 2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream 5.0)'),
@@ -927,11 +928,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)。返回 estimated_points、quote_id。零扣费。' +
       '客户说「第 N 镜画错了/要改」时用它,而不是拿别的图像平台出图再 upload_shot_frame。' +
       '★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。' +
+      '★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。' +
       QUOTE_RANGE_HINT,
     {
       storyboard_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;both=首尾各一张'),
-      image_model: z.string().optional().describe('按这个模型报价(须与随后 generate_shot_frame 传的一致;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
+      image_model: z.string().optional().describe('按这个模型报价(★须与随后 generate_shot_frame 传的一致,否则 generate 会 400;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
     },
     async ({ storyboard_id, frame_type, image_model }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/quote`, { frame_type, image_model })),
@@ -957,7 +959,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame,须与报价时一致;传了 reopen_pair_id 时会被忽略'),
       replace_user_frame: z.boolean().optional().describe('默认 true(显式重生允许覆盖已上传帧);传 false 则保护已上传帧'),
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
-      image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
+      image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(★必须与 quote_shot_frame 传的那个一致,否则 400 IMAGE_MODEL_MISMATCH;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
     },
     async ({ storyboard_id, quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal }) =>

@@ -300,7 +300,11 @@ export const BILLING = {
     '大额步(定妆图 / 分镜 / 出帧 / 出视频 / 场景图)一律 quote_* → 把 estimated_points **原样**告诉客户 → 客户明确同意 → generate_*(带 quote_id)。' +
     '★出图类报价给两个数:estimated_points 是**上界**(拿它准备余额就不会中途 402)、typical_points 是**通常花费**,两个都要说;' +
     '固定价模型下两者相等,出视频的报价与扣费同函数、不存在区间。' +
-    'quote_id 一次性、约 15 分钟过期;绝不擅自确认,视频报价可能上万点。',
+    'quote_id 一次性、约 15 分钟过期;绝不擅自确认,视频报价可能上万点。' +
+    '★出帧类(quote_frames/generate_frames、quote_shot_frame/generate_shot_frame)若要临时换图片模型,' +
+    '**两边必须传同一个 image_model**——不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),' +
+    '因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。' +
+    '已下架的型号(FLUX 全系列)两端都拒收。',
   pay_as_you_go: '文本步(改写 / 提取 / 自动填充 / 增强提示词)按 token 后付,无需报价但要事先告知。',
   free_families: [
     '所有 get_* / list_* / scan_* / review_* / check_* / recommend_* / get_capabilities_guide / get_autofill_status / get_bgm_prompt_guide',
