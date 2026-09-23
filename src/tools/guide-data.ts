@@ -226,10 +226,13 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '7 出帧(镜头图)',
-    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'chain_frames', 'upload_shot_frame'],
+    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'tail_frame_plan(免费,首帧出完必调)', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'chain_frames', 'upload_shot_frame'],
     billing: '报价确认后扣点',
     gate: 'review_frames(镜头图审查;免费;generate_videos 前必过)',
-    note: '默认只出首帧;尾帧按需(frame_type=last_frame)。pending=还在生成,别重复调 `generate_frames`(重复扣费)。' +
+    note: '★出帧是**两趟**:generate_frames 默认只出首帧,首帧出完必须调一次免费的 `tail_frame_plan` ' +
+      '——它告诉你哪几镜需要独立尾帧(末态≠首态,判据在平台侧,你猜不出来),再 frame_type=last_frame 补上。' +
+      '生产实测 32 集里 30 集整集只出了首帧,其中 23 集一路出完了视频;那些镜出视频时只有首帧一个锚,末态由模型自由发挥。' +
+      'pending=还在生成,别重复调 `generate_frames`(重复扣费)。' +
       '★开跑前用 `get_pipeline_status` 核对 generate_scene_images 的 completed/total——缺基板照样能出帧,' +
       '但背景从每个场景的首镜起就开始漂;`review_storyboards` 也会把缺口报成 scene_plate_missing。',
   },
@@ -459,7 +462,7 @@ export function buildInstructions(): string {
     '★第一步永远是判「客户手上有什么材料」——它决定入口,选错入口的返工都是真扣费(全表与要点:get_capabilities_guide):',
     entry,
     '',
-    '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 世界观图 / 动作模板 / 色彩脚本 → run_precheck → quote/generate_frames → ★review_frames → quote/generate_videos → 音频 → compose_episode → get_final_cut。用 get_pipeline_status 查进度。',
+    '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 世界观图 / 动作模板 / 色彩脚本 → run_precheck → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费·哪几镜要独立尾帧) → quote/generate_frames(frame_type=last_frame) → ★review_frames → quote/generate_videos → 音频 → compose_episode → get_final_cut。用 get_pipeline_status 查进度。',
     '三道免费硬闸(跳过 → 400):review_script(extract_assets/分镜前)· review_storyboards(出图前)· review_frames(出视频前);review_token 随下游收费工具传,findings 逐条原样告诉客户。',
     '计费纪律:预付费不透支;大额步 quote_* → 把 estimated_points 原样告诉客户 → 客户同意后 generate_*(quote_id),绝不擅自确认;' +
     '出图类报价给 estimated_points(上界,按它准备余额)与 typical_points(通常花费),两个都说;' +

@@ -82,7 +82,8 @@ const REVIEW_ARGS = {
 // 完整工作流顺序(照 get_pipeline_status 的 10 步真相走,不要跳步):
 //   create_drama → set_script(原始) → rewrite_script(AI改写) → [get_script/edit_rewritten_script 审改]
 //   → extract_assets(角色/场景/道具) → quote/generate_storyboards(先分镜·纯文本拆镜)
-//   → generate_character_portraits(定妆图·一致性关键·分镜后建只给出场角色更省) → quote/generate_frames → quote/generate_videos
+//   → generate_character_portraits(定妆图·一致性关键·分镜后建只给出场角色更省)
+//   → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费) → generate_frames(frame_type=last_frame) → quote/generate_videos
 //   → compose_episode → get_final_cut / get_export
 // 项目设定随时可 update_project_settings;剧目级资产(色彩脚本/动作模板/世界观图/美术圣经)可选增强。
 const WORKFLOW_HINT =
@@ -123,7 +124,10 @@ const WORKFLOW_HINT =
   '(get_script 取全文 → 只改那几场、其余逐字照抄 → 提交整篇),免费秒级、结果确定;' +
   '误重跑用 get_script(include_previous=1) 回捞上一版。' +
   'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→assign_voices(分配音色)→' +
-  '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames→★review_frames→videos→generate_tts→compose;' +
+  '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames(默认只出首帧)→★tail_frame_plan(免费·哪几镜要独立尾帧)→frames(frame_type=last_frame)→★review_frames→videos→generate_tts→compose;' +
+  '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
+  '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
+  '跳过不报错、不拦你——代价是那些镜出视频时只有首帧一个锚,末态由模型自由发挥:动作做不到位、大运镜结束又回到起点构图。生产实测 32 集里 30 集整集只出了首帧,其中 23 集一路出完了视频。' +
   '★★【空景基板别跳·这一步长期被第三方漏掉】场景图是**背景锚**:同一场的每个镜头帧都锚在它上面。' +
   '不出基板照样能出帧、不报错、不拦你——代价是**每个场景的第一镜完全没有背景锚**(平台的兜底补图是' +
   '「发现缺图就后台补一张」,补的那张给同场景后续镜用,触发它的那一镜自己等不到),而首镜往往正是定调的那一镜;' +
@@ -163,7 +167,7 @@ const WORKFLOW_HINT =
   'create_drama/update_project_settings 的 video_engine/video_resolution 设,★都必须在出视频前定——切换不回溯已生成镜头,同剧混用会画风/身份漂移。' +
   '★图片生成慢≠失败:每张几十秒~数分钟、整集可能十几分钟,轮询 get_storyboards 看 frame_status——pending=还在生成(耐心等、别重复调 generate_frames 白花钱)、ready=完成、failed=才是真失败。' +
   '★改某一镜画面 / 换定妆图后要让新图生效,走**单镜重生 generate_shot_frame**(平台自动带该镜身份锚·场景道具参考·画风锚,保全片一致);' +
-  'generate_frames 只批量补「缺帧」的镜、已有首帧的镜跳过(正常、不是"拒绝"),尾帧用 frame_type=last_frame 可批量补。换定妆图(set_character_portrait)后响应里的 stale_frames 就是被旧图污染、需逐镜重生的镜。' +
+  'generate_frames 只批量补「缺帧」的镜、已有首帧的镜跳过(正常、不是"拒绝")。★首帧出完调免费的 tail_frame_plan 看哪几镜要独立尾帧,再 frame_type=last_frame 批量补。换定妆图(set_character_portrait)后响应里的 stale_frames 就是被旧图污染、需逐镜重生的镜。' +
   '★绝不用外部工具自制首尾帧再 upload_shot_frame 来"改画面"——外部图无身份锚/画风锚,人物·服装·画风必漂,那才是废片根源;upload_shot_frame 只用于客户自有真实素材。' +
   '③【可选增强·AI 主动提示客户·报价确认才做】美术圣经生成/视觉锁抽取/色彩脚本/动作模板/场景图/场景组/口型/海报/音效/配乐/字幕翻译——' +
   '这些提升一致性/质量、大多收费。★AI 应主动告知客户这些可做并给报价,客户确认才跑;既不默默跳过、也不擅自扣费。' +
@@ -812,6 +816,18 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
 
   // ---------- 出首帧(frames) ----------
   server.tool(
+    'tail_frame_plan',
+    '★免费只读:这一集**哪几镜需要独立尾帧**(末态≠首态的镜——大运镜/物体脱手/状态改变)。' +
+      '判定用的就是平台出视频时那套判据,你自己是猜不出来的,所以出完首帧务必调一次。' +
+      '返回 shots_needing_last_frame(总数)、ready(已有首帧、现在就能补尾帧的镜)、' +
+      'pending_first_frame(还需要尾帧但首帧尚未落地的镜——等首帧出完再调一次本工具)。' +
+      '拿到 ready 清单后:quote_frames + generate_frames 带 frame_type=last_frame 即可批量补。' +
+      '★跳过尾帧不会报错,但那些镜出视频时只有首帧一个锚,末态由模型自由发挥——' +
+      '动作做不到位、大运镜结束又回到起点构图,多半就是这么来的。零扣费,可随时调。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/frames/tail-plan`)),
+  )
+  server.tool(
     'quote_frames',
     '报价:给某一集批量出帧要多少点。返回 frames_to_generate、estimated_points、quote_id。零扣费。' +
       'frame_type 默认 first_frame(只给缺首帧的镜出);last_frame 只给「已有首帧且缺尾帧」的镜出;both 两者都补。' +
@@ -840,7 +856,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'frame_type 要与 quote_frames 用的一致(默认 first_frame)。' +
       '★这是**批量补缺帧**:只给「缺该帧」的镜出图,已有首帧的镜会跳过——这是正常设计、不是"系统拒绝重出"。' +
       '要**重出/重画某一镜已有的帧**(如换了定妆图要让新图生效),用 generate_shot_frame(单镜重生,平台带身份锚),不是这个工具、更不是自制图 upload_shot_frame。' +
-      '★尾帧能批量出:frame_type=last_frame 会给「已有首帧且缺尾帧」的镜批量补尾帧(尾帧只在想固定某镜结尾画面/大运镜时才需,常规只出首帧)。' +
+      '★**本工具默认只出首帧,出帧是两趟**:首帧出完必须调一次免费的 tail_frame_plan——它按平台自己的判据告出哪几镜需要独立尾帧' +
+      '(末态≠首态:大运镜/物体脱手/状态改变,占比约三成,你自己猜不出来),再用 frame_type=last_frame 批量补。' +
+      '生产实测 32 集里 30 集整集只出了首帧、其中 23 集一路出完视频:那些镜出视频时只有首帧一个锚,末态由模型自由发挥。' +
+      '本工具响应体里的 shots_needing_last_frame 就是这个数,不为 0 就别直接去 review_frames。' +
       '★响应里的 frames_planned 是**计划数,不是已成功数**——本接口在后台派发循环开跑之前就返回了。' +
       '真实进度只看 get_storyboards 的 first_frame_image / get_jobs 的逐条生成记录;' +
       '余额不足(402)会中止整批,此时轮询再久也不会有结果,应去查余额而不是继续等。' +

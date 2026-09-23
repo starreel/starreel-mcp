@@ -193,11 +193,21 @@ content that will be rejected.
    video: a portrait is one image, but **character sheets (multi-view turnarounds)
    are the shot consistency anchor every frame references** — portraits alone
    leave characters drifting across angle / lighting / wardrobe.
-   `generate_portraits_and_sheets` does both (portraits first, then sheets). `generate_frames` makes **first frames only** by default — you do
-   NOT generate first + last together. A **last frame** is optional and never
-   auto-made; ask for one only to pin a shot's ending (a big camera move or
-   reveal), via `generate_frames` with `frame_type=last_frame` or, for a single
-   shot, `generate_shot_frame`. `generate_videos` needs at
+   `generate_portraits_and_sheets` does both (portraits first, then sheets).
+   **Frames take two passes.** `generate_frames` makes **first frames only** by
+   default — never first + last in one call. Once the first frames have landed,
+   **always call the free `tail_frame_plan`**: it names the shots that need their
+   own **last frame** (terminal state ≠ opening state — a big camera move, an
+   object being released, any state change; typically around a third of an
+   episode). That verdict lives on the platform side and you cannot infer it from
+   the storyboard text, so do not guess and do not skip the call — measured in
+   production, 30 of 32 episodes driven through this API shipped **first frames
+   only**, and 23 of them went all the way to finished video that way. Those shots
+   reach the video model with a single anchor, leaving the ending to the model's
+   own invention. `generate_frames`'s own response carries
+   `shots_needing_last_frame` for the same reason: if it is not 0, fill those tail
+   frames in (`generate_frames` with `frame_type=last_frame`, or
+   `generate_shot_frame` for a single shot) before `review_frames`. `generate_videos` needs at
    least one first frame in the episode.
    **Image model**: images use a drama-level model (default **ChatGPT Image 2.5
    Flare** = `gpt-image-2.5-flare`), set via `create_drama` /
@@ -729,7 +739,8 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   character-sheet-vs-frame comparison sheet. **Off by default per drama**; a 403
   or `enabled: false` means the user has to switch it on in the drama settings.
 - **Shots → video**: `quote/generate_storyboards`, `get_storyboards`,
-  `quote/generate_frames`, `chain_frames`, `quote/generate_videos`
+  `quote/generate_frames`, `tail_frame_plan` (free — which shots need their own
+  last frame), `chain_frames`, `quote/generate_videos`
 - **Audio**: `generate_tts` (required before final cut), `clone_voice`,
   `speak_with_voice`, `set_character_voice`, `list_voices`, `delete_voice`,
   `generate_bgm` (optional `prompt` steers the music; read `get_bgm_prompt_guide` first),
