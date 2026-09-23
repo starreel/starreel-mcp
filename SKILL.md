@@ -143,8 +143,11 @@ content that will be rejected.
 3. **`retryable` decides retry-vs-change — never blind-retry.** On failure read
    the structured `fail_reason` / `retryable` (from `get_storyboards`) or the
    `message` / `error.type`. `retryable:false` (moderation, copyright, quota,
-   overdue) → change the content or stop; retrying is useless. `retryable:true`
-   (KYC-queuing, rate-limit, transient) → back off, then retry.
+   overdue, `needs_content_fix`) → change the content or stop; retrying is useless.
+   `retryable:true` (KYC-queuing, rate-limit, `transient`) → back off, then retry.
+   `contract_rejected` is retryable **but is not a network blip**: it is a content
+   or contract conflict that a re-roll clears about a third of the time. Retry once
+   or twice, then read `fail_hint` and change the shot — do not keep re-rolling.
 
 4. **Content must be compliant.** Do not generate copyrighted characters,
    trademarks, real-person likenesses, or sensitive content. On a moderation /
@@ -475,8 +478,10 @@ Map the reason to an action:
 | `quota_full` | false | Platform vendor-asset quota exhausted | Retry won't help — contact ops |
 | `insufficient_credits` | false | Balance too low for this call | Stop, prompt to recharge (402) |
 | `authorizing` | true | Face frame queuing for KYC (not a rejection) | Wait ~1 min, retry |
-| `transient` | true | BestOfN / quality-gate / rate-limit / network | Back off, retry |
-| `repeat_rejected` | false | Same shot rejected for the same reason until the circuit breaker tripped (auto-clears after 24 h) | Change the prompt / references / contract **first**; a blind retry is a full-price repeat of the same rejection |
+| `transient` | true | BestOfN / quality-gate / rate-limit / network, or the audit itself failed to run | Back off, retry |
+| `contract_rejected` | true | A **content/contract** rejection (era, composition, shot size, head-count, readable text…) — **not** a network blip. Measured: a blind re-roll clears it about a third of the time | Retry once or twice; if the same reason keeps coming back, read `fail_hint` and change the shot (see *What you can actually change* below) instead of re-rolling |
+| `needs_content_fix` | false | A content/contract conflict that a re-roll almost never clears (measured ≤10%) — most often the character's wardrobe/accessory record conflicting with the approved portrait | Change the shot description / character record **first**, then regenerate. A blind retry is a full-price repeat |
+| `repeat_rejected` | false | Same shot rejected for the same reason until the circuit breaker tripped (auto-clears after 24 h) | Change the prompt / references / shot design **first** (see *What you can actually change* below); a blind retry is a full-price repeat of the same rejection |
 | `pair_collateral` | true | The **other** frame of this shot failed its audit; this frame was never judged bad — it was only closed out with the batch | Do **not** edit this frame. If the shot carries `reopen_pair_id`, pass it to `generate_shot_frame` to redo only the faulty side; otherwise regenerate the shot |
 | `unknown` | false | Unclassified | Read `fail_hint`; don't auto-retry |
 
@@ -485,6 +490,41 @@ hint }]`. That frame was **released by the system after the same gate rejected i
 repeatedly** (the verdict is recorded, not enforced) — the URL looks like any clean
 frame, but it needs a human look. If it is not acceptable, fix the input the
 `hint` names and regenerate that frame with `generate_shot_frame`.
+
+### What you can actually change when a shot keeps getting rejected
+
+**There is no tool that edits `frame_visual_contract`, and there is not meant to
+be.** It is an internal per-frame contract (subject mode, visible head-count,
+framing) derived by the platform; it drives a dozen downstream judgements, so the
+facade deliberately strips it from every write path. Do not go looking for it,
+and do not tell the customer to "fix the contract" — they cannot, and neither can
+you. What you *can* change, in the order worth trying:
+
+1. **`update_shot`** — `shot_type`, `description`, `action`, and the two prompt
+   bodies. This is usually the real fix: a shot whose `image_prompt` describes a
+   head-and-shoulders portrait but whose `shot_type` says 特写 will keep failing
+   the shot-size gate until one of the two is corrected to match the other.
+2. **`character_ids`** on that shot — binding is *narrative* attribution, but an
+   over-bound shot inflates what the frame audit expects to see.
+3. **References** — `set_character_portrait` / wardrobe records, when the
+   rejection is identity- or costume-shaped.
+4. **`run_precheck` — and run it *after* the failures too, not only before.**
+   Its description sells it as a pre-flight check, but it is just as useful once
+   a shot is already stuck: it reports the repeat-rejection circuit breaker and
+   contract self-inconsistency for shots that have been failing. Then
+   `plan_precheck_fix` → show the customer → `apply_precheck_fix`.
+
+Two contract conflicts the platform now resolves **by itself** (v0.9.1868), so
+they are never something to act on: a part/prop/environment shot that also
+declares visible people, and a tight-framing shot that declares more people than
+the frame can hold. Both are silently normalised at read time.
+
+If a shot still will not come out, say so plainly and leave it — **do not send
+the customer to an outside image tool.** Frames made elsewhere bypass the
+identity anchor, reference assembly, best-of-N and frame audit, so faces,
+wardrobe and art style drift; the customer will read that drift as *the
+platform's* quality. `upload_shot_frame` exists for genuinely external artwork,
+not as an escape hatch from a rejection loop.
 
 Three action classes, one decision: **moderation / identity / copyright → change
 content**; **overdue / token → not self-healable (tell user / wait)**; **network

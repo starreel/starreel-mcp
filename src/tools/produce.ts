@@ -668,6 +668,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★**怎么改不用你猜**:调 plan_precheck_fix 让平台算出提案(哪一镜、把什么改成什么),' +
       '讲给客户、客户点头后用 apply_precheck_fix 落库——比你自己用 update_shot 盲改稳,' +
       '那条路绕开了乐观锁与落库前复核。部分类别系统不替你改(提案里的 blocked),那些才需要人工调。\n' +
+      '★★**镜已经反复出不来时也回来跑这个**——本工具不只是事前预检。' +
+      '它同时报「同镜同因连拒已熔断(repeat-reject,24h 自动解除)」与「帧契约自相矛盾」,' +
+      '那正是"这一镜怎么重掷都出不来"的答案。**别盲重掷**:熔断在档时每次重掷都是全价重复同一个拒绝。\n' +
       '⚠️ 它**不**检查首帧是否处在"动作发生前"(平台暂无该契约字段),也不替代 get_health_report。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/precheck`)),
@@ -738,7 +741,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'review_storyboards',
     '【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、' +
       '同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——' +
-      '分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。',
+      '分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。' +
+      '★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),' +
+      '照着这两个去 update_shot 改掉即可,不用逐字猜。' +
+      '★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/storyboards`)),
   )
@@ -809,6 +815,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★响应里的 frames_planned 是**计划数,不是已成功数**——本接口在后台派发循环开跑之前就返回了。' +
       '真实进度只看 get_storyboards 的 first_frame_image / get_jobs 的逐条生成记录;' +
       '余额不足(402)会中止整批,此时轮询再久也不会有结果,应去查余额而不是继续等。' +
+      '★★**个别镜反复出不来、其余镜都好了**:那不是等得不够久,是这几镜被内容闸连拒。' +
+      '看 get_storyboards 的 fail_reason(repeat_rejected / needs_content_fix / contract_rejected),' +
+      '然后**跑 run_precheck**(事后也能跑,会告诉你是哪种矛盾),按它的提示用 update_shot 改景别/描述/绑定角色再重生。' +
+      '别继续 generate_frames 空转,也别把客户支去外部工具做图——外部图绕开身份锚与帧审计,人脸服装画风必漂。' +
       REVIEW_GATE_HINT('review_storyboards', '分镜') + CONFIRM_HINT,
     {
       episode_id: z.number().int().positive(),
@@ -2013,9 +2023,20 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。' +
       '★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。' +
       '★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;' +
-      '这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。',
-    { scene_id: z.number().int().positive() },
-    async ({ scene_id }) => jsonResult(await client.producePost(`/scenes/${scene_id}/image/regenerate`)),
+      '这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。' +
+      '★episode_id 通常不必传(平台按场景归属、再按引用它的分镜自动推导)。' +
+      '只有回执报「本场景被多集分镜共用」时才需要点名:那说明同一地点跨集复用,' +
+      '平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。',
+    {
+      scene_id: z.number().int().positive(),
+      episode_id: z.number().int().positive().optional()
+        .describe('按哪一集的时代/世界观 brief 出图。通常不必传;跨集共用的场景被要求时才传'),
+    },
+    async ({ scene_id, episode_id }) =>
+      jsonResult(await client.producePost(
+        `/scenes/${scene_id}/image/regenerate`,
+        episode_id ? { episode_id } : {},
+      )),
   )
   server.tool(
     'delete_scene',

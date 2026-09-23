@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.71",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.71 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.73",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → portraits & sheets → storyboards → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`; for video, quote == actual charge). Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.73 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -4113,7 +4113,7 @@
       "post": {
         "operationId": "generate_frames",
         "summary": "确认后批量出帧:后台异步",
-        "description": "确认后批量出帧:后台异步。用 get_storyboards 轮询,first_frame_image/last_frame_image 逐镜填充即完成。★图片生成较慢——每张几十秒到数分钟(尤其高清模型),整集可能十几分钟。轮询看 frame_status:**pending=还在生成(继续耐心等,别当失败、别重复调 generate_frames,重复触发=白花钱)**、ready=完成、failed=才是真失败。别因为「等了一会儿还没出」就判定生成失败或重试。出视频前必须先出帧,否则视频会退化成无一致性锚点的画面。frame_type 要与 quote_frames 用的一致(默认 first_frame)。★这是**批量补缺帧**:只给「缺该帧」的镜出图,已有首帧的镜会跳过——这是正常设计、不是\"系统拒绝重出\"。要**重出/重画某一镜已有的帧**(如换了定妆图要让新图生效),用 generate_shot_frame(单镜重生,平台带身份锚),不是这个工具、更不是自制图 upload_shot_frame。★尾帧能批量出:frame_type=last_frame 会给「已有首帧且缺尾帧」的镜批量补尾帧(尾帧只在想固定某镜结尾画面/大运镜时才需,常规只出首帧)。★响应里的 frames_planned 是**计划数,不是已成功数**——本接口在后台派发循环开跑之前就返回了。真实进度只看 get_storyboards 的 first_frame_image / get_jobs 的逐条生成记录;余额不足(402)会中止整批,此时轮询再久也不会有结果,应去查余额而不是继续等。\n★【分镜审查硬闸·免费】本步前必须先调 review_storyboards:把返回的 findings 逐条原样告诉客户(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——带病推进大概率产出废片且照常扣费,不要替客户做这个决定。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。",
+        "description": "确认后批量出帧:后台异步。用 get_storyboards 轮询,first_frame_image/last_frame_image 逐镜填充即完成。★图片生成较慢——每张几十秒到数分钟(尤其高清模型),整集可能十几分钟。轮询看 frame_status:**pending=还在生成(继续耐心等,别当失败、别重复调 generate_frames,重复触发=白花钱)**、ready=完成、failed=才是真失败。别因为「等了一会儿还没出」就判定生成失败或重试。出视频前必须先出帧,否则视频会退化成无一致性锚点的画面。frame_type 要与 quote_frames 用的一致(默认 first_frame)。★这是**批量补缺帧**:只给「缺该帧」的镜出图,已有首帧的镜会跳过——这是正常设计、不是\"系统拒绝重出\"。要**重出/重画某一镜已有的帧**(如换了定妆图要让新图生效),用 generate_shot_frame(单镜重生,平台带身份锚),不是这个工具、更不是自制图 upload_shot_frame。★尾帧能批量出:frame_type=last_frame 会给「已有首帧且缺尾帧」的镜批量补尾帧(尾帧只在想固定某镜结尾画面/大运镜时才需,常规只出首帧)。★响应里的 frames_planned 是**计划数,不是已成功数**——本接口在后台派发循环开跑之前就返回了。真实进度只看 get_storyboards 的 first_frame_image / get_jobs 的逐条生成记录;余额不足(402)会中止整批,此时轮询再久也不会有结果,应去查余额而不是继续等。★★**个别镜反复出不来、其余镜都好了**:那不是等得不够久,是这几镜被内容闸连拒。看 get_storyboards 的 fail_reason(repeat_rejected / needs_content_fix / contract_rejected),然后**跑 run_precheck**(事后也能跑,会告诉你是哪种矛盾),按它的提示用 update_shot 改景别/描述/绑定角色再重生。别继续 generate_frames 空转,也别把客户支去外部工具做图——外部图绕开身份锚与帧审计,人脸服装画风必漂。\n★【分镜审查硬闸·免费】本步前必须先调 review_storyboards:把返回的 findings 逐条原样告诉客户(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——带病推进大概率产出废片且照常扣费,不要替客户做这个决定。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。",
         "tags": [
           "episodes"
         ],
@@ -4755,7 +4755,7 @@
       "get": {
         "operationId": "run_precheck",
         "summary": "(★推荐·免费质量闸)出图/出视频前跑生成前预检,把会被拒的镜提前揪出",
-        "description": "(★推荐·免费质量闸)出图/出视频前跑生成前预检,把会被拒的镜提前揪出。免费、不扣费。强烈建议 generate_frames/generate_videos 前调,防白花钱被拒。\n查这几类:①真人肖像/克隆音色授权 ②图像审核高危词 ③配音覆盖与大空档 ④**指令自相矛盾(kind=prompt-conflict)**——同一镜里互斥的要求(如宽景别却标了特写主体、既要站立又要坐姿),这类镜**任何正确的图都满足不了**,不改就会反复被拒并反复扣费,出现时应先按提示改分镜再出图,而不是重试。\n★**怎么改不用你猜**:调 plan_precheck_fix 让平台算出提案(哪一镜、把什么改成什么),讲给客户、客户点头后用 apply_precheck_fix 落库——比你自己用 update_shot 盲改稳,那条路绕开了乐观锁与落库前复核。部分类别系统不替你改(提案里的 blocked),那些才需要人工调。\n⚠️ 它**不**检查首帧是否处在\"动作发生前\"(平台暂无该契约字段),也不替代 get_health_report。",
+        "description": "(★推荐·免费质量闸)出图/出视频前跑生成前预检,把会被拒的镜提前揪出。免费、不扣费。强烈建议 generate_frames/generate_videos 前调,防白花钱被拒。\n查这几类:①真人肖像/克隆音色授权 ②图像审核高危词 ③配音覆盖与大空档 ④**指令自相矛盾(kind=prompt-conflict)**——同一镜里互斥的要求(如宽景别却标了特写主体、既要站立又要坐姿),这类镜**任何正确的图都满足不了**,不改就会反复被拒并反复扣费,出现时应先按提示改分镜再出图,而不是重试。\n★**怎么改不用你猜**:调 plan_precheck_fix 让平台算出提案(哪一镜、把什么改成什么),讲给客户、客户点头后用 apply_precheck_fix 落库——比你自己用 update_shot 盲改稳,那条路绕开了乐观锁与落库前复核。部分类别系统不替你改(提案里的 blocked),那些才需要人工调。\n★★**镜已经反复出不来时也回来跑这个**——本工具不只是事前预检。它同时报「同镜同因连拒已熔断(repeat-reject,24h 自动解除)」与「帧契约自相矛盾」,那正是\"这一镜怎么重掷都出不来\"的答案。**别盲重掷**:熔断在档时每次重掷都是全价重复同一个拒绝。\n⚠️ 它**不**检查首帧是否处在\"动作发生前\"(平台暂无该契约字段),也不替代 get_health_report。",
         "tags": [
           "episodes"
         ],
@@ -5282,7 +5282,7 @@
       "post": {
         "operationId": "review_storyboards",
         "summary": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记",
-        "description": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。",
+        "description": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),照着这两个去 update_shot 改掉即可,不用逐字猜。★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。",
         "tags": [
           "episodes"
         ],
@@ -7693,7 +7693,7 @@
       "post": {
         "operationId": "regenerate_scene_image",
         "summary": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)",
-        "description": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)。图片步,按用量后付不欠费。★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。",
+        "description": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)。图片步,按用量后付不欠费。★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。★episode_id 通常不必传(平台按场景归属、再按引用它的分镜自动推导)。只有回执报「本场景被多集分镜共用」时才需要点名:那说明同一地点跨集复用,平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。",
         "tags": [
           "scenes"
         ],
@@ -7708,6 +7708,22 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "episode_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
