@@ -333,7 +333,14 @@ content that will be rejected.
 
     **Soft checkpoints** (not enforced, also free, still expected): `run_precheck`
     before any image or video generation (it catches shots the vendor will
-    reject — pure wasted spend otherwise). **When it flags contradictory
+    reject — pure wasted spend otherwise). **Running a whole drama? Start with
+    `run_drama_precheck`** — one read-only call returns every episode's issue
+    counts plus an `attention` list of the episodes to fix first, instead of
+    calling `run_precheck` dozens of times and tallying it yourself. Triage on
+    that, then drop to `run_precheck` per episode for the itemised detail. Note
+    its `not_covered`: the drama-level roll-up skips the one image-inspecting
+    lint (25s wall clock per episode), so **"zero issues" there means "nothing
+    found in what was scanned", not "everything was checked"**. **When it flags contradictory
     instructions, don't patch them blind with `update_shot`.** Call
     `plan_precheck_fix` to have the platform work out what to change, walk the
     proposals through with the user shot by shot, and apply the ones they accept

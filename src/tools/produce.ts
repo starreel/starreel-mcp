@@ -108,6 +108,9 @@ const WORKFLOW_HINT =
   '按 action 修完后**复审**再走。审查后又改了内容 → token 自动失效,复审一次即可(免费)。' +
   '有 error 时默认拦截,只有客户明确知情并坚持才带 acknowledge_review:true——别替客户做这个决定。' +
   '**软引导(不阻断但强烈建议,同样免费)**:出图/出视频前跑 run_precheck(揪出必被厂商拒的镜,防白花钱)——' +
+  '★**要跑全集就先 run_drama_precheck**(剧级汇总·免费·只读):一次拿到每集问题数与 attention(该先修哪几集),' +
+  '按它定优先级,再对那几集跑 run_precheck 拿逐条明细;别一集一集盲扫。' +
+  '注意它的 not_covered——剧级跳过唯一要看图的那道 lint,「全剧 0 条」≠「全查过了」。' +
   '★揪出来之后别自己盲改:plan_precheck_fix 让平台算出提案 → 逐条讲给客户 → 客户点头后 apply_precheck_fix 落库;' +
   '分镜后跑 get_health_report;定妆图出完用 get_characters 核对每个出场角色都有 image/sheet;' +
   '出帧后用 get_storyboards 看 frame_status 与 fail_reason/fail_hint(failed 的镜先修再往下,别带着废帧出视频);' +
@@ -706,6 +709,36 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '⚠️ 它**不**检查首帧是否处在"动作发生前"(平台暂无该契约字段),也不替代 get_health_report。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/precheck`)),
+  )
+  server.tool(
+    'run_drama_precheck',
+    '(★免费·只读)**整部剧**的体检汇总:一次拿到每一集有多少问题、哪几集该先修。' +
+      'run_precheck 是集级的,几十集的剧要打几十次还得自己汇总 —— 要跑全集时先调这个。\n' +
+      '回什么:episodes[] 逐集的 blockers/warnings/by_kind(按判据码计数),' +
+      'totals 全剧合计,attention[] = 最该先修的几集(按阻断数、告警数降序)。\n' +
+      '★**怎么用**:先看 attention 定优先级 → 对那几集调 run_precheck 拿逐条明细 → ' +
+      'plan_precheck_fix / update_shot 去改 → 改完重跑本工具确认总数下来了。\n' +
+      '⚠️ **「全剧 0 条」不等于「全查过了」**:剧级为了能在一个请求里跑完,' +
+      '强制跳过唯一要看图的那道 lint(一集 25s 墙钟)。返回体的 not_covered 列着跳过了哪一类,' +
+      '要查那一类就去对应集跑 run_precheck。\n' +
+      '⚠️ episodes[].failed=true 的集是**没查成**(不是没问题),重调一次即可。' +
+      'truncated=true 说明集数超过 limit 上限,没扫完。',
+    {
+      drama_id: z.number().int().positive(),
+      scope: z.enum(['all', 'frames']).optional()
+        .describe('frames = 只留与出图有关的问题(出图前用);缺省 all = 全部,含配音/音色类'),
+      limit: z.number().int().positive().max(60).optional()
+        .describe('最多扫多少集(默认也是上限 60)。超出的不扫,返回体 truncated=true'),
+    },
+    async ({ drama_id, scope, limit }) => {
+      const qs: string[] = []
+      // ★传了就原样拼上(而不是只在 ==='frames' 时拼):后端对非 frames 一律当 all,
+      //   两种写法行为等价;但 openapi 生成器靠「哨兵值出现在 URL 里」反查参数,
+      //   写成条件比较的话 scope 永远进不了 REST 文档 —— 走 REST 的第三方就看不见它。
+      if (scope) qs.push(`scope=${encodeURIComponent(scope)}`)
+      if (limit) qs.push(`limit=${limit}`)
+      return jsonResult(await client.produceGet(`/dramas/${drama_id}/precheck${qs.length ? `?${qs.join('&')}` : ''}`))
+    },
   )
   server.tool(
     'plan_precheck_fix',

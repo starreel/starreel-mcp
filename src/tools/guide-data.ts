@@ -275,6 +275,7 @@ export const QA_TOOLS: QaTool[] = [
   { symptom: '动作发生在裁剪窗口之外', run: 'recommend_trim_window', then: ['trim_shot'] },
   { symptom: '画面多出一个人 / 多出一件道具', run: 'get_storyboards(先看该镜实际用的首帧)', then: ['generate_shot_frame(首帧本身就有→重生首帧再重生视频)', 'split_shot(帧干净、片中长出来→拆成 3~5 秒短镜)'] },
   { symptom: '出图 / 出视频前想知道哪些镜会被厂商拒', run: 'run_precheck', then: ['update_shot', 'generate_shot_frame'] },
+  { symptom: '要跑全集 / 想知道整部剧有多少问题、该先修哪几集', run: 'run_drama_precheck', then: ['run_precheck(对 attention 里那几集拿逐条明细)', 'plan_precheck_fix', 'update_shot'] },
   { symptom: '场景图(空景基板)不对 / 重出还是同一类图', run: 'get_scene_prompt', then: ['update_scene(改 image_prompt 正文——只改地点/时段是让平台重拼,拧不过来)', 'regenerate_scene_image(单场重出,覆盖旧图)', 'upload_scene_image(客户自有实拍/外部精修图)', 'generate_shot_frame(下游镜头帧不会自动跟着重出)'] },
   { symptom: '整集健康度 / 缺镜 / 进度', run: 'get_pipeline_status', then: ['get_health_report', 'review_all', 'get_storyboards', 'get_jobs', 'get_run_status', 'get_autofill_status(导入/一键填空的后台补全进度)'] },
   { symptom: '预算 / 余额', run: 'get_budget_status', then: ['get_cost_estimate'] },
