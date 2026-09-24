@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.83",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.83 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.84",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.84 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -8225,8 +8225,8 @@
     "/storyboards/{storyboard_id}": {
       "put": {
         "operationId": "update_shot",
-        "summary": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)与角色绑定(character_ids)",
-        "description": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)与角色绑定(character_ids)。只传要改的字段、其余不动。**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果。★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,不重生就终拼,成片里念的仍是改动前的台词(典型现象:台词像是跑到了别的镜头上)。compose_episode 会以 advisory `stale_video_after_edit` 列出这些镜;正确处置是先 regenerate_shot_video 再终拼。★也可直接改本镜的四条提示词正文(image_prompt/video_prompt/first_frame_prompt/last_frame_prompt):改前先用 get_shot_prompts 读现值,别凭空覆盖——正文里的 @char:N / @scene:M 是角色/场景参考图的引用标记,删掉本镜就不注入对应定妆图/场景图(形象漂移)。★★【出尾帧被拦下就是来改这里】出尾帧若报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」(TERMINAL_DESC_GATE),修法是把**结束时画面是什么样**写进本镜 last_frame_prompt,然后重新出尾帧。别去重试出图——这类镜(action_motion_class=state_change 却没写终态)的尾帧历史成功率 9.4%,有终态描述的是 40.2%;不补描述就重生,送厂商的提示词里根本没有终态段,画出来仍和首帧一样、还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。",
+        "summary": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)与角色绑定(character_ids)",
+        "description": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)与角色绑定(character_ids)。只传要改的字段、其余不动。**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果。★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,不重生就终拼,成片里念的仍是改动前的台词(典型现象:台词像是跑到了别的镜头上)。compose_episode 会以 advisory `stale_video_after_edit` 列出这些镜;正确处置是先 regenerate_shot_video 再终拼。★也可直接改本镜的四条提示词正文(image_prompt/video_prompt/first_frame_prompt/last_frame_prompt):改前先用 get_shot_prompts 读现值,别凭空覆盖——正文里的 @char:N / @scene:M 是角色/场景参考图的引用标记,删掉本镜就不注入对应定妆图/场景图(形象漂移)。★★【出尾帧被拦下就是来改这里】出尾帧若报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」(TERMINAL_DESC_GATE),修法是把**结束时画面是什么样**写进本镜 last_frame_prompt,然后重新出尾帧。别去重试出图——这类镜(action_motion_class=state_change 却没写终态)的尾帧历史成功率 9.4%,有终态描述的是 40.2%;不补描述就重生,送厂商的提示词里根本没有终态段,画出来仍和首帧一样、还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。",
         "tags": [
           "storyboards"
         ],
@@ -8290,6 +8290,14 @@
                   },
                   "shot_intent": {
                     "type": "string"
+                  },
+                  "duration": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "speed_factor": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
                   },
                   "image_prompt": {
                     "type": "string"

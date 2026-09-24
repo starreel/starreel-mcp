@@ -685,6 +685,40 @@ constraint is already in the prompt and was measured ineffective). The only
 real fix is `regenerate_shot_video` on those shots after switching the drama to
 `seedance-2.5` or `hailuo-3`.
 
+### "动作太慢" / "没演出来" / "像快进" — motion speed inside a shot
+
+Everything here was measured by comparing versions of the same shot. Work
+through it in this order, per shot (`get_shot_prompts` first — you need the
+current `video_prompt` and what the first frame shows):
+
+1. **Check the shot size before the wording.** Wide / full shots cannot show
+   small motion (a face, a hand, an ear): measured motion on wide shots was a
+   fraction of the same batch's medium shots. If the action is small, change
+   `shot_type` to medium or closer (`update_shot`), then `generate_shot_frame`
+   and regenerate the video. Rewording a wide shot was tried twice in the
+   measured case and failed both times.
+2. **Density comes from the number of beats, not verb strength.** Deleting
+   "slow / gently / unhurried" was measured to have **no** effect. What worked:
+   write the `video_prompt` as beats — about **3 beats for 5 seconds, 2 beats
+   for 3 seconds** ("beat 1 … beat 2 … beat 3 …"), so more actually *happens*
+   in those seconds. Adding "one continuous take, no cuts" helps keep the
+   vendor from cutting inside the clip.
+3. **Start from the first frame.** The action must continue from the exact
+   moment the first frame shows. If the prompt's starting state contradicts the
+   frame, the vendor cannot bridge it in one camera move and cuts instead.
+4. **Move beats and `duration` together.** 3 beats squeezed into 3 seconds
+   reads as fast-forward; lengthening a shot without adding beats only makes it
+   slower. Then `regenerate_shot_video` (quote first).
+
+`speed_factor` (`update_shot`, 0.5–2.0, `null` clears) is **playback speed in
+the final cut only** — free, no regeneration, but it does not change what the
+vendor animated, so it cannot fix "nothing happens". Use it for deliberate slow
+motion; avoid it on dialogue shots (the voice speeds up / slows down too).
+
+The platform's default shot breakdown still asks for one continuous action per
+shot. Apply the beat approach shot by shot on complaints; don't rewrite a whole
+episode this way unprompted.
+
 ### "画面里多出一个人 / 多出一件道具" — something appears that shouldn't be there
 
 Two completely different causes with opposite fixes. **Look at the shot's own

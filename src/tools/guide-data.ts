@@ -274,6 +274,16 @@ export interface QaTool { symptom: string; run: string; then: string[] }
 export const QA_TOOLS: QaTool[] = [
   { symptom: '话没说完就切 / 台词跑到别的镜上', run: 'scan_dialogue_coverage', then: ['repair_episode_dialogue(首选:换音频不重生,便宜)', 'regenerate_shot_video(特写镜或画面也错时)', 'compose_episode'] },
   { symptom: '切太快 / 一个镜头里画面跳来跳去', run: 'scan_intra_shot_cuts', then: ['update_project_settings(video_engine 改 seedance-2.5 或 hailuo-3)', 'regenerate_shot_video'] },
+  // 「动作太慢」的判据全部来自实测(同剧同镜多版对照):删 slow/缓慢这类措辞没有可测效果;
+  // 远景镜的运动量整体只有中景的几分之一;把更多节拍放进同样秒数才真的更有动感。
+  // ★只作为逐镜修法给 agent,平台默认拆镜规则不在这里改(等运动量基线攒够再裁决)。
+  { symptom: '动作太慢 / 没演出来 / 像快进', run: 'get_shot_prompts(先读 video_prompt 与 first_frame_prompt,看首帧画的是哪一刻)', then: [
+    'update_shot(shot_type:远景/全景演不出表情、手部这类细微动作——要看清就改成中景或更近,再 generate_shot_frame 重出首帧;这是分镜问题,改措辞没用)',
+    'update_shot(video_prompt:按节拍写——约 5 秒写 3 拍、3 秒写 2 拍,「第一拍…第二拍…第三拍…」,让这几秒里发生更多事;只删 slow/缓慢/轻轻这类词实测没有效果;动作必须从首帧画的那一刻往后接,起点与首帧矛盾时厂商会自己剪一刀;可加一句「一镜到底、不切镜」)',
+    'update_shot(duration:动作量与时长同向调——3 拍塞进 3 秒就是「像快进」;反过来,只加长不加拍只会更慢)',
+    'regenerate_shot_video(改完 prompt/时长要重出视频才生效,走报价)',
+    'update_shot(speed_factor:只是成片里变速播放,不改厂商生成的内容——做慢镜氛围用,治不了「没演出来」)',
+  ] },
   { symptom: '动作发生在裁剪窗口之外', run: 'recommend_trim_window', then: ['trim_shot'] },
   { symptom: '画面多出一个人 / 多出一件道具', run: 'get_storyboards(先看该镜实际用的首帧)', then: ['generate_shot_frame(首帧本身就有→重生首帧再重生视频)', 'split_shot(帧干净、片中长出来→拆成 3~5 秒短镜)'] },
   { symptom: '出图 / 出视频前想知道哪些镜会被厂商拒', run: 'run_precheck', then: ['update_shot', 'generate_shot_frame'] },
