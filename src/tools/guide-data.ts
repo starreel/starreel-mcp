@@ -93,8 +93,8 @@ export const ENTRY_POINTS: EntryPoint[] = [
     customer_has: '自有的定妆图 / 场景图 / 道具图 / 镜头图(客户真实素材)',
     use: [
       'upload_image',
-      'set_character_portrait(换定妆图后响应里的 stale_frames 就是被旧图污染、要逐镜重生的镜)',
-      'upload_scene_image',
+      'set_character_portrait(须单人·单张单角度·无文字;换图后按 next_step 重出设定图,stale_frames 是要逐镜重生的镜)',
+      'upload_scene_image(须空景无人·无叠加文字)',
       'upload_prop_sheet',
       'upload_shot_frame(只用于客户自有真实素材)',
       'upload_shot_footage(客户自有整段视频当某镜成片:录屏/产品实拍/已有片段;登记后该镜不再 AI 出图出视频,终拼原样用,时长按素材回写;清除用 clear_shot_footage)',
@@ -212,7 +212,7 @@ export const PIPELINE: PipelineStep[] = [
   {
     step: '6 剧目级一致性资产(分镜后、出图前)',
     tools: [
-      'quote_character_portraits', 'generate_portraits_and_sheets(定妆图+设定图,一致性锚)',
+      'generate_portraits_and_sheets(定妆图+设定图,一致性锚·两者都要:调一次推进一步,定妆图齐了再调一次出设定图)', 'quote_character_portraits(只报定妆图;设定图无需报价)',
       'generate_world_concept(默认必做,仍走报价)', 'generate_motion_templates', 'generate_color_script',
       'generate_art_bible', 'extract_visual_lock', 'extract_setting_brief', 'generate_video_style',
       'quote_scene_images', 'generate_scene_images', 'generate_prop_sheet',

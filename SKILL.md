@@ -78,7 +78,7 @@ announces a condensed version as MCP `instructions` at connect time.
 | Wants to rewrite on another AI / says our rewrite "changed too much" | `get_script_format_spec` → external rewrite → `check_script_format` → `adopt_external_script` (exit A) or `set_script` + `rewrite_script` (exit B) | skipping the check; `edit_rewritten_script` |
 | A finished **shot list** (per-shot seconds / shot size / camera move) | `get_storyboard_table_spec` (the contract: shot-size / camera-move vocabulary, body layout, text-card syntax, a prompt for the external AI) → `check_storyboard_table` (same parser as the import; clear `errors`, read every `warning` — a missing duration, an unrecognised shot size or an empty body all get imported as-is) → `import_storyboard_table` (defaults to `auto_complete`: one background batch fills the professional fields and expands every shot's platform-built base description into full image / video prompts — metered text, tell the customer first; `auto_complete: false` imports only) → `get_autofill_status` until `done` → `review_storyboards` | `rewrite_script` + `generate_storyboards` — strips every production parameter (measured: 8 shots / 36 s became 20 shots / 109 s); importing without the check; reviewing before the completion batch finishes (the token expires when shots change) |
 | **Structured data** — their own tool / spreadsheet export, or an external AI producing JSON (cast + scenes + shots in one go) | `get_bulk_import_spec` (contract + template + worked example + enums, same source as the validator) → `check_bulk_import` (same zod schema; unresolved character / scene references, dead shots and stage directions inside dialogue are surfaced) → `bulk_import_storyboards` (`mode: "replace"` only with the customer's explicit OK; defaults to `auto_complete`: professional fields for every shot, full image / video prompts only for shots that had no `image_prompt` — prompts you supply yourself are kept verbatim — metered text, tell the customer first) → `get_autofill_status` until `done` → `review_storyboards` | converting the JSON to text for `import_storyboard_table`; hand-building shots with `update_shot`; reviewing before the completion batch finishes |
-| Their own portraits / scene / prop / shot images | `upload_image` · `set_character_portrait` · `upload_scene_image` · `upload_prop_sheet` · `upload_shot_frame` | rendering a "fix" elsewhere and uploading it — use `generate_shot_frame` |
+| Their own portraits / scene / prop / shot images | `upload_image` · `set_character_portrait` · `upload_scene_image` · `upload_prop_sheet` · `upload_shot_frame` — **check the image before uploading** (see *Customer-supplied images* below); after a portrait swap, `generate_character_sheet` for that character (the old sheet is invalidated and **not** regenerated automatically) | rendering a "fix" elsewhere and uploading it — use `generate_shot_frame`; uploading a group photo, a captioned/watermarked image, or a multi-view sheet as a portrait; uploading a scene photo with people in it |
 | Their own **footage** for a shot (screen recording, product b-roll, an existing clip) | `upload_shot_footage` → that shot is no longer AI-generated (frames/video skipped, final cut uses the clip as-is, duration written back from the clip); **it overwrites whatever AI video that shot already had**, and afterwards every AI video call on it (including `edit_video_shot`) is refused with **409** until you `clear_shot_footage` or pass `replace_user_footage: true` | pasting an externally AI-generated clip to "fix" a shot — it carries none of this film's identity / style anchors; use `regenerate_shot_video` instead |
 | A clip that should **drive the motion** of an AI shot (a blocking/previz pass, a dance or action reference) | `edit_video_shot` with `reference_video_urls` — the shot keeps its AI video and borrows the clip's movement. To make the clip itself the source and restyle it in place, `upload_shot_footage` it first, then `edit_video_shot` with `replace_user_footage: true` | `upload_shot_footage` alone — that registers the clip as the finished shot, so nothing gets restyled and every later AI call on it returns 409 |
 | A scene plate that came out wrong (backdrop, era, light, layout) | `get_scene_prompt` → `update_scene` (`image_prompt`) → `regenerate_scene_image`; already-rendered shot frames still anchor on the old plate, so regenerate those shots too | re-running `generate_scene_images` (it only fills scenes that have **no** plate — it will not touch this one) |
@@ -88,6 +88,22 @@ announces a condensed version as MCP `instructions` at connect time.
 | Generated shots / a cut that needs changes | `scan_dialogue_coverage` / `scan_intra_shot_cuts` first, then `get_shot_prompts` · `update_shot` · `replace_shot_dialogue` · `repair_episode_dialogue` · `split_shot` · `trim_shot` · `regenerate_shot_video` · `edit_video_shot` → `rerender_episode` | re-composing to fix what a clip *says* |
 | Wants to assemble the cut themselves | `export_handoff_pack` → `get_handoff_toolchain` | `compose_episode` (pick one) |
 | A multi-language release | `translate_subtitles` · `subtitle_secondary_lang` in project settings | — |
+
+### Customer-supplied images
+
+The platform checks every `set_character_portrait` / `upload_scene_image`
+image before registering it; a non-conforming image is refused with **422**
+and is **not** registered. Look at the image first and ask the customer for a
+better one rather than uploading and bouncing.
+
+| Upload | Must be | Why |
+|---|---|---|
+| Portrait (`set_character_portrait`) | **only that one character**; a single image from a single angle (not a collage / grid / multi-view sheet); front or 3/4, face clear; clean background; **no text anywhere** (watermark, caption, name tag, logo, printed clothing) | it becomes the top-priority identity anchor and the face lock: a second person makes the anchor ambiguous (faces swap or blend), and any text is copied into every shot. The multi-view **sheet** is generated by the platform from the portrait — don't upload one as the portrait |
+| Scene image (`upload_scene_image`) | **an empty set — no people at all** (including distant passers-by and people on posters / screens); a single image; no overlaid text / watermark / logo (signage that is part of the place is fine) | it is the background anchor for every shot in that scene; people in it get copied into the shots as extra bystanders or ghost characters |
+
+When refused, relay the `message` to the customer as-is. Pass
+`allow_issues: true` only when the customer has seen the issues and explicitly
+insists on that image (the check is automatic and can be wrong).
 
 ## Execution tiers — when to just do it vs. when to ask
 
@@ -129,10 +145,13 @@ Don't ask the user at every step. Sort work into three tiers:
    consistency gate then rejects the sheet against the portrait **every single
    retry** — a structural dead loop that only burns money.
 2. **Pipeline backbone — metered; in order; quote-then-confirm.** portraits →
-   frames → videos → TTS → compose. Spending stages follow the normal
-   quote → show the user → confirm flow (discipline 2).
+   **character sheets** → scene images → frames → videos → TTS → compose.
+   Spending stages follow the normal quote → show the user → confirm flow
+   (discipline 2). `quote_character_portraits` quotes **portraits only**; the
+   sheets that must follow have no quote tool (billed by usage) — tell the user
+   about them in the same breath, don't stop after portraits.
 3. **Optional boosts — metered; proactively offer them.** world concept,
-   art-bible generation, scene images, scene groups, lipsync, posters/covers,
+   art-bible generation, scene groups, lipsync, posters/covers,
    SFX, BGM, subtitle translation. These lift consistency/quality but aren't
    required to finish an episode. **Proactively tell the user they're available
    and show a quote, then run on their OK** — neither silently skip them nor

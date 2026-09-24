@@ -82,7 +82,7 @@ const REVIEW_ARGS = {
 // 完整工作流顺序(照 get_pipeline_status 的 10 步真相走,不要跳步):
 //   create_drama → set_script(原始) → rewrite_script(AI改写) → [get_script/edit_rewritten_script 审改]
 //   → extract_assets(角色/场景/道具) → quote/generate_storyboards(先分镜·纯文本拆镜)
-//   → generate_character_portraits(定妆图·一致性关键·分镜后建只给出场角色更省)
+//   → generate_portraits_and_sheets(定妆图+设定图·一致性关键·分镜后建只给出场角色更省;设定图不能省)
 //   → generate_color_script + generate_motion_templates(剧目级资产·分镜后出图前·文本步无报价)
 //   → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费) → generate_frames(frame_type=last_frame) → quote/generate_videos
 //   → compose_episode → get_final_cut / get_export
@@ -145,6 +145,11 @@ const WORKFLOW_HINT =
   '后续镜之间背景也会漂。它跟定妆图是一对:定妆图锚人、场景图锚景,缺哪个漂哪个。' +
   '进度自检看 `get_pipeline_status` 的 generate_scene_images 步(completed/total),' +
   '`review_storyboards` 也会在出帧前把缺口报成 scene_plate_missing。' +
+  '★★【设定图别跳·定妆图≠设定图】定妆图是单人单张的身份锚;设定图是平台据定妆图生成的多视角 turnaround,' +
+  '是镜头帧/视频的一致性根锚(换角度·换光·服装几乎全靠它)。只出定妆图照样能出帧、不报错——代价是人物一换角度就漂、服装每镜不一样。' +
+  '用 generate_portraits_and_sheets 一键两步(每调一次推进一步,定妆图齐了再调一次才出设定图),或定妆图后接 generate_character_sheets。' +
+  '进度自检看 get_pipeline_status 的 generate_character_sheets 步(completed/total,portrait_only=只有定妆图的角色数)。' +
+  '★客户自带图:定妆图须单人、单张单角度、无文字;场景图须空景无人、无叠加文字——set_character_portrait/upload_scene_image 会自动检查、不合规 422 拒收。' +
   '★别先建角色形象/道具设定图/动作模板再分镜——分镜是纯文本步、不依赖任何图;资产在分镜后建更省更准(动作模板本就必须分镜后)。收费步照现有 quote 报价确认流程。' +
   '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script。' +
   '★世界观概念图=默认必做(提升整剧一致性、很多第三方平台漏做这步):分镜后默认调 generate_world_concept,' +
@@ -598,7 +603,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'quote_character_portraits',
     '报价:给缺定妆图的角色批量出定妆图要多少点。返回 portraits_to_generate、estimated_points、quote_id。零扣费。' +
-      '定妆图是身份一致性的锚(缺它角色会漂移),强烈建议出视频前先出。' + QUOTE_RANGE_HINT,
+      '定妆图是身份一致性的锚(缺它角色会漂移),强烈建议出视频前先出。' +
+      '★本报价只含定妆图;定妆图就绪后**还必须** generate_character_sheets 出设定图(无需报价·图片步后付,响应里 sheets_to_generate_after 是待出数)。' +
+      '只出定妆图不出设定图,镜头人物换角度/换光/服装会漂——报价时把这一步一起告诉客户。' + QUOTE_RANGE_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/portraits/quote`)),
   )
@@ -1521,22 +1528,29 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'set_character_portrait',
     '用客户自有图片作为角色定妆图(身份锚,优先级高于 AI 生成;之后 AI 重生默认不覆盖)。' +
-      '换图会自动失效并重建派生资产(三视图设定图/发型·身材参考)、重建人脸锁。' +
+      '★★图片规范(登记前平台会自动检查,不合规返回 422 且不登记):**只有该角色一人**(不能有其他人/合影/背景路人);' +
+      '**单张单一角度**(不是拼图/九宫格/多视角设定图——设定图由平台据定妆图生成);正面或 3/4 侧、面部清晰无遮挡、干净背景;' +
+      '**图上无任何文字**(水印/字幕/名字标签/logo/衣服印字都不行,字样会被复刻进每一镜)。' +
+      '上传前先看一眼客户给的图,不合规就先请客户换图,别直接传。被拒时把 message 里的问题原样告诉客户;' +
+      '只有客户看过问题后明确坚持用这张图,才带 allow_issues:true 重传(自动检查可能误判)。' +
+      '★换图会失效原有派生资产(设定图/多角度头像/发型·身材参考)并重建人脸锁,但**设定图不会自动重出**——' +
+      '换完必须 generate_character_sheet(character_id) 据新定妆图重出设定图(响应里的 next_step 会提示),否则该角色只剩定妆图一个锚。' +
       '★换图后响应含 stale_frames=[{storyboard_id,storyboard_number,frames}]——这些镜的首帧还是旧定妆图生成的、已被污染。' +
       '要让新定妆图生效:对每个 stale_frame 用 quote_shot_frame+generate_shot_frame 重生该镜(平台会自动以新定妆图/设定图/人脸锁作锚,保全片一致)。' +
       '不必逐镜自己指定模型/首尾帧。★千万别自制首尾帧再 upload_shot_frame——外部图没有角色身份锚/画风锚,人物·服装·画风必漂,那才是废片根源(不是"杜绝废片")。' +
-      '传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。免费。',
+      '传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。',
     {
       character_id: z.number().int().positive(),
       file_path: z.string().optional().describe('本地定妆图路径(与 image_url 二选一;自动上传 COS)'),
       image_url: z.string().optional().describe('已上传的定妆图 URL(与 file_path 二选一)'),
+      allow_issues: z.boolean().optional().describe('内容检查报了问题、客户看过后仍明确坚持用这张图时才传 true(默认拦截)'),
     },
-    async ({ character_id, file_path, image_url }) => {
+    async ({ character_id, file_path, image_url, allow_issues }) => {
       const url = image_url && image_url.trim()
         ? image_url.trim()
         : (file_path ? await client.uploadLocalFile(file_path, 'image') : '')
       if (!url) throw new Error('file_path 或 image_url 至少提供一个')
-      return jsonResult(await client.producePost(`/characters/${character_id}/portrait`, { image_url: url }))
+      return jsonResult(await client.producePost(`/characters/${character_id}/portrait`, { image_url: url, ...(allow_issues ? { allow_issues: true } : {}) }))
     },
   )
   server.tool(
@@ -1583,11 +1597,21 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'upload_scene_image',
-    '用客户自有图片作为某场景的参考图。自动上传+登记。免费。',
-    { scene_id: z.number().int().positive(), file_path: z.string().describe('本地场景图路径') },
-    async ({ scene_id, file_path }) => {
+    '用客户自有图片作为某场景的场景图(空景基板·背景锚:同场景每一镜都锚在它上面)。自动上传+登记。' +
+      '★★图片规范(登记前平台会自动检查,不合规返回 422 且不登记):**空景,画面里不能有任何人物**' +
+      '(含远处路人、海报/屏幕里的人——图里的人会被复刻成多余路人或重影角色,和分镜里真正的角色抢位置);' +
+      '单一完整画面(不是拼图/多格);无叠加文字/水印/logo(画面里本来就有的招牌门牌可以)。' +
+      '客户的实拍图里有人:请客户换无人版本,或改用 regenerate_scene_image 让平台出空景。' +
+      '被拒时把 message 里的问题原样告诉客户;只有客户看过问题后明确坚持,才带 allow_issues:true 重传(自动检查可能误判)。' +
+      '登记免费;内容检查是一次小额视觉审核,按用量后付。',
+    {
+      scene_id: z.number().int().positive(),
+      file_path: z.string().describe('本地场景图路径'),
+      allow_issues: z.boolean().optional().describe('内容检查报了问题、客户看过后仍明确坚持用这张图时才传 true(默认拦截)'),
+    },
+    async ({ scene_id, file_path, allow_issues }) => {
       const image_url = await client.uploadLocalFile(file_path, 'image')
-      return jsonResult(await client.producePost(`/scenes/${scene_id}/image`, { image_url }))
+      return jsonResult(await client.producePost(`/scenes/${scene_id}/image`, { image_url, ...(allow_issues ? { allow_issues: true } : {}) }))
     },
   )
   server.tool(
