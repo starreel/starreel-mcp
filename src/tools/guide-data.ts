@@ -220,6 +220,8 @@ export const PIPELINE: PipelineStep[] = [
     ],
     billing: '报价确认后扣点',
     note: '分镜后建只给出场角色出图更省;动作模板本就必须分镜后。' +
+      '★色彩脚本(generate_color_script)与动作模板(generate_motion_templates)是主干步不是增强项:' +
+      '出图/出视频按它们注入调色与运动提示,缺了静默不注入、不报错;两者是文本步无 quote_*,按用量后付。' +
       '★这一步的两个锚缺一不可:定妆图锚人(generate_portraits_and_sheets)、空景基板锚景(generate_scene_images)。' +
       '基板长期被第三方漏掉——跳过不报错、不被拦,但每个场景的第一镜会完全没有背景锚' +
       '(平台的兜底补图只惠及同场景后续镜),而首镜往往定调。',
@@ -284,8 +286,6 @@ export const QA_TOOLS: QaTool[] = [
 export const OPTIONAL_BOOSTS = [
   { what: '世界观概念图', tool: 'generate_world_concept', when: '分镜后默认做(提升整剧一致性),仍走报价确认' },
   { what: '美术圣经 / 视觉锁 / 世界观 Brief 抽取', tool: 'generate_art_bible', when: '建剧后;或 `extract_visual_lock` / `extract_setting_brief` 从剧本反推' },
-  { what: '动作模板(统一全片运动语言)', tool: 'generate_motion_templates', when: '分镜后、出图前;漏了动作会散乱' },
-  { what: '色彩脚本(统一色调)', tool: 'generate_color_script', when: '分镜后、出图前' },
   { what: '场景组(同场景多镜一次成组出视频)', tool: 'generate_scene_groups', when: '先 `get_scene_group_plan` 看方案' },
   { what: '口型同步', tool: 'lipsync_episode', when: 'TTS 配音项目需要对口型时' },
   { what: '海报 / 封面', tool: 'generate_episode_poster', when: '成片后;`generate_drama_poster` / `generate_cover` 同族' },

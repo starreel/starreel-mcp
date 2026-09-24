@@ -83,9 +83,10 @@ const REVIEW_ARGS = {
 //   create_drama → set_script(原始) → rewrite_script(AI改写) → [get_script/edit_rewritten_script 审改]
 //   → extract_assets(角色/场景/道具) → quote/generate_storyboards(先分镜·纯文本拆镜)
 //   → generate_character_portraits(定妆图·一致性关键·分镜后建只给出场角色更省)
+//   → generate_color_script + generate_motion_templates(剧目级资产·分镜后出图前·文本步无报价)
 //   → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费) → generate_frames(frame_type=last_frame) → quote/generate_videos
 //   → compose_episode → get_final_cut / get_export
-// 项目设定随时可 update_project_settings;剧目级资产(色彩脚本/动作模板/世界观图/美术圣经)可选增强。
+// 项目设定随时可 update_project_settings;世界观图/美术圣经为增强项(色彩脚本/动作模板已进主干)。
 const WORKFLOW_HINT =
   '★三档执行策略(别把三档混着问客户):' +
   '①【基础项目设定·免费·必做地基·建剧即设好,别建空壳】project_type/setting_brief(世界观·ERA LOCK)/' +
@@ -126,7 +127,8 @@ const WORKFLOW_HINT =
   '且新版不保证保留旧版已改好的地方(三版实测会来回摆)。要修就 edit_rewritten_script 点改' +
   '(get_script 取全文 → 只改那几场、其余逐字照抄 → 提交整篇),免费秒级、结果确定;' +
   '误重跑用 get_script(include_previous=1) 回捞上一版。' +
-  'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→assign_voices(分配音色)→' +
+  'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→' +
+  '★generate_color_script(色彩脚本·统一调色)+generate_motion_templates(动作模板·从分镜抽运动语言)→assign_voices(分配音色)→' +
   '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames(默认只出首帧)→★tail_frame_plan(免费·哪几镜要独立尾帧)→frames(frame_type=last_frame)→★review_frames→videos→generate_tts→compose;' +
   '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
   '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
@@ -147,8 +149,11 @@ const WORKFLOW_HINT =
   '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script。' +
   '★世界观概念图=默认必做(提升整剧一致性、很多第三方平台漏做这步):分镜后默认调 generate_world_concept,' +
   '仍走报价确认流程(告知客户预估点数、确认再扣)——不静默扣费、也别跳过。' +
-  '★分镜后的剧目级资产别漏——尤其 generate_motion_templates(动作模板:从分镜抽取统一全片运动语言,漏了动作会散乱)' +
-  '与 generate_color_script(色彩脚本:统一色调);分镜后、出图前一并做,仍走报价确认。' +
+  '★★【色彩脚本/动作模板别跳·它们在主干里】generate_color_script(统一全片调色)与 generate_motion_templates' +
+  '(从分镜抽取统一运动语言,必须分镜后)是出图/出视频时的注入源:缺了照样能出帧出视频、不报错不拦你,' +
+  '代价是出图/出视频**静默不注入**调色指令与运动提示,各镜色调、动作风格各自发挥。' +
+  '两者都是**文本步、没有 quote_* 工具**,按用量后付——告知客户在做即可,不必等一个不存在的报价。' +
+  '进度自检看 get_pipeline_status 的 generate_color_script / generate_motion_templates 两步,review_storyboards 也会在出帧前报缺口。' +
   '★场景 Bible(每场景详细设定)顺序在**场景图片出图之后**——据出好的场景图完善(MCP 暂无此工具、在官网做);' +
   '别在出场景图前做场景 Bible。' +
   '★音频默认用视频原声(use_clip_audio 默认开、跳过 TTS 直接用 AI 视频自带声):' +
@@ -178,7 +183,7 @@ const WORKFLOW_HINT =
   '★改某一镜画面 / 换定妆图后要让新图生效,走**单镜重生 generate_shot_frame**(平台自动带该镜身份锚·场景道具参考·画风锚,保全片一致);' +
   'generate_frames 只批量补「缺帧」的镜、已有首帧的镜跳过(正常、不是"拒绝")。★首帧出完调免费的 tail_frame_plan 看哪几镜要独立尾帧,再 frame_type=last_frame 批量补。换定妆图(set_character_portrait)后响应里的 stale_frames 就是被旧图污染、需逐镜重生的镜。' +
   '★绝不用外部工具自制首尾帧再 upload_shot_frame 来"改画面"——外部图无身份锚/画风锚,人物·服装·画风必漂,那才是废片根源;upload_shot_frame 只用于客户自有真实素材。' +
-  '③【可选增强·AI 主动提示客户·报价确认才做】美术圣经生成/视觉锁抽取/色彩脚本/动作模板/场景图/场景组/口型/海报/音效/配乐/字幕翻译——' +
+  '③【可选增强·AI 主动提示客户·报价确认才做】美术圣经生成/视觉锁抽取/场景组/口型/海报/音效/配乐/字幕翻译——' +
   '这些提升一致性/质量、大多收费。★AI 应主动告知客户这些可做并给报价,客户确认才跑;既不默默跳过、也不擅自扣费。' +
   '★两条锁定纪律:①**画幅比例**在 create_drama 即定、drama 级锁定,之后所有出图/出视频/成片都用它、**别中途改**' +
   '(改了已生成内容画幅会不一致、漂移);不设默认 9:16。②**拆镜每镜 5-7 秒是对 AI 出视频优化的正常时长**,' +
@@ -1450,10 +1455,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ drama_id }) => jsonResult(await client.producePost(`/dramas/${drama_id}/video-style`)),
   )
 
-  // ========== 剧目级共享资产(可选增强)==========
+  // ========== 剧目级共享资产(色彩脚本/动作模板属主干,分镜后、出帧前)==========
   server.tool(
     'generate_color_script',
-    '生成剧目色彩脚本(统一全片配色情绪)。需该剧/集已有剧本文本。文本步后付不欠费。',
+    '生成剧目色彩脚本(统一全片配色情绪)。★产线主干步:分镜后、出帧(generate_frames)前做。' +
+    '出图/出视频时按它给每镜注入调色指令;跳过不报错、不拦你,代价是静默不注入、各镜色调各自发挥。' +
+    '需该剧/集已有剧本文本。后台异步,完成后 get_color_scripts 可读、get_pipeline_status 的 generate_color_script 变 done。' +
+    '文本步、无 quote_*,按用量后付不欠费——告知客户即可。',
     {
       drama_id: z.number().int().positive(),
       episode_id: z.number().int().positive().optional().describe('可选:按某一集生成'),
@@ -1463,7 +1471,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'generate_motion_templates',
-    '从分镜自动抽取动作模板(统一全片运动语言)。**需先有分镜**(先 generate_storyboards)。文本步后付不欠费。',
+    '从分镜自动抽取动作模板(统一全片运动语言)。★产线主干步:**需先有分镜**(先 generate_storyboards),出帧(generate_frames)前做。' +
+    '出视频时按镜头动作匹配模板注入运动提示;跳过不报错、不拦你,代价是静默不注入、各镜动作风格各异。' +
+    '同步返回 created_count;完成后 get_pipeline_status 的 generate_motion_templates 变 done。' +
+    '文本步、无 quote_*,按用量后付不欠费——告知客户即可。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.producePost(`/dramas/${drama_id}/motion-templates`)),
   )
@@ -2193,7 +2204,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'create_prop',
-    '往道具库加一个道具。extract_assets 会自动提取道具,这里供手动补建。免费(建条目;填了 description 会自动触发出设定图、后付)。',
+    '往道具库加一个道具。extract_assets 会自动提取道具,这里供手动补建。跨时代剧建道具时就把 era_lock 填上(建完会自动触发出设定图,补填要重出才生效)。免费(建条目;填了 description 会自动触发出设定图、后付)。',
     {
       drama_id: z.number().int().positive(),
       name: z.string().min(1).describe('道具名'),
@@ -2201,13 +2212,20 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       description: z.string().optional().describe('外观描述(填了会自动触发出设定图)'),
       prompt: z.string().optional().describe('出图 prompt(可选)'),
       physical_size_hint: z.string().optional().describe('物理尺寸提示'),
+      // v0.9.1950 — 道具级时代锁：跨时代剧（一部戏同时有几个时代的器物）里，道具白底图
+      // prompt **不注入项目视觉锁**（那会把画风词淹没），时代完全靠道具自己的文本撑。
+      // 名字中性的道具（案卷/笔架/长木桌）全凭模型先验定年代，这个字段是唯一的纠正入口。
+      // 传 '' 显式清空回继承。★写得进读不出是**有意的**：get_props 的对外视图按反蒸馏
+      // 白名单裁剪，era_lock 与 description 一样不回读。
+      era_lock: z.string().optional()
+        .describe("道具级时代锁：这件道具属于哪个年代、材质工艺该读作什么年代（跨时代剧必填，否则名字中性的道具年代随机）。'' 清空"),
       episode_id: z.number().int().positive().optional(),
     },
     async ({ drama_id, ...fields }) => jsonResult(await client.producePost(`/props`, { drama_id, ...fields })),
   )
   server.tool(
     'update_prop',
-    '改道具(名称/类型/描述/prompt/尺寸/多视角参考图)。免费。',
+    '改道具(名称/类型/描述/prompt/尺寸/多视角参考图/时代锁)。跨时代剧务必填 era_lock，否则名字中性的道具年代随机。免费。',
     {
       prop_id: z.number().int().positive(),
       name: z.string().optional(),
@@ -2221,6 +2239,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       // 正视 / 侧视 / 端面各一张最有效，端面是截面形状唯一能说清的方式。
       reference_images: z.array(z.string().url()).max(6).optional()
         .describe('多视角参考图 URL 数组，整份覆盖；建议正视/侧视/端面各一张'),
+      // v0.9.1950 — 道具级时代锁：跨时代剧（一部戏同时有几个时代的器物）里，道具白底图
+      // prompt **不注入项目视觉锁**（那会把画风词淹没），时代完全靠道具自己的文本撑。
+      // 名字中性的道具（案卷/笔架/长木桌）全凭模型先验定年代，这个字段是唯一的纠正入口。
+      // 传 '' 显式清空回继承。★写得进读不出是**有意的**：get_props 的对外视图按反蒸馏
+      // 白名单裁剪，era_lock 与 description 一样不回读。
+      era_lock: z.string().optional()
+        .describe("道具级时代锁：这件道具属于哪个年代、材质工艺该读作什么年代（跨时代剧必填，否则名字中性的道具年代随机）。'' 清空"),
     },
     async ({ prop_id, ...fields }) => jsonResult(await client.producePut(`/props/${prop_id}`, fields)),
   )

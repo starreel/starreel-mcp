@@ -32,6 +32,10 @@ create_drama → set_script(raw) → rewrite_script(AI draft, user may edit)
   → [review_script] → extract_assets(cast/scenes/props)
   → storyboards → [review_storyboards]
   → generate_portraits_and_sheets(portraits + sheets = the shot consistency anchor)
+  → generate_color_script + generate_motion_templates(color-script + motion-templates =
+    the grading and motion cues injected into every frame/video; skip them and nothing
+    is injected — no error, each shot just grades and moves its own way. Text steps,
+    no quote_*: billed by usage)
   → scene-images(empty-set plates = the background anchor — every shot in a scene
     anchors on its plate; skip it and each scene's FIRST shot has no background
     anchor at all, and the backdrop drifts from shot to shot)
@@ -107,6 +111,15 @@ Don't ask the user at every step. Sort work into three tiers:
    glowing energy, floating landforms and non-human forms as "wrong era",
    dragging the look toward literal historical drama. A single scene can break
    away via `update_scene`'s `era_contract` (scene level outranks episode level).
+   **Props are a separate chain and the era contract does not reach them.** The
+   white-background prop sheet deliberately injects no visual lock and no era
+   contract (long lock prose drowns the style words), so a prop's period rests
+   entirely on its own text. Props whose names carry no period read (a ledger, a
+   brush rest, a long table) get whatever era the model assumes. In a drama that
+   spans eras, set `era_lock` per prop — `create_prop` takes it at creation
+   (the sheet is generated right after the row lands, so filling it in later
+   means regenerating), `update_prop` changes it. `get_props` does not read it
+   back; that is intentional, not a bug.
    **Never pin a specific character's wardrobe / hair / look inside
    `visual_lock` or `art_bible`** — those hold scene-level and world-level locks
    only. The **single source of truth** for a character's appearance is the
