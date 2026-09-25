@@ -11,7 +11,8 @@
  * 用 get_storyboards / get_episode_status 轮询到完成。下载链接只发我方 COS 链接。
  */
 import { z } from 'zod'
-import { readFileSync, writeFileSync, chmodSync } from 'node:fs'
+import { readFileSync, writeFileSync, chmodSync, mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
@@ -128,7 +129,7 @@ const WORKFLOW_HINT =
   '(get_script 取全文 → 只改那几场、其余逐字照抄 → 提交整篇),免费秒级、结果确定;' +
   '误重跑用 get_script(include_previous=1) 回捞上一版。' +
   'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→' +
-  '★generate_color_script(色彩脚本·统一调色)+generate_motion_templates(动作模板·从分镜抽运动语言)→assign_voices(分配音色)→' +
+  '★generate_color_script(色彩脚本·统一调色)+generate_motion_templates(动作模板·从分镜抽运动语言)→assign_voices(分配音色;旁白/角色库里没合适的→design_voice 按描述造一个,定样后 set_character_voice)→' +
   '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames(默认只出首帧)→★tail_frame_plan(免费·哪几镜要独立尾帧)→frames(frame_type=last_frame)→★review_frames→videos→generate_tts→compose;' +
   '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
   '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
@@ -2478,6 +2479,60 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '删除我音色库里的一个克隆音色(平台公共音色不可删)。免费。',
     { voice_id: z.string().describe('形如 lib:12') },
     async ({ voice_id }) => jsonResult(await client.produceDelete(`/voice-clones/${String(voice_id).replace(/^lib:/, '')}`)),
+  )
+  // ========== 音色设计(voice design)==========
+  // 没有样本时用一句话描述造声音。三步:design_voice → get_voice_design(轮询+试听)→ save_designed_voice,
+  // 拿到的 voice_id 与克隆音色同一命名空间(lib:N),再 set_character_voice 绑角色。
+  server.tool(
+    'design_voice',
+    '**没有声音样本时**,用一句话描述造一个新音色(例如给旁白或某个角色一把专属的声音)。' +
+      '提交后后台生成几条候选(约 1~3 分钟),用 get_voice_design 轮询并试听,挑一条 save_designed_voice 存入音色库。' +
+      '**生成免费**(每人同时 1 个任务、24 小时 30 次);保存时按声音克隆同价扣费。' +
+      '\n★描述写「要什么」比写「不要什么」有效:年龄、性别、音色(低沉/清亮/沙哑/气声)、语速、情绪。' +
+      '\n★必须挑一条定下来再配音:同一句描述每次生成都是另一个人,只有定样后克隆,整集才是同一把声音。' +
+      '所以没有「按描述直接配整集」的工具,这是刻意的。' +
+      '\n★别拿真人/名人的名字当描述去模仿特定人的声音(与声音克隆同一条授权红线)。',
+    {
+      description: z.string().min(1).max(200).describe('一句话描述想要的声音'),
+      text: z.string().optional().describe('试听句(14~28 字,可不填,不填用通用问候语);太短不够克隆,太长存入时会被截断'),
+      n: z.number().int().min(1).max(3).optional().describe('候选条数,默认 3'),
+    },
+    async ({ description, text, n }) => jsonResult(await client.producePost('/voice-designs', {
+      description, ...(text ? { text } : {}), ...(n ? { n } : {}),
+    })),
+  )
+  server.tool(
+    'get_voice_design',
+    '查 design_voice 任务的进度。status=done 后把每条候选下载成本地 wav(返回 local_path),' +
+      '交给客户试听挑选;queued/waiting_memory/running 时过十几秒再查。免费。候选保留 6 小时。',
+    { design_id: z.string().describe('design_voice 返回的 design_id') },
+    async ({ design_id }) => {
+      const v: any = await client.produceGet(`/voice-designs/${encodeURIComponent(design_id)}`)
+      if (v?.status !== 'done' || !Array.isArray(v?.candidates)) return jsonResult(v)
+      // 落在固定的系统临时目录下,目录名只取 design_id 里的安全字符——调用方决定不了写到哪里
+      const dir = join(tmpdir(), 'starreel-voice-designs', String(design_id).replace(/[^0-9a-f.]/gi, '').slice(0, 80))
+      mkdirSync(dir, { recursive: true })
+      const candidates = []
+      for (const c of v.candidates) {
+        const a: any = await client.produceGet(`/voice-designs/${encodeURIComponent(design_id)}/audio/${c.index}`)
+        const localPath = join(dir, `candidate_${c.index}.wav`)
+        writeFileSync(localPath, Buffer.from(String(a?.audio_base64 || ''), 'base64'))
+        candidates.push({ index: c.index, seconds: c.seconds, local_path: localPath })
+      }
+      return jsonResult({ ...v, candidates, next: '让客户试听后挑一条 → save_designed_voice(index, name)' })
+    },
+  )
+  server.tool(
+    'save_designed_voice',
+    '把客户挑中的那条候选存进音色库,返回 voice_id(形如 lib:12)。**按声音克隆同价扣费**(同一条重复保存不重复扣)。' +
+      '之后用 set_character_voice 绑到角色(旁白也是一个角色)才会用它配音;也可以先 speak_with_voice 试听更多句子。',
+    {
+      design_id: z.string(),
+      index: z.number().int().min(0).describe('get_voice_design 候选里的 index'),
+      name: z.string().min(1).max(60).describe('给这个音色起个名字'),
+    },
+    async ({ design_id, index, name }) =>
+      jsonResult(await client.producePost(`/voice-designs/${encodeURIComponent(design_id)}/save`, { index, name })),
   )
   server.tool(
     'set_character_voice',

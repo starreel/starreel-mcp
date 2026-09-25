@@ -83,6 +83,7 @@ announces a condensed version as MCP `instructions` at connect time.
 | A clip that should **drive the motion** of an AI shot (a blocking/previz pass, a dance or action reference) | `edit_video_shot` with `reference_video_urls` — the shot keeps its AI video and borrows the clip's movement. To make the clip itself the source and restyle it in place, `upload_shot_footage` it first, then `edit_video_shot` with `replace_user_footage: true` | `upload_shot_footage` alone — that registers the clip as the finished shot, so nothing gets restyled and every later AI call on it returns 409 |
 | A scene plate that came out wrong (backdrop, era, light, layout) | `get_scene_prompt` → `update_scene` (`image_prompt`) → `regenerate_scene_image`; already-rendered shot frames still anchor on the old plate, so regenerate those shots too | re-running `generate_scene_images` (it only fills scenes that have **no** plate — it will not touch this one) |
 | A voice sample / a required voice | `clone_voice` → `speak_with_voice` → `set_character_voice` / `assign_voices` | cloning without the rights-holder's consent |
+| **No sample** — just an idea of the voice (a narrator, a character that deserves its own voice) | `design_voice` (one-sentence description, free) → `get_voice_design` until `done` (candidates arrive as local wav files — let the customer listen) → `save_designed_voice` (pick one; billed like a clone) → `set_character_voice` | generating every line straight from the description — each generation is a different person; naming a real person to imitate their voice |
 | A song + lyrics | `create_drama` (`project_type: "mv"`) → `set_mv_lyrics` → `generate_mv_story` → `generate_mv_script` | `rewrite_script` (blocked for MV) |
 | A product / brand | `create_drama` (`project_type: "ad"` or `"brand_film"`) → `add_product` → `generate_product_sheet` | writing brand copy as dialogue (it gets spoken) |
 | Generated shots / a cut that needs changes | `scan_dialogue_coverage` / `scan_intra_shot_cuts` first, then `get_shot_prompts` · `update_shot` · `replace_shot_dialogue` · `repair_episode_dialogue` · `split_shot` · `trim_shot` · `regenerate_shot_video` · `edit_video_shot` → `rerender_episode` | re-composing to fix what a clip *says* |
@@ -215,6 +216,16 @@ content that will be rejected.
    portrait/sheet — have those ready first. Bind **before** `generate_videos`;
    for videos that already exist, use `repair_episode_dialogue`
    (`only_flagged=false`) rather than regenerating whole episodes.
+
+   **No sample? Design one.** `design_voice` turns a one-sentence description
+   (age, gender, timbre, pace, mood — say what you want, not what you don't)
+   into a few candidate voices in 1-3 minutes, free. **Always make the
+   customer pick one and `save_designed_voice` it before dubbing**: the same
+   description gives a different person every time (measured: two lines from
+   one description matched at 0.23 voice similarity), while a saved voice is
+   cloned for every line (0.85-0.90). The narrator is a character too — this
+   is how a drama stops sounding like a broadcast announcer. Saving is billed
+   like `clone_voice`; the same candidate saved twice is charged once.
 
 6. **Follow the pipeline order — do not skip.** `set_script` → `rewrite_script`
    → `extract_assets` → portraits **+ sheets** → storyboards → frames → videos.
@@ -838,6 +849,7 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   `quote/generate_frames`, `tail_frame_plan` (free — which shots need their own
   last frame), `chain_frames`, `quote/generate_videos`
 - **Audio**: `generate_tts` (required before final cut), `clone_voice`,
+  `design_voice` → `get_voice_design` → `save_designed_voice` (no sample needed),
   `speak_with_voice`, `set_character_voice`, `list_voices`, `delete_voice`,
   `generate_bgm` (optional `prompt` steers the music; read `get_bgm_prompt_guide` first),
   `get_bgm_prompt_guide`, `replace_shot_dialogue`
