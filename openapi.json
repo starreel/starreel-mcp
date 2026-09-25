@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.85",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.85 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.86",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.86 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -3371,7 +3371,7 @@
       "post": {
         "operationId": "repair_episode_dialogue",
         "summary": "★整集批量修「台词没念完/念了别的」",
-        "description": "★整集批量修「台词没念完/念了别的」。默认只修 scan_dialogue_coverage 判为有缺陷的镜(truncated/off_script/extra_speech);minor_gap 那一族是转写误差、原声本来是好的,不动。原理与 replace_shot_dialogue 相同:克隆音重配整句 + 静音原声段,**不重新生成视频**——按 TTS 档(千字符)计费,比整集 regenerate_shot_video 低几个数量级,是这类缺陷的首选修法。★代价是口型:画面按原音演的,换音后可能对不上。口型看不清的镜(背身/远景/画外)几乎无损;若整集都是大特写对白,宁可选 regenerate_shot_video 重生。后台异步串行(CosyVoice 合成不并发),进度用 dialogue-repair-status 查;余额不足会中止且不扣费。修完记得 compose_episode 重拼成片,否则成片里还是旧音频。",
+        "description": "★整集批量修「台词没念完/念了别的」。默认只修 scan_dialogue_coverage 判为有缺陷的镜(truncated/off_script/extra_speech);minor_gap 那一族是转写误差、原声本来是好的,不动。原理与 replace_shot_dialogue 相同:克隆音重配整句 + 静音原声段,**不重新生成视频**——按 TTS 档(千字符)计费,比整集 regenerate_shot_video 低几个数量级,是这类缺陷的首选修法。★代价是口型:画面按原音演的,换音后可能对不上。口型看不清的镜(背身/远景/画外)几乎无损;若整集都是大特写对白,宁可选 regenerate_shot_video 重生。后台异步串行(CosyVoice 合成不并发),进度用 dialogue-repair-status 查;余额不足会中止且不扣费。修完先看 get_dialogue_repair_status 的 productEffective:true 才重拼成片(compose_episode / rerender_episode);false 时按 pendingCompose 先补合成,否则成片里还是旧音频。",
         "tags": [
           "episodes"
         ],
@@ -8348,7 +8348,7 @@
       "post": {
         "operationId": "replace_shot_dialogue",
         "summary": "换某镜对白音色/声线(转写+克隆重配)",
-        "description": "换某镜对白音色/声线(转写+克隆重配)。后台异步,按用量后付不欠费。要求本镜有原声视频+角色声线定妆音。★它也是「这一镜台词没念完/念了别的」最经济的修法:用克隆音重配整句并静音原声段,**不重新生成视频**——按 TTS 档(千字符)计费,比 regenerate_shot_video(720p 212 点/秒)低几个数量级。代价:画面口型是按原音演的,换音后可能对不上;口型看不清的镜(背身/远景/画外)几乎无损,大特写慎用。★产物自动写回该镜(返回 persisted:true),但**进不进成片**取决于本集是否每镜都已合成:用 get_dialogue_repair_status 看 productEffective / pendingCompose,为 false 就先补合成再 rerender_episode,否则成片仍是旧音频。整集批量用 repair_episode_dialogue。",
+        "description": "换某镜对白音色/声线(转写+克隆重配)。**同步调用**,约 1 分钟返回产物,按用量后付不欠费。要求本镜有原声视频+角色声线定妆音。★它也是「这一镜台词没念完/念了别的」最经济的修法:用克隆音重配整句并静音原声段,**不重新生成视频**——按 TTS 档(千字符)计费,比 regenerate_shot_video(720p 212 点/秒)低几个数量级。代价:画面口型是按原音演的,换音后可能对不上;口型看不清的镜(背身/远景/画外)几乎无损,大特写慎用。★产物自动写回该镜(返回 persisted:true),但写回 ≠ 进成片:以 get_dialogue_repair_status 的 productEffective 为准——true 就 rerender_episode 重拼;false 时按 pendingCompose 先补合成再重拼,否则成片仍是旧音频。★该镜已有对口型产物时,成片优先用对口型版,换轨不会生效。整集批量用 repair_episode_dialogue。",
         "tags": [
           "storyboards"
         ],

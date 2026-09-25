@@ -1828,13 +1828,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'replace_shot_dialogue',
-    '换某镜对白音色/声线(转写+克隆重配)。后台异步,按用量后付不欠费。要求本镜有原声视频+角色声线定妆音。' +
+    '换某镜对白音色/声线(转写+克隆重配)。**同步调用**,约 1 分钟返回产物,按用量后付不欠费。要求本镜有原声视频+角色声线定妆音。' +
       '★它也是「这一镜台词没念完/念了别的」最经济的修法:用克隆音重配整句并静音原声段,' +
       '**不重新生成视频**——按 TTS 档(千字符)计费,比 regenerate_shot_video(720p 212 点/秒)低几个数量级。' +
       '代价:画面口型是按原音演的,换音后可能对不上;口型看不清的镜(背身/远景/画外)几乎无损,大特写慎用。' +
-      '★产物自动写回该镜(返回 persisted:true),但**进不进成片**取决于本集是否每镜都已合成:' +
-      '用 get_dialogue_repair_status 看 productEffective / pendingCompose,为 false 就先补合成再 rerender_episode,' +
-      '否则成片仍是旧音频。整集批量用 repair_episode_dialogue。',
+      '★产物自动写回该镜(返回 persisted:true),但写回 ≠ 进成片:' +
+      '以 get_dialogue_repair_status 的 productEffective 为准——true 就 rerender_episode 重拼;' +
+      'false 时按 pendingCompose 先补合成再重拼,否则成片仍是旧音频。' +
+      '★该镜已有对口型产物时,成片优先用对口型版,换轨不会生效。整集批量用 repair_episode_dialogue。',
     { storyboard_id: z.number().int().positive() },
     async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/dialogue-replace`)),
   )
@@ -1847,7 +1848,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★代价是口型:画面按原音演的,换音后可能对不上。口型看不清的镜(背身/远景/画外)几乎无损;' +
       '若整集都是大特写对白,宁可选 regenerate_shot_video 重生。' +
       '后台异步串行(CosyVoice 合成不并发),进度用 dialogue-repair-status 查;余额不足会中止且不扣费。' +
-      '修完记得 compose_episode 重拼成片,否则成片里还是旧音频。',
+      '修完先看 get_dialogue_repair_status 的 productEffective:true 才重拼成片(compose_episode / rerender_episode);' +
+      'false 时按 pendingCompose 先补合成,否则成片里还是旧音频。',
     {
       episode_id: z.number().int().positive(),
       only_flagged: z.boolean().optional()
