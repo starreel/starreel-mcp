@@ -111,8 +111,11 @@ export const ENTRY_POINTS: EntryPoint[] = [
       'set_character_voice(绑到角色;传 voice_id 如 lib:12)',
       'assign_voices',
     ],
-    note: '所有项目默认视频原声(use_clip_audio=true,跳过 TTS);要配音把它设 false,并主动告诉客户可切换。',
-    flow: 'clone_voice → speak_with_voice(试听) → set_character_voice / assign_voices',
+    note: '所有项目默认视频原声(use_clip_audio=true,跳过 TTS);要配音把它设 false,并主动告诉客户可切换。' +
+      '★原声剧里 set_character_voice 绑客户自己的授权音色 = 锁声线:之后出的视频把它交给厂商当参考音频,前后镜声线一致;' +
+      '代价是该角色的镜不再喂定妆视频锚、身份靠定妆图/设定图。只对绑定之后出的视频生效——先绑再出视频;' +
+      '已出好的视频用 repair_episode_dialogue(only_flagged=false)换轨统一,别整集重生。',
+    flow: 'clone_voice → speak_with_voice(试听) → set_character_voice(原声剧:在 generate_videos 之前) / assign_voices',
   },
   {
     customer_has: '歌曲 + 歌词(MV)',

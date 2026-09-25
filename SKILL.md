@@ -206,6 +206,15 @@ content that will be rejected.
    character with `set_character_voice` only when you actually need it to
    dub a shot. Always pass that same `voice_id` — never a raw number from
    somewhere else.
+   **In native-audio dramas (`use_clip_audio=true`, the default) binding the
+   customer's own authorized voice is how you lock a character's voice**:
+   videos generated *after* the binding hand that voice to the video vendor as
+   a reference audio, so the character sounds the same in every shot (public
+   library voices are TTS-only and are not sent). Trade-off: that character's
+   shots stop using the portrait-video anchor, so identity rests on the
+   portrait/sheet — have those ready first. Bind **before** `generate_videos`;
+   for videos that already exist, use `repair_episode_dialogue`
+   (`only_flagged=false`) rather than regenerating whole episodes.
 
 6. **Follow the pipeline order — do not skip.** `set_script` → `rewrite_script`
    → `extract_assets` → portraits **+ sheets** → storyboards → frames → videos.

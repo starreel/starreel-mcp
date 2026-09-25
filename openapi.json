@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.84",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.84 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.85",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.85 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -493,7 +493,7 @@
       "post": {
         "operationId": "set_character_voice",
         "summary": "把音色绑到某角色,之后 generate_tts 用它给该角色配音",
-        "description": "把音色绑到某角色,之后 generate_tts 用它给该角色配音。免费。只有要出片时才需要这步——克隆和试听都不需要角色。",
+        "description": "把音色绑到某角色,之后 generate_tts 用它给该角色配音。免费。只有要出片时才需要这步——克隆和试听都不需要角色。\n★★【原声剧(use_clip_audio=true,默认)里这一步就是「锁声线」】绑的是**客户自己的授权音色**(clone_voice 克隆的 / 客户上传的,不是公共音色)时,之后生成的视频会把这段声音直接交给视频厂商当参考音频,厂商按它发声、口型天然同步——否则每个组/单镜各自采样嗓音,同一角色前后镜声线会漂。公共音色只用于 TTS 配音,不会交给厂商。\n★代价:该角色出场的镜头生成视频时不再喂定妆视频锚(参考视频的音轨会压过参考音频,只能二选一),人物身份改由定妆图/设定图承担——所以绑之前先确认定妆图、设定图已经到位。\n★只对**绑定之后**生成的视频生效:要先绑、再 generate_videos。已经出好的视频要统一声线,用 repair_episode_dialogue(only_flagged=false,克隆音重配整句、不重生视频、按 TTS 档计费)最省;重生视频(regenerate_shot_video)也行但贵几个数量级。\n★绑好后 assign_voices 不会再覆盖这个角色(客户自己的声音优先级最高)。",
         "tags": [
           "characters"
         ],
@@ -2835,7 +2835,7 @@
       "post": {
         "operationId": "assign_voices",
         "summary": "★给本集所有角色分配音色(配音导演 agent 按性别/性格/年龄/角色定位+项目语言选)",
-        "description": "★给本集所有角色分配音色(配音导演 agent 按性别/性格/年龄/角色定位+项目语言选)。voiceStyle 不是提取时自动填的——不分配,generate_tts 就没音色。文本步(LLM)后付。后台异步,轮询 get_pipeline_status:assign_voices=done 即完成,再 generate_tts。",
+        "description": "★给本集所有角色分配音色(配音导演 agent 按性别/性格/年龄/角色定位+项目语言选)。voiceStyle 不是提取时自动填的——不分配,generate_tts 就没音色。文本步(LLM)后付。已用 set_character_voice 绑了客户自己授权音色的角色会被锁定、不会被改成别的音色。后台异步,轮询 get_pipeline_status:assign_voices=done 即完成,再 generate_tts。",
         "tags": [
           "episodes"
         ],
@@ -8348,7 +8348,7 @@
       "post": {
         "operationId": "replace_shot_dialogue",
         "summary": "换某镜对白音色/声线(转写+克隆重配)",
-        "description": "换某镜对白音色/声线(转写+克隆重配)。后台异步,按用量后付不欠费。要求本镜有原声视频+角色声线定妆音。★它也是「这一镜台词没念完/念了别的」最经济的修法:用克隆音重配整句并静音原声段,**不重新生成视频**——按 TTS 档(千字符)计费,比 regenerate_shot_video(720p 212 点/秒)低几个数量级。代价:画面口型是按原音演的,换音后可能对不上;口型看不清的镜(背身/远景/画外)几乎无损,大特写慎用。整集批量用 repair_episode_dialogue。",
+        "description": "换某镜对白音色/声线(转写+克隆重配)。后台异步,按用量后付不欠费。要求本镜有原声视频+角色声线定妆音。★它也是「这一镜台词没念完/念了别的」最经济的修法:用克隆音重配整句并静音原声段,**不重新生成视频**——按 TTS 档(千字符)计费,比 regenerate_shot_video(720p 212 点/秒)低几个数量级。代价:画面口型是按原音演的,换音后可能对不上;口型看不清的镜(背身/远景/画外)几乎无损,大特写慎用。★产物自动写回该镜(返回 persisted:true),但**进不进成片**取决于本集是否每镜都已合成:用 get_dialogue_repair_status 看 productEffective / pendingCompose,为 false 就先补合成再 rerender_episode,否则成片仍是旧音频。整集批量用 repair_episode_dialogue。",
         "tags": [
           "storyboards"
         ],

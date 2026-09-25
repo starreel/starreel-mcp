@@ -1832,7 +1832,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★它也是「这一镜台词没念完/念了别的」最经济的修法:用克隆音重配整句并静音原声段,' +
       '**不重新生成视频**——按 TTS 档(千字符)计费,比 regenerate_shot_video(720p 212 点/秒)低几个数量级。' +
       '代价:画面口型是按原音演的,换音后可能对不上;口型看不清的镜(背身/远景/画外)几乎无损,大特写慎用。' +
-      '整集批量用 repair_episode_dialogue。',
+      '★产物自动写回该镜(返回 persisted:true),但**进不进成片**取决于本集是否每镜都已合成:' +
+      '用 get_dialogue_repair_status 看 productEffective / pendingCompose,为 false 就先补合成再 rerender_episode,' +
+      '否则成片仍是旧音频。整集批量用 repair_episode_dialogue。',
     { storyboard_id: z.number().int().positive() },
     async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/dialogue-replace`)),
   )
@@ -2046,6 +2048,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'assign_voices',
     '★给本集所有角色分配音色(配音导演 agent 按性别/性格/年龄/角色定位+项目语言选)。' +
       'voiceStyle 不是提取时自动填的——不分配,generate_tts 就没音色。文本步(LLM)后付。' +
+      '已用 set_character_voice 绑了客户自己授权音色的角色会被锁定、不会被改成别的音色。' +
       '后台异步,轮询 get_pipeline_status:assign_voices=done 即完成,再 generate_tts。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/assign-voices`)),
@@ -2477,7 +2480,17 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'set_character_voice',
     '把音色绑到某角色,之后 generate_tts 用它给该角色配音。免费。' +
-      '只有要出片时才需要这步——克隆和试听都不需要角色。',
+      '只有要出片时才需要这步——克隆和试听都不需要角色。' +
+      '\n★★【原声剧(use_clip_audio=true,默认)里这一步就是「锁声线」】绑的是**客户自己的授权音色**' +
+      '(clone_voice 克隆的 / 客户上传的,不是公共音色)时,之后生成的视频会把这段声音直接交给视频厂商当参考音频,' +
+      '厂商按它发声、口型天然同步——否则每个组/单镜各自采样嗓音,同一角色前后镜声线会漂。' +
+      '公共音色只用于 TTS 配音,不会交给厂商。' +
+      '\n★代价:该角色出场的镜头生成视频时不再喂定妆视频锚(参考视频的音轨会压过参考音频,只能二选一),' +
+      '人物身份改由定妆图/设定图承担——所以绑之前先确认定妆图、设定图已经到位。' +
+      '\n★只对**绑定之后**生成的视频生效:要先绑、再 generate_videos。已经出好的视频要统一声线,' +
+      '用 repair_episode_dialogue(only_flagged=false,克隆音重配整句、不重生视频、按 TTS 档计费)最省;' +
+      '重生视频(regenerate_shot_video)也行但贵几个数量级。' +
+      '\n★绑好后 assign_voices 不会再覆盖这个角色(客户自己的声音优先级最高)。',
     {
       character_id: z.number().int().positive(),
       voice_id: z.string().describe('来自 clone_voice / list_voices 的 voice_id(形如 lib:12)'),
