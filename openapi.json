@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.89",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.89 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.90",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.90 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -6898,6 +6898,175 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/voice-identity-scan": {
+      "post": {
+        "operationId": "scan_voice_consistency",
+        "summary": "★原声剧（视频自带人声）客户报「同一个角色前后嗓音不一样 / 声线漂了」时跑这个",
+        "description": "★原声剧（视频自带人声）客户报「同一个角色前后嗓音不一样 / 声线漂了」时跑这个。免费（本地推理，不调厂商）。对每个有台词的镜，听厂商生成的人声：台词念没念全，以及声音像不像该角色绑定的声线锚。**异步**：立即返回，后台整集约 10 分钟；同一集同时只跑一条（重复调用返回 started=false）。默认跳过已对当前视频扫过的镜，rescan=true 全部重扫。用 get_voice_consistency 查进度和逐镜结果。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "rescan": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "get": {
+        "operationId": "get_voice_consistency",
+        "summary": "查声线一致性扫描的进度与逐镜结果（scan_voice_consistency 启动的）",
+        "description": "查声线一致性扫描的进度与逐镜结果（scan_voice_consistency 启动的）。免费。summary.voice_mismatch=声音不像该角色声线锚的镜号（重点看）；dialogue_issues=台词没念完/念错/多出说话声的镜；not_scanned_or_stale=还没扫或视频换过需重扫。speaker_verdict=uncertain 表示人声太短判不了，不是问题。声线不一致的镜：先用 get_pipeline_status 的 native_voice_anchor 确认角色已绑声线，再 regenerate_shot_video 重出。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/wardrobe-scan": {
+      "post": {
+        "operationId": "scan_wardrobe_consistency",
+        "summary": "★客户报「同一个角色前后换了衣服 / 衣服颜色款式不对」时跑这个；终拼前也建议跑一次",
+        "description": "★客户报「同一个角色前后换了衣服 / 衣服颜色款式不对」时跑这个；终拼前也建议跑一次。逐镜把采用的首帧和视频中段一帧，与本镜每个角色的设定图（没有则用定妆图）比对衣服的款式与颜色。常见成因是远景小人物被出图模型画成了别的衣服——即使参考图和提示词都对。夜景/暖光的整体偏色不算不一致。每镜一次视觉审计，**按用量计费**。返回 flagged[{shot, characters:[{name, differences}]}] / clean / errors。dry_run=true 只报告不写回；否则写回，compose_episode 的终拼预检会以 wardrobe_mismatch 列出这些镜。处置：重出该镜首帧（generate_shot_frame）再 regenerate_shot_video；重新拼接去不掉。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dry_run": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",

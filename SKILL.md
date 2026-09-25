@@ -659,6 +659,32 @@ the scene (signs, book pages, screens) is not reported. Re-composing cannot remo
 burned-in text; `regenerate_shot_video` the flagged shots. After a non-dry-run scan,
 `compose_episode` lists them as advisory `vendor_burned_text`.
 
+### "同一个角色前后换了衣服" / a character's outfit changes between shots
+
+The image model sometimes draws a character's clothing differently from the
+reference — most often a small figure in a wide shot — even when the reference
+images, the shot text and the wardrobe lock were all correct. Run
+**`scan_wardrobe_consistency`** (one vision call per shot, billed by usage): it
+compares each shot's opening frame and a mid-clip frame with every bound
+character's sheet (or portrait) and reports concrete `differences`. Overall
+night/lamp color cast is not a mismatch. Re-composing cannot fix it: regenerate
+the shot's frame (`generate_shot_frame`), then `regenerate_shot_video`.
+
+### "同一个角色前后嗓音不一样" / a character's voice drifts between shots
+
+On native-audio projects the voice comes from the video vendor, anchored by the
+character's bound voice sample. Two different things look the same to the ear:
+a shot generated **before** the voice was bound (it never had an anchor), and a
+shot whose voice drifted despite the anchor. Check them in this order:
+
+1. `get_pipeline_status` → `native_voice_anchor.stale_shots` lists shots whose
+   final clip was generated without the speaker's current voice anchor
+   (`not_attached` / `anchor_changed`). Regenerate those — no scan needed.
+2. For the rest, `scan_voice_consistency` (free, runs in the background ~10 min
+   per episode) then `get_voice_consistency`: `summary.voice_mismatch` are shots
+   whose voice does not sound like the character's anchor. `uncertain` means the
+   spoken part was too short to judge — not a defect.
+
 ### "话没说完就切" / a line gets cut off mid-word
 
 **By far the most common cause is #2 — the vendor's clip never said the whole

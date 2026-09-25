@@ -1784,6 +1784,37 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       jsonResult(await client.producePost(`/episodes/${episode_id}/video-text-scan`, { dry_run: dry_run === true })),
   )
   server.tool(
+    'scan_wardrobe_consistency',
+    '★客户报「同一个角色前后换了衣服 / 衣服颜色款式不对」时跑这个；终拼前也建议跑一次。' +
+      '逐镜把采用的首帧和视频中段一帧，与本镜每个角色的设定图（没有则用定妆图）比对衣服的款式与颜色。' +
+      '常见成因是远景小人物被出图模型画成了别的衣服——即使参考图和提示词都对。夜景/暖光的整体偏色不算不一致。' +
+      '每镜一次视觉审计，**按用量计费**。返回 flagged[{shot, characters:[{name, differences}]}] / clean / errors。' +
+      'dry_run=true 只报告不写回；否则写回，compose_episode 的终拼预检会以 wardrobe_mismatch 列出这些镜。' +
+      '处置：重出该镜首帧（generate_shot_frame）再 regenerate_shot_video；重新拼接去不掉。',
+    { episode_id: z.number().int().positive(), dry_run: z.boolean().optional() },
+    async ({ episode_id, dry_run }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/wardrobe-scan`, { dry_run: dry_run === true })),
+  )
+  server.tool(
+    'scan_voice_consistency',
+    '★原声剧（视频自带人声）客户报「同一个角色前后嗓音不一样 / 声线漂了」时跑这个。免费（本地推理，不调厂商）。' +
+      '对每个有台词的镜，听厂商生成的人声：台词念没念全，以及声音像不像该角色绑定的声线锚。' +
+      '**异步**：立即返回，后台整集约 10 分钟；同一集同时只跑一条（重复调用返回 started=false）。' +
+      '默认跳过已对当前视频扫过的镜，rescan=true 全部重扫。用 get_voice_consistency 查进度和逐镜结果。',
+    { episode_id: z.number().int().positive(), rescan: z.boolean().optional() },
+    async ({ episode_id, rescan }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/voice-identity-scan`, { rescan: rescan === true })),
+  )
+  server.tool(
+    'get_voice_consistency',
+    '查声线一致性扫描的进度与逐镜结果（scan_voice_consistency 启动的）。免费。' +
+      'summary.voice_mismatch=声音不像该角色声线锚的镜号（重点看）；dialogue_issues=台词没念完/念错/多出说话声的镜；' +
+      'not_scanned_or_stale=还没扫或视频换过需重扫。speaker_verdict=uncertain 表示人声太短判不了，不是问题。' +
+      '声线不一致的镜：先用 get_pipeline_status 的 native_voice_anchor 确认角色已绑声线，再 regenerate_shot_video 重出。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/voice-identity-scan`)),
+  )
+  server.tool(
     'scan_dialogue_coverage',
     '★客户报「话没说完就切 / 台词只念了一半」时先跑这个。默认**免费零扣费**(只读已落库的转录审计结果)。'
       + '把该集每个原声镜的视频音轨与台词做词级比对,按族给出结论:'
