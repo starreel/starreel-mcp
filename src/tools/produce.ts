@@ -238,7 +238,7 @@ const PROJECT_SETTINGS_FIELDS = {
   image_model: z.string().optional().describe('图片模型(★drama级·整剧统一画风·默认 ChatGPT Image 2.5 Flare)。可选:' +
     'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准·慢约5秒)/' +
     'gemini-3.1-flash-image(香蕉2·71点)/gemini-3-pro-image(香蕉Pro·精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·31点)/' +
-    'doubao-seedream-5-0-260128(Seedream 5.0)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图'),
+    'doubao-seedream-5-0-260128(Seedream 5.0)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图。★各模型实测优劣(一次过率/手部结构/安全拒绝率/画风稳定度)与选型步骤见 get_capabilities_guide(section=model_guide)'),
   // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它)
   video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→seedance-2.5 或降本 hailuo-3;风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒):' +
     'seedance-2.5(默认·全能力:帧链/场景组/就地编辑/延长/参考图锚·720p约212点/秒) / ' +
@@ -1025,7 +1025,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'get_final_cut',
     '查某一集成片状态与下载链接。status=completed 时返回 download_url(我方 COS 直链,可直接下载)。免费。' +
-      '★bgm_stale=true 表示配乐在成片之后生成/改动、尚未进成片:重新 compose_episode(免费)即可,别用 re-render。',
+      '★bgm_stale=true 表示配乐在成片之后生成/改动、尚未进成片:重新 compose_episode(免费)即可,别用 re-render。' +
+      '★若登记过外部交付版本(register_external_delivery),另返回 delivery——那才是客户实际收到的一版;download_url 仍是平台自己拼的成片。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/final-cut`)),
   )
@@ -1570,6 +1571,40 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
   )
   server.tool(
+    'register_external_delivery',
+    '★后期在平台外完成(本地换旁白/裁剪/加片尾/配乐)后,把**最终交给客户的那一版成片**登记回平台。免费。' +
+      '不登记的话,平台里的成片记录并不代表客户实际收到的版本,事后无法追溯「交付的是哪一版、每镜用的哪次生成」。' +
+      '平台会自己下载复核 sha256/大小/时长(不采信你报的值),并自动快照每镜此刻的来源素材(当前视频、采用的生成 id 及其哈希、裁剪窗口)' +
+      '和最近一次平台成片;你可在 manifest 里附上外部后期做了什么(例如 {audio:{narration:"本地替换",music:"..."}, trims:[...], ending:"..."})。' +
+      '新登记即为当前交付版,版本号每集递增;不改平台成片(get_final_cut 的 download_url 不变,另返回 delivery)。' +
+      '传 file_path(本地视频,≤300MB,自动上传)或已用 upload-url(kind=footage)上传得到的 file_url,二选一。',
+    {
+      episode_id: z.number().int().positive(),
+      file_path: z.string().optional().describe('本地成片路径(mp4/mov/webm/m4v,≤300MB)'),
+      file_url: z.string().optional().describe('已上传到本平台的 public_url(与 file_path 二选一)'),
+      note: z.string().max(500).optional(),
+      manifest: z.record(z.unknown()).optional().describe('外部后期做了什么(≤64KB),原样存进交付清单的 client 段'),
+    },
+    async ({ episode_id, file_path, file_url, note, manifest }) => {
+      const url = file_path ? await client.uploadLocalFile(file_path, 'footage') : file_url
+      if (!url) throw new Error('file_path 与 file_url 必须给一个')
+      return jsonResult(await client.producePost(`/episodes/${episode_id}/deliveries`, { file_url: url, note, manifest }))
+    },
+  )
+  server.tool(
+    'list_deliveries',
+    '列本集已登记的外部交付版本(新→旧),每条含 sha256、时长、is_current 与完整交付清单(每镜来源 + 外部后期说明)。免费。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/deliveries`)),
+  )
+  server.tool(
+    'set_current_delivery',
+    '把本集的某个已登记交付版本设为当前(例如客户最终选了较早的一版)。免费。只影响 get_final_cut 的 delivery,不改平台成片。',
+    { episode_id: z.number().int().positive(), delivery_id: z.number().int().positive() },
+    async ({ episode_id, delivery_id }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/deliveries/${delivery_id}/current`)),
+  )
+  server.tool(
     'upload_shot_footage',
     '用**客户自有的整段视频**（录屏 / 产品实拍 / 第三方成片）直接当某镜的视频——实拍素材镜。' +
       '登记后该镜不再 AI 出图/出视频（generate_videos 会跳过它,单镜重生会被拒),终拼原样使用,镜头时长按素材真实长度回写,' +
@@ -1734,6 +1769,19 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.produceGet(`/episodes/${episode_id}/intra-shot-cuts`)),
+  )
+  server.tool(
+    'scan_burned_subtitles',
+    '★原声剧（视频自带人声）终拼前建议跑一次；客户报「成片里有两层字幕 / 画面里多出一行字」时先跑这个。'
+      + '视频厂商有时会无视「不要字幕」的约束，把台词烧进画面——字小、通常只在说出那句台词的一两秒内出现，'
+      + '而平台成片还会再叠一层字幕，于是变成双字幕。重新拼接去不掉它，只能 regenerate_shot_video 重出该镜。'
+      + '每镜抽 12 帧、一次视觉审计，**按用量计费**（每镜一次小额 vision 调用）。'
+      + '返回 flagged[{shot, texts, matches_dialogue, frames}] / clean / errors。'
+      + 'matches_dialogue=true 表示读出来的字就是本镜台词，基本可确认是厂商字幕；招牌、书页、屏幕等画面里本来就有的字不算。'
+      + 'dry_run=true 只报告不写回；否则结果写回，compose_episode 的终拼预检会以 vendor_burned_text 列出这些镜。',
+    { episode_id: z.number().int().positive(), dry_run: z.boolean().optional() },
+    async ({ episode_id, dry_run }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/video-text-scan`, { dry_run: dry_run === true })),
   )
   server.tool(
     'scan_dialogue_coverage',

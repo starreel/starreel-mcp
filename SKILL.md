@@ -87,7 +87,7 @@ announces a condensed version as MCP `instructions` at connect time.
 | A song + lyrics | `create_drama` (`project_type: "mv"`) → `set_mv_lyrics` → `generate_mv_story` → `generate_mv_script` | `rewrite_script` (blocked for MV) |
 | A product / brand | `create_drama` (`project_type: "ad"` or `"brand_film"`) → `add_product` → `generate_product_sheet` | writing brand copy as dialogue (it gets spoken) |
 | Generated shots / a cut that needs changes | `scan_dialogue_coverage` / `scan_intra_shot_cuts` first, then `get_shot_prompts` · `update_shot` · `replace_shot_dialogue` · `repair_episode_dialogue` · `split_shot` · `trim_shot` · `regenerate_shot_video` · `edit_video_shot` → `rerender_episode` | re-composing to fix what a clip *says* |
-| Wants to assemble the cut themselves | `export_handoff_pack` → `get_handoff_toolchain` | `compose_episode` (pick one) |
+| Wants to assemble the cut themselves | `export_handoff_pack` → `get_handoff_toolchain` → **`register_external_delivery`** when the cut is final | `compose_episode` (pick one); delivering a cut the platform has no record of |
 | A multi-language release | `translate_subtitles` · `subtitle_secondary_lang` in project settings | — |
 
 ### Customer-supplied images
@@ -325,6 +325,19 @@ content that will be rejected.
    seedance stays 720p (HD tiers off sale), hailuo-3 → 1080p (= 2K, 112 pts/s),
    WAN → 1080p (168 pts/s). hailuo-3 has no separate 480p tier (a 480p request
    still bills at 768P).
+   **Model strengths & weaknesses — ask `get_capabilities_guide` with
+   `section=model_guide`** before proposing a model: it carries measured data
+   per image model and video engine, a step-by-step choice list and ready-made
+   combos. The short version for images: `gpt-image-2.5-flare` has by far the
+   best first-try rate (60% vs 5% for Nano Banana 2 in the same period) and much
+   better hands / hand-held objects, so despite the higher unit price it costs
+   roughly 1/3 as much per *usable* image; its weak spots are a ~3× higher vendor
+   safety-refusal rate on violent scenes (the platform auto-retries once on
+   `gemini-3.1-flash-image`) and occasional drift toward an anime look on
+   photoreal dramas — redraw those single shots on `gemini-3.1-flash-image`.
+   Use `gpt-image-2.5-sunburst` for shots with readable Chinese text, the 31-pt
+   models (Lite / Seedream 5.0) only for drafts, and Nano Banana Pro for a few
+   key images. Compare models by cost per usable image, never by unit price.
    **Set the drama engine before generating any video**:
    switching never re-renders existing shots, and mixing engines inside one
    drama risks style/identity drift.
@@ -630,6 +643,22 @@ The table above is for **generation failures**. A different class of report is
 "the video generated fine, but the cut is wrong." These never surface as a
 `fail_reason` — nothing failed. Diagnose by symptom:
 
+### "成片里有两层字幕" / extra text burned into the picture
+
+On native-audio projects (the clip carries the voices) the video vendor sometimes
+ignores the "no subtitles" constraint and burns the spoken line into the picture —
+small, usually in the lower half, and **only for the second or two while that line
+is spoken**, so spot-checking a frame or two easily misses it. The platform then
+renders its own subtitles on top, and the viewer sees the line twice.
+
+Run **`scan_burned_subtitles`** before the final compose (or as soon as someone
+reports doubled text). It samples 12 frames per shot and makes one small vision
+call per shot (billed by usage). `matches_dialogue: true` means the text it read
+*is* that shot's line — treat that as confirmed. Text that physically exists in
+the scene (signs, book pages, screens) is not reported. Re-composing cannot remove
+burned-in text; `regenerate_shot_video` the flagged shots. After a non-dry-run scan,
+`compose_episode` lists them as advisory `vendor_burned_text`.
+
 ### "话没说完就切" / a line gets cut off mid-word
 
 **By far the most common cause is #2 — the vendor's clip never said the whole
@@ -855,6 +884,15 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   `get_bgm_prompt_guide`, `replace_shot_dialogue`
 - **Finish**: `compose_episode`, `get_final_cut`, `get_export`,
   `generate_episode_poster`, `generate_cover`
+- **Delivered a cut you finished outside the platform** (re-voiced lines, trims,
+  an ending card, music): `register_external_delivery` the exact file you hand to
+  the customer — **every time**, including revisions. Otherwise the platform's
+  records describe a cut the customer never received, and nobody can later tell
+  which version shipped or which generation each shot came from. The platform
+  re-hashes the file itself and snapshots every shot's source clip; put what you
+  changed outside in `manifest`. `get_final_cut` then returns it as `delivery`
+  next to the platform's own `download_url`; `list_deliveries` /
+  `set_current_delivery` manage versions.
 - **Assemble it yourself**: `export_handoff_pack`, `get_handoff_toolchain` —
   download the per-shot raw clips, dialogue tracks, SFX, BGM and subtitles, then
   decide transitions and assemble the cut on your own side. Use this instead of

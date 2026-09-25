@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.88",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.88 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.89",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.89 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -3248,6 +3248,109 @@
         }
       }
     },
+    "/episodes/{episode_id}/deliveries": {
+      "get": {
+        "operationId": "list_deliveries",
+        "summary": "列本集已登记的外部交付版本(新→旧),每条含 sha256、时长、is_current 与完整交付清单(每镜来源 + 外部后期说明)",
+        "description": "列本集已登记的外部交付版本(新→旧),每条含 sha256、时长、is_current 与完整交付清单(每镜来源 + 外部后期说明)。免费。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/deliveries/{delivery_id}/current": {
+      "post": {
+        "operationId": "set_current_delivery",
+        "summary": "把本集的某个已登记交付版本设为当前(例如客户最终选了较早的一版)",
+        "description": "把本集的某个已登记交付版本设为当前(例如客户最终选了较早的一版)。免费。只影响 get_final_cut 的 delivery,不改平台成片。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "delivery_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/episodes/{episode_id}/derive-pose-chain": {
       "post": {
         "operationId": "derive_pose_chain",
@@ -4138,7 +4241,7 @@
       "get": {
         "operationId": "get_final_cut",
         "summary": "查某一集成片状态与下载链接",
-        "description": "查某一集成片状态与下载链接。status=completed 时返回 download_url(我方 COS 直链,可直接下载)。免费。★bgm_stale=true 表示配乐在成片之后生成/改动、尚未进成片:重新 compose_episode(免费)即可,别用 re-render。",
+        "description": "查某一集成片状态与下载链接。status=completed 时返回 download_url(我方 COS 直链,可直接下载)。免费。★bgm_stale=true 表示配乐在成片之后生成/改动、尚未进成片:重新 compose_episode(免费)即可,别用 re-render。★若登记过外部交付版本(register_external_delivery),另返回 delivery——那才是客户实际收到的一版;download_url 仍是平台自己拼的成片。",
         "tags": [
           "episodes"
         ],
@@ -6614,6 +6717,68 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/video-text-scan": {
+      "post": {
+        "operationId": "scan_burned_subtitles",
+        "summary": "★原声剧（视频自带人声）终拼前建议跑一次；客户报「成片里有两层字幕 / 画面里多出一行字」时先跑这个",
+        "description": "★原声剧（视频自带人声）终拼前建议跑一次；客户报「成片里有两层字幕 / 画面里多出一行字」时先跑这个。视频厂商有时会无视「不要字幕」的约束，把台词烧进画面——字小、通常只在说出那句台词的一两秒内出现，而平台成片还会再叠一层字幕，于是变成双字幕。重新拼接去不掉它，只能 regenerate_shot_video 重出该镜。每镜抽 12 帧、一次视觉审计，**按用量计费**（每镜一次小额 vision 调用）。返回 flagged[{shot, texts, matches_dialogue, frames}] / clean / errors。matches_dialogue=true 表示读出来的字就是本镜台词，基本可确认是厂商字幕；招牌、书页、屏幕等画面里本来就有的字不算。dry_run=true 只报告不写回；否则结果写回，compose_episode 的终拼预检会以 vendor_burned_text 列出这些镜。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dry_run": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -10102,6 +10267,10 @@
     },
     {
       "tool": "upload_shot_frame",
+      "reason": "unmappable: local file upload flow"
+    },
+    {
+      "tool": "register_external_delivery",
       "reason": "unmappable: local file upload flow"
     },
     {

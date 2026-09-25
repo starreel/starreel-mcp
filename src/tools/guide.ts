@@ -16,7 +16,8 @@ export function registerGuideTools(server: McpServer) {
       'qa_tools(按客户描述的症状选检测工具与修法)、optional_boosts(可选增强及何时做)、billing(报价确认与免费族)、' +
       'common_requests(客户常见原话 → 该做什么)、' +
       'local_postproduction(★客户要把镜头下载到**自己电脑**上剪 / 配乐 / 烧字幕 / 优化转场 / 补旁白时的完整流程:' +
-      '阶段顺序、执行位置、逐镜逐句怎么核对声音、什么才算验收完成)。传 section 只取一段。' +
+      '阶段顺序、执行位置、逐镜逐句怎么核对声音、什么才算验收完成)、' +
+      'model_guide(★图片模型与视频引擎的实测优劣势、价格、选型决策步骤与推荐组合——建剧选型、客户问「哪个模型好 / 为什么手画坏了 / 怎么省钱」时先看)。传 section 只取一段。' +
       '★工具描述回答"这个工具做什么",本工具回答"什么情况下该用哪个"——客户交来的是成品分镜表却被 set_script→rewrite_script 改写成散文,就是没先看这张表。',
     {
       section: z.enum(GUIDE_SECTIONS).optional().describe('只取某一段;不传返回全部'),

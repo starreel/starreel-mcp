@@ -14,7 +14,7 @@
  * ★列表字段(use / tools / run / fix)里每一项以**工具名开头**,括号里写关键参数;
  *   散文字段里的工具名用反引号包住——referencedTools() 靠这两条约定抽名字。
  */
-export const GUIDE_VERSION = '2026-09-02'
+export const GUIDE_VERSION = '2026-09-25'
 
 export interface EntryPoint {
   /** 客户手上有什么(判别条件) */
@@ -424,6 +424,189 @@ export const LOCAL_POSTPRODUCTION = {
   ],
 }
 
+export interface ModelCard {
+  /** 传给 image_model / video_engine 的取值 */
+  id: string
+  name: string
+  is_default?: boolean
+  price: string
+  strengths: string[]
+  weaknesses: string[]
+  best_for: string
+  avoid_for?: string
+}
+export interface ModelCombo { scenario: string; image_model: string; video_engine: string; resolution: string; why: string }
+
+/**
+ * v0.9.2018 — 模型选型指南。工具参数描述只列「型号 + 价格」,这里回答「哪个好、好在哪、坑在哪、该怎么配」。
+ * ★数字全部来自平台生产实测(带样本量),样本不足的维度如实写「未系统实测」,别替它补结论。
+ * ★型号集合与工具参数可选值由 test/mcp-model-guide.test.ts 双向钉住——新增/下架型号两处一起改。
+ */
+export const MODEL_GUIDE = {
+  principle:
+    '模型是 drama 级设置(create_drama / update_project_settings 的 image_model、video_engine),整剧统一画风与身份;' +
+    '单镜可临时覆盖(图:`generate_shot_frame` 传 image_model,且须与 `quote_shot_frame` 传的同一个;视频编辑:`edit_video_shot` 传 model)。' +
+    '选型要主动讲给客户:把价差与优劣摆出来,让客户定,别默默用默认值。' +
+    '比较模型「贵不贵」要按**每张可用图/每条可用镜头**算,不是按单张单价——重抽次数差几倍时,单价低的反而更贵。',
+  image_models: [
+    {
+      id: 'gpt-image-2.5-flare', name: 'ChatGPT Image 2.5 Flare', is_default: true,
+      price: '基础 11 点 + 每张参考图 18 点(按实际送出的参考图计;常见 4~6 张 ≈ 80~120 点/张);报价是区间,按 estimated_points 备余额',
+      strengths: [
+        '一次过率最高:同期实测 60.1%(223 个镜位),中位 1 张就出可用图;Nano Banana 2 同口径 4.9%',
+        '手部、手持器物、接触关系结构明显更稳(同镜同参考图配对比较,6 对里 4 对明显胜出)',
+        '参考图最多 16 张:多人同框时每个角色的身份锚都送得到',
+        '竖屏出图 1088×1920,最贴近 9:16',
+        '算上重抽,每张可用图的实际花费约为 Nano Banana 2 的 1/3~1/4',
+      ],
+      weaknesses: [
+        '厂商安全拒绝率最高:约 2.61%(Nano Banana 2 约 0.83%),打斗/流血/武器场景更容易触发;平台会自动换 gemini-3.1-flash-image 重出一次',
+        '写实电影感剧偶发画风漂成日式动漫 CG(配对样本 6 对里 1 对)',
+        '单价随参考图张数浮动,报价只能给区间',
+      ],
+      best_for: '绝大多数剧的默认选择;近景/特写、手部动作、手持道具、多人同框镜尤其该用它',
+      avoid_for: '暴力场面密集且反复被安全拒的镜(那几镜单独换 gemini-3.1-flash-image)',
+    },
+    {
+      id: 'gpt-image-2.5-sunburst', name: 'ChatGPT Image 2.5 Sunburst',
+      price: '与 flare 同价(11 + 18/参考图)',
+      strengths: ['编辑精度优先,中文字形与细部更准', '其余能力同 flare(16 张参考图、1088×1920)'],
+      weaknesses: ['比 flare 慢约 5 秒/张', '平台内样本少,一次过率未单独实测;安全拒绝特性按同厂商同代推定与 flare 相近'],
+      best_for: '画面里要出现可读中文(招牌、字卡、屏幕、文件、海报)或细部特写要求高的镜',
+      avoid_for: '没有文字需求的整集批量——多等时间、无额外收益',
+    },
+    {
+      id: 'gemini-3.1-flash-image', name: 'Nano Banana 2',
+      price: '一口价:镜头帧 71 点/张(1K);定妆照、设定图等身份锚 119 点/张(2K);参考图不另收(最多 14 张)',
+      strengths: [
+        '画风锚定稳:写实电影感剧不容易漂成动漫风',
+        '安全拒绝率低(约 0.83%),GPT 2.5 被拒的镜换它通常能过',
+        '固定价,预算好算',
+      ],
+      weaknesses: [
+        '一次过率低:实测 4.9%(123 个镜位),中位要烧 6 张才出一张可用图——单价便宜但总花费反而高',
+        '手指、手持器物容易融合或崩坏,且平台的解剖审计对手部覆盖不足,坏手可能被放行,要人工看',
+        '≤720p 剧的镜头帧按 1K 档出(768×1376),细节上限低于 GPT 2.5',
+      ],
+      best_for: '群像/远景/氛围镜、需要稳住写实画风的镜;GPT 2.5 被安全拒的镜的替补',
+      avoid_for: '手部特写、手持道具、器物密集(托盘、线缆、算盘、卷轴一类)的近景',
+    },
+    {
+      id: 'gemini-3-pro-image', name: 'Nano Banana Pro',
+      price: '175 点/张一口价(2K)',
+      strengths: ['画面最精细', '安全拒绝实测 0 次(145 张)', '早期同口径成功率 88.2%,每镜位平均 2.4 张候选'],
+      weaknesses: ['最贵,是 flare 常见单价的约 1.5~2 倍', '样本量小(34 个镜位),与 GPT 2.5 的一次过率未做同窗口对比'],
+      best_for: '封面、海报、定妆锚这类少量关键图',
+      avoid_for: '整集批量出镜头帧',
+    },
+    {
+      id: 'gemini-3.1-flash-lite-image', name: 'Nano Banana 2 Lite',
+      price: '31 点/张(经济档,厂商恒 1K)',
+      strengths: ['最便宜档之一', '出图快,适合快速看构图'],
+      weaknesses: ['分辨率固定 1K,细节上限最低', '平台内未系统实测质量,不建议作交付帧'],
+      best_for: '草稿、试风格、分镜预览',
+      avoid_for: '交付用的镜头帧与定妆锚——交付前切回 flare',
+    },
+    {
+      id: 'doubao-seedream-5-0-260128', name: 'Seedream 5.0',
+      price: '31 点/张(经济档)',
+      strengths: ['经济档价格', '出图像素高(厂商最低约 1920×1920 级)', '安全拒绝实测 0 次(170 张)', '参考图最多 10 张'],
+      weaknesses: ['平台内样本少,一次过率与手部结构未系统实测', '与 GPT 2.5 / Nano Banana 画风差异明显,整剧中途换它会跳风格'],
+      best_for: '预算敏感、想低价试另一种画风的项目(从第一张图就用它,别中途换)',
+      avoid_for: '已经用别的模型出过大半集的剧',
+    },
+  ] as ModelCard[],
+  image_decision: [
+    '① 默认 gpt-image-2.5-flare,建剧时就定,整集统一。中途换模型会让同一集里出现两种画风和两种画幅。',
+    '② 画面里要出现可读中文(招牌/字卡/屏幕/海报)→ 这些镜用 gpt-image-2.5-sunburst。',
+    '③ 某镜反复被安全拒(打斗、流血、武器)→ 平台已自动换 Nano Banana 2 重出一次;仍不行就对那一镜 `quote_shot_frame` → `generate_shot_frame` 显式传 image_model=gemini-3.1-flash-image(两次必须同值,否则 400 IMAGE_MODEL_MISMATCH),同时把措辞中性化。',
+    '④ 写实电影感剧里某镜画风漂成动漫 → 这一镜换 gemini-3.1-flash-image 重画。',
+    '⑤ 手部/持物/多人同框镜出现坏手、手物融合 → 用(或换回) gpt-image-2.5-flare 重画;Nano Banana 系列在这类镜上明显更差。',
+    '⑥ 只是试风格、看构图 → gemini-3.1-flash-lite-image 或 Seedream 5.0(31 点),交付前切回主模型重出。',
+    '⑦ 封面/海报/定妆锚要最精细 → gemini-3-pro-image(175 点),只用在少量关键图上。',
+  ],
+  video_engines: [
+    {
+      id: 'seedance-2.5', name: 'Seedance 2.5', is_default: true,
+      price: '720p 约 212 点/秒(在售 480p/720p,高清档停售);单镜 2~30 秒',
+      strengths: [
+        '指令遵循与人脸细节最强,写实真人剧首选',
+        '能力最全:首尾帧链、场景组、关键帧组(组内每镜都送自己的首帧,只有它支持)、就地编辑含时间区间、延长、参考图锚',
+        '镜内自行跳切少(实测 1/6 镜),单镜叙事稳',
+        '台词念不全的比例最低:23%(294 镜)',
+      ],
+      weaknesses: [
+        '最贵:约为 hailuo-3 的 3 倍、wan3.0 的 2.5 倍',
+        '文本审核最严:打斗、流血一类措辞容易直接被拒,要中性化描述',
+        '写实角色要做一次虚拟人像核验(每个人物锁 200 点,只有本引擎收)',
+      ],
+      best_for: '写实真人剧、对白多的剧、要逐镜精确控制画面的剧',
+    },
+    {
+      id: 'hailuo-3', name: 'MiniMax H3',
+      price: '720p(=768P)70 点/秒、1080p(=2K)112 点/秒;无独立 480p 档(选了也按 768P 计);单镜 4~15 秒',
+      strengths: [
+        '约 1/3 成本,还能出 2K',
+        '就地编辑保真度高(改色调/改局部时人物服装构图保持得最好),可在 Seedance 剧里单镜借用它做编辑',
+        '镜内自行跳切最少(实测 0/5 镜)',
+        '原生对白与音效',
+      ],
+      weaknesses: [
+        '慢:单镜约 6 分钟',
+        '台词念不全的比例高:50%(26 镜),对白密集剧慎用',
+        '不支持关键帧组与时间区间编辑',
+        '提示词上限 7000 字符,平台会自动剥掉软性描述块,极长的镜头描述会丢细节',
+      ],
+      best_for: '写实真人剧但预算紧、对白不密集;单镜编辑(配合 `edit_video_shot` 的 model 参数)',
+      avoid_for: '对白密集、赶交付时间的项目',
+    },
+    {
+      id: 'wan3.0', name: 'WAN 3.0',
+      price: '480p 42 / 720p 84 / 1080p 168 点/秒;单镜 2~30 秒(2 秒起计费,无 4 秒地板)',
+      strengths: [
+        '约 4 折成本,2~3 秒短镜更省',
+        '快:单镜约 2 分钟,并发好',
+        '文本审核宽松,动作/打斗措辞基本能过',
+        '有首尾帧双锚或参考图时,风格化角色的风格、服装、道具都跟得住',
+      ],
+      weaknesses: [
+        '输出侧真人脸审核:写实人脸在 720p 及以上一致被拒,重试救不回',
+        '会在单个镜头内自行换机位硬切(实测 11/12 镜),叙事镜观感是「画面跳来跳去」,提示词拦不住',
+        '只有单张首帧时,强场景描述会把风格化角色拉向写实(漂移)',
+        '道具形状锁不住;台词完整度样本不足未测',
+      ],
+      best_for: '动画/3D 卡通/风格化剧、空镜、产品镜、短平快的剪辑节奏',
+      avoid_for: '写实真人剧(绝不选);对白多、要单镜稳定叙事的剧',
+    },
+    {
+      id: 'wan3.0-prime', name: 'WAN 3.0 Prime(高速版)',
+      price: '480p 63 / 720p 126 / 1080p 252 点/秒(wan3.0 的 1.5 倍)',
+      strengths: ['能力同 wan3.0,出片快约一倍(单镜约 1 分钟)'],
+      weaknesses: ['同 wan3.0:写实人脸 720p+ 被拒、镜内自剪', '价格是 wan3.0 的 1.5 倍'],
+      best_for: '风格化项目赶交付',
+      avoid_for: '同 wan3.0;不赶时间就用 wan3.0',
+    },
+  ] as ModelCard[],
+  video_decision: [
+    '① 先定「是不是写实真人」:是 → seedance-2.5(默认)或降本 hailuo-3;绝不选 wan3.0 / wan3.0-prime。',
+    '② 写实真人 + 对白密集 → seedance-2.5(台词念不全 23% vs hailuo-3 50%)。',
+    '③ 风格化/动画/3D/空镜/产品镜 → wan3.0,赶交付用 wan3.0-prime;但讲连贯故事、要单镜稳定的叙事剧仍优先 seedance-2.5(WAN 镜内自剪 11/12)。',
+    '④ 想让每一镜的首帧都进组视频(关键帧组)→ 只有 seedance-2.5 支持;其他引擎的场景组只送组首镜首帧。',
+    '⑤ 出视频前就把引擎定好:切换不会重做已生成的镜头,同一剧混用引擎会有风格/身份跳变。',
+    '⑥ 分辨率:草稿迭代用低档(WAN 剧 480p,其余 720p);交付 seedance-2.5 维持 720p、hailuo-3 用 1080p(=2K)、WAN 用 1080p。',
+    '⑦ 单镜保持 3~5 秒:镜头越长模型自由发挥越多,所有引擎通用,WAN 上最明显。生成后可用 `scan_intra_shot_cuts` 查镜内跳切。',
+    '⑧ 只想改一镜的色调/局部 → `edit_video_shot` 可以单独选 model=hailuo-3(保真、便宜),不用改剧引擎;但它不支持 start_sec/end_sec 区间。',
+  ],
+  combos: [
+    { scenario: '写实真人短剧(标准配置)', image_model: 'gpt-image-2.5-flare', video_engine: 'seedance-2.5', resolution: '720p', why: '出图一次过率最高 + 视频人脸与指令遵循最强,返工最少' },
+    { scenario: '写实真人短剧 · 预算紧、对白不多', image_model: 'gpt-image-2.5-flare', video_engine: 'hailuo-3', resolution: '草稿 720p / 交付 1080p', why: '视频成本约 1/3;对白多就回到 seedance-2.5' },
+    { scenario: '动画 / 3D 卡通 / 风格化剧', image_model: 'gpt-image-2.5-flare', video_engine: 'wan3.0', resolution: '草稿 480p / 交付 1080p', why: '视频约 4 折且快;记得出尾帧给双锚,风格才锁得住' },
+    { scenario: '广告 / 产品片 / 空镜为主', image_model: 'gpt-image-2.5-flare', video_engine: 'wan3.0', resolution: '480p 试片 / 1080p 交付', why: '无真人脸审核问题,短镜 2 秒起计费最省;赶工换 wan3.0-prime' },
+    { scenario: '画面文字多(招牌、屏幕、文件、字卡)', image_model: 'gpt-image-2.5-sunburst', video_engine: 'seedance-2.5', resolution: '720p', why: '中文字形更准;视频按剧的真人/风格化再按上面选' },
+    { scenario: '打斗、流血场面多的写实剧', image_model: 'gpt-image-2.5-flare', video_engine: 'seedance-2.5', resolution: '720p', why: '图被安全拒的镜平台自动换 Nano Banana 2;视频侧把血腥措辞改成中性描述(Seedance 文本审核严)。不要为了过审换 WAN——写实人脸会被拒' },
+  ] as ModelCombo[],
+}
+
 export const HOW_TO_READ =
   '先按 entry_points 判客户手上的材料该走哪条通道(这是最常被跳过的一步),再按 pipeline 顺序推进、每道 review_gates 必过;' +
   '收费步按 billing.quote_flow 报价确认;遇到质量投诉按 qa_tools 的 symptom 选检测工具先定病因。'
@@ -440,10 +623,11 @@ export function buildGuide() {
     billing: BILLING,
     common_requests: COMMON_REQUESTS,
     local_postproduction: LOCAL_POSTPRODUCTION,
+    model_guide: MODEL_GUIDE,
   }
 }
 export type GuideSection = Exclude<keyof ReturnType<typeof buildGuide>, 'version' | 'how_to_read'>
-export const GUIDE_SECTIONS = ['entry_points', 'pipeline', 'review_gates', 'qa_tools', 'optional_boosts', 'billing', 'common_requests', 'local_postproduction'] as const
+export const GUIDE_SECTIONS = ['entry_points', 'pipeline', 'review_gates', 'qa_tools', 'optional_boosts', 'billing', 'common_requests', 'local_postproduction', 'model_guide'] as const
 
 const head = (s: string) => /^[a-z][a-z0-9_]*/.exec(s.trim())?.[0] ?? null
 const inProse = (s: string | undefined) => [...(s ?? '').matchAll(/`([a-z][a-z0-9_]*)`/g)].map((m) => m[1])
@@ -465,6 +649,11 @@ export function referencedTools(): string[] {
   ;[LOCAL_POSTPRODUCTION.when, LOCAL_POSTPRODUCTION.where_it_runs].forEach((s) => inProse(s).forEach(add))
   for (const s of LOCAL_POSTPRODUCTION.stages) { inProse(s.do).forEach(add); inProse(s.gotcha).forEach(add) }
   for (const r of [...LOCAL_POSTPRODUCTION.voice_rules, ...LOCAL_POSTPRODUCTION.not_verified_until]) inProse(r).forEach(add)
+  // 模型选型段:正文里反引号包住的工具名同样纳入哨兵
+  ;[MODEL_GUIDE.principle, ...MODEL_GUIDE.image_decision, ...MODEL_GUIDE.video_decision].forEach((s) => inProse(s).forEach(add))
+  for (const m of [...MODEL_GUIDE.image_models, ...MODEL_GUIDE.video_engines]) {
+    [...m.strengths, ...m.weaknesses, m.best_for, m.avoid_for].forEach((s) => inProse(s).forEach(add))
+  }
   return [...out].sort()
 }
 
@@ -487,6 +676,7 @@ export function buildInstructions(): string {
     '文本步按 token 后付;402 就停下让客户充值,别重试。',
     '长任务异步:generate_* 立即返回,用 get_pipeline_status / get_storyboards / get_run_status 轮询;图片 pending = 还在生成,别重复调(重复扣费)。',
     '改写成功后只 edit_rewritten_script 点改,别重跑 rewrite_script;角色外观唯一真相源是人物档案(update_character),别写进 visual_lock/art_bible。',
+    '选图片模型/视频引擎、客户问「哪个模型好 / 怎么更省」→ get_capabilities_guide(section=model_guide):各模型实测优劣、价格、决策步骤与推荐组合;建剧时就主动讲给客户定。',
     '不确定该用哪个工具、客户问「你们能做什么」→ 先调 get_capabilities_guide(免费、本地、不联网)。',
   ].join('\n')
 }
