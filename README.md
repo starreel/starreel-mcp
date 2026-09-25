@@ -129,12 +129,32 @@ See the [API docs](https://api.shortreelai.com/docs/mcp).
 | Identity anchors | `generate_portraits_and_sheets` (portraits + character sheets = the consistency anchor) |
 | Storyboards | `quote_storyboards` → `generate_storyboards` → `get_storyboards` |
 | Frames & video | `quote_frames` → `generate_frames` · `quote_videos` → `generate_videos` |
-| Audio | `generate_tts` · `generate_bgm` (steerable via `prompt`) · `get_bgm_prompt_guide` · `generate_sfx` · voice management |
+| Audio | `generate_tts` · `generate_bgm` (steerable via `prompt`) · `get_bgm_prompt_guide` · `generate_sfx` · voice cloning · `design_voice` (a new voice from one sentence) |
 | Finishing | `compose_episode` (free) · `get_final_cut` · `render_multi_aspect` · posters & covers |
 | Localization | `translate_subtitles` · localization jobs |
 | Ads / MV modes | product library & product sheets · MV lyrics → story → script |
 
 Project types: `drama` / `ad` / `mv` / `brand_film`.
+
+## Design a voice from a description (no sample needed)
+
+When the narrator or a character has no fitting voice in the library and there is no authorized
+recording to clone, design one from a single sentence.
+
+| Step | Tool | Cost |
+|---|---|---|
+| 1. Describe, generate candidates | `design_voice` (`description`, optional preview `text`) → `design_id` | free |
+| 2. Wait and listen | `get_voice_design` (`design_id`) — about 1-3 minutes; when `done`, every candidate is downloaded as a local wav (`local_path`) for the customer to pick | free |
+| 3. Keep one | `save_designed_voice` (`design_id`, `index`, `name`) → `voice_id` (e.g. `lib:12`) | same as a voice clone; saving the same candidate twice charges once |
+| 4. Use it | `set_character_voice` (`character_id`, `voice_id`) — `generate_tts` then reads every line of that character with it | free |
+
+The narrator is a character too (`char_type` voiceover). Describe what you want rather than what
+you don't — age, gender, timbre, pace, mood — e.g. *"a middle-aged man, low and warm voice, slow pace,
+sentences trail downward"*. **Always make the customer pick one before dubbing**: the same
+description gives a different person every time (measured voice similarity as low as 0.23), while
+a saved voice is cloned for every line (0.85-0.90). Limits: one design at a time per account, 30 per
+24 h; preview sentence 14-28 characters; candidates are kept for 6 hours; never name a real person
+to imitate their voice.
 
 ## Billing is agent-safe by design
 
