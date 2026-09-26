@@ -304,6 +304,7 @@ export const QA_TOOLS: QaTool[] = [
   { symptom: '要跑全集 / 想知道整部剧有多少问题、该先修哪几集', run: 'run_drama_precheck', then: ['run_precheck(对 attention 里那几集拿逐条明细)', 'plan_precheck_fix', 'update_shot'] },
   { symptom: '场景图(空景基板)不对 / 重出还是同一类图', run: 'get_scene_prompt', then: ['update_scene(改 image_prompt 正文——只改地点/时段是让平台重拼,拧不过来)', 'regenerate_scene_image(单场重出,覆盖旧图)', 'upload_scene_image(客户自有实拍/外部精修图)', 'generate_shot_frame(下游镜头帧不会自动跟着重出)'] },
   { symptom: '整集健康度 / 缺镜 / 进度', run: 'get_pipeline_status', then: ['get_health_report', 'review_all', 'get_storyboards', 'get_jobs', 'get_run_status', 'get_autofill_status(导入/一键填空的后台补全进度)'] },
+  { symptom: '拆完分镜想核对台词有没有丢 / 谁说的 / 哪几镜是关键镜 / 情绪曲线', run: 'get_storyboards(每镜 dialogue_lines/is_key_moment/emotion_intensity,整集一次拿)', then: ['review_storyboards', 'update_shot(补漏句/改台词,改完回 get_storyboards 核对)', 'get_shot_prompts(看某镜画面与首尾帧提示词)'] },
   { symptom: '预算 / 余额', run: 'get_budget_status', then: ['get_cost_estimate'] },
 ]
 

@@ -558,6 +558,14 @@ props in the wardrobe segment, missing `[SFX]`/`[BGM]`, group-shot head counts.
 Storyboard-level issues do **not** need a script edit at all: use
 `update_shot` / `replace_shot_dialogue`.
 
+To audit a generated storyboard against the script (lines dropped? who says
+what? which shots are key moments? where is the emotional valley?),
+`get_storyboards` returns, per shot, `dialogue` (verbatim), `dialogue_lines`
+(`{speaker, text}` per line — parsed by the same parser subtitles and voice-over
+use, so the speaker you see is the one that will be voiced), `is_key_moment` and
+`emotion_intensity`. One call covers the whole episode; the prompt bodies stay
+per shot via `get_shot_prompts`.
+
 When the frame or the motion is off in a way the business text cannot express,
 edit the shot's prompt bodies directly: `get_shot_prompts` reads the current
 `image_prompt` / `video_prompt` for one shot, `update_shot` writes them back.

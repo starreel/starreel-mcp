@@ -675,6 +675,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'get_storyboards',
     '读某一集的分镜列表(供审阅/查进度)。含每镜首帧(first_frame_image)与视频(video_url)是否就绪。' +
+      '★每镜带**台词与说话人**:dialogue(原文,无台词为 null)、dialogue_lines([{speaker,text}] 逐行,' +
+      '与字幕/配音同一个解析器拆的——这里的 speaker 就是成片里被配音的那个;舞台提示已剥),' +
+      '以及 is_key_moment(1=关键镜,走高端图模)与 emotion_intensity(1-10)。' +
+      '核对「台词有没有丢/谁说的/关键镜是哪几镜/情绪曲线」用这一次调用即可,不用逐镜拉;update_shot 改完台词也在这里核对。' +
+      '画面/视频/首尾帧提示词仍只在 get_shot_prompts 逐镜读。' +
       '★每镜还带**结构化状态**:frame_status/video_status(ready/pending/authorizing/rejected/failed/none/not_required)、' +
       '★not_required=旁白/片尾卡镜:帧与视频由成片层渲染,本镜不需要生成——数补齐进度时把它当已完成,别重试。' +
       'fail_reason(sensitive/text_sensitive/copyright/face_mismatch/account_overdue/quota_full/authorizing/' +
