@@ -525,7 +525,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'check_bulk_import',
     '**导入前的 JSON 自检**:用导入端点**同一份 zod schema** 校验,再把导入路由的"静默行为"变成 warning。返回 errors / warnings / stats(镜数·总秒·角色·场景·mode·promptsToBuild)。免费·不落库·可反复跑。' +
       '★errors = 导入会 400 或会出错覆盖的:不是合法 JSON / schema 不过(逐条带 path,如 storyboards[2].shot_type)/ 镜号重复 + 残留 <...> 占位符;必须清零。' +
-      '★warnings = 导入照常但会缺东西或有副作用的:bound_characters/scene_ref 引用不到(静默跳过)/ 没有 action+description(死镜)/ dialogue 含镜头语言(会被念出来)/ 单镜>15 秒 / 镜号跳号 / mode=replace(替换本集全部分镜)/ 全无角色绑定(人物会漂)。' +
+      '★warnings = 导入照常但会缺东西或有副作用的:bound_characters/scene_ref 引用不到(静默跳过)/ 没有 action+description(死镜)/ dialogue 含镜头语言(会被念出来)/ 单镜>15 秒 / action_overload(一镜塞了超过时长承载量的独立动作——约 3 秒 2 拍、5 秒 3 拍;一镜一个主要动作,另起的事拆下一镜;多人各做一件事可忽略)/ 镜号跳号 / mode=replace(替换本集全部分镜)/ 全无角色绑定(人物会漂)。' +
       '★这里绿了,bulk_import_storyboards 就能一次过。',
     { payload: z.union([z.string(), z.record(z.string(), z.unknown())]).describe('要检查的 JSON:对象,或 JSON 字符串(客户贴的文本)') },
     async ({ payload }) => jsonResult(await client.producePost('/bulk-import/lint', { payload })),
@@ -828,7 +828,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。' +
       '★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),' +
       '照着这两个去 update_shot 改掉即可,不用逐字猜。' +
-      '★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。',
+      '★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。' +
+      '★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/storyboards`)),
   )
@@ -1875,7 +1876,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       director_note: z.string().optional().describe('导演注释'),
       shot_intent: z.string().optional().describe('这镜为什么存在(叙事意图)'),
       duration: z.number().positive().optional().describe('本镜时长(秒,可带小数如 2.5)。上限=本剧视频引擎的单镜上限,超出直接拒并告知上限(更长内容用 split_shot 拆镜)。有台词时平台按语速律只抬不降,抬了会在回执 speech_duration_note 里说。★改时长不会自动重出视频:已有视频仍是旧长度,要厂商按新时长出就 regenerate_shot_video(报价按新时长算)。★别拿加长治「动作太慢」——同样的动作摊到更长时间里只会更慢,见 qa_tools「动作太慢」'),
-      speed_factor: z.number().positive().nullable().optional().describe('成片变速:<1 慢镜、>1 快放、null 清除(0.5–2.0,越界被钳到范围内)。只在终拼/剪映导出时变速播放(画面 setpts + 声音 atempo,音高不变),**不重出视频、不扣费**,但会改变本镜在成片里占的时长。适合做慢镜/升格氛围;治不了「动作没演出来」——那是视频内容本身,要改 video_prompt 重出。有台词的镜慎用(人声也跟着变快变慢)'),
+      speed_factor: z.number().positive().nullable().optional().describe('成片变速:<1 慢镜、>1 快放、null 清除(0.5–2.0,越界被钳到范围内)。只在终拼/剪映导出时变速播放(画面 setpts + 声音 atempo,音高不变),**不重出视频、不扣费**,但会改变本镜在成片里占的时长。适合做慢镜/升格氛围;治不了「动作没演出来」——那是视频内容本身,要改 video_prompt 重出;也治不了一镜塞太多动作(action_overload)——那要拆镜重出。有台词的镜慎用(人声也跟着变快变慢)'),
       image_prompt: z.string().optional().describe('首帧画面提示词**正文**(全量覆盖本镜现值)。★先 get_shot_prompts 读现值再改;★原样保留其中的 @char:N / @scene:M 引用标记,删了就不注入对应定妆图/场景图。出图时平台会在正文之上再拼身份锚与一致性约束,不必你写。★写法坑:别写「no X / without X / 不要 X / 没有 X」这类否定式约束——图像模型把名词当正向线索,反而把 X 画出来;要正向写出那块画面该有什么(材质/形状/颜色/远近)。保存响应带 image_prompt_negation_advisory 即命中,按其 note 改写'),
       video_prompt: z.string().optional().describe('视频(动态/运镜/表演)提示词**正文**(全量覆盖本镜现值)。★同 image_prompt:先读现值、保留 @char/@scene 标记'),
       first_frame_prompt: z.string().optional().describe('本镜**开始时**画面是什么样(首帧目标状态正文,全量覆盖现值)。送达提示词里作为 [START FRAME] 段排在最前,优先级高于 image_prompt——所以 image_prompt 改了不生效时,往往是这条在压着它。★同 image_prompt:先 get_shot_prompts 读现值、原样保留 @char/@scene 标记'),

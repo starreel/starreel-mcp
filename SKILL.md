@@ -798,6 +798,33 @@ The platform's default shot breakdown still asks for one continuous action per
 shot. Apply the beat approach shot by shot on complaints; don't rewrite a whole
 episode this way unprompted.
 
+### Writing shots yourself — one main action per shot (动作过载 / "像快进")
+
+When you write storyboards yourself (`bulk_import_storyboards`, `update_shot`,
+`split_shot`), you bypass the platform's shot breakdown and its "one continuous
+action" rule, so apply it yourself **before any frame or video is generated** —
+post-production cannot fix it.
+
+- **One main action per shot.** The beats above are the *phases of that one
+  action* (wind-up → main action → settle), within the same budget: about
+  2 beats in 3 s, 3 beats in 5 s.
+- **A new thing is a new shot.** A discovery ("finds something in their hand",
+  "the person is gone"), a new goal, or turning to address someone else each
+  get their own shot — and the discovery shot needs room for the reaction.
+  Four independent actions in one 4–5 s shot (look back, answer, turn, notice
+  the other person has vanished) read as fast-forward or are simply not
+  performed.
+- **Write the joins.** State the pose the shot starts from and ends on
+  (`action_in` / `action_out`), so the next shot can start from it.
+- **Don't repair density with speed.** `speed_factor` slow-motion or longer
+  crossfades only stretch what the vendor animated; they cannot un-cram a
+  shot. Split it (`split_shot`) or cut actions, then regenerate.
+
+`check_bulk_import` and `review_storyboards` flag this as `action_overload`
+(advisory, never blocks). The count is word-based: several people each doing
+one thing, or one continuous chain (bend → reach → pick up), can trigger it —
+judge the flagged shot, don't split blindly.
+
 ### "画面里多出一个人 / 多出一件道具" — something appears that shouldn't be there
 
 Two completely different causes with opposite fixes. **Look at the shot's own

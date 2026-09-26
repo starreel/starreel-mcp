@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.91",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.91 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.92",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.92 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -137,7 +137,7 @@
       "post": {
         "operationId": "check_bulk_import",
         "summary": "**导入前的 JSON 自检**:用导入端点**同一份 zod schema** 校验,再把导入路由的\"静默行为\"变成 warning",
-        "description": "**导入前的 JSON 自检**:用导入端点**同一份 zod schema** 校验,再把导入路由的\"静默行为\"变成 warning。返回 errors / warnings / stats(镜数·总秒·角色·场景·mode·promptsToBuild)。免费·不落库·可反复跑。★errors = 导入会 400 或会出错覆盖的:不是合法 JSON / schema 不过(逐条带 path,如 storyboards[2].shot_type)/ 镜号重复 + 残留 <...> 占位符;必须清零。★warnings = 导入照常但会缺东西或有副作用的:bound_characters/scene_ref 引用不到(静默跳过)/ 没有 action+description(死镜)/ dialogue 含镜头语言(会被念出来)/ 单镜>15 秒 / 镜号跳号 / mode=replace(替换本集全部分镜)/ 全无角色绑定(人物会漂)。★这里绿了,bulk_import_storyboards 就能一次过。",
+        "description": "**导入前的 JSON 自检**:用导入端点**同一份 zod schema** 校验,再把导入路由的\"静默行为\"变成 warning。返回 errors / warnings / stats(镜数·总秒·角色·场景·mode·promptsToBuild)。免费·不落库·可反复跑。★errors = 导入会 400 或会出错覆盖的:不是合法 JSON / schema 不过(逐条带 path,如 storyboards[2].shot_type)/ 镜号重复 + 残留 <...> 占位符;必须清零。★warnings = 导入照常但会缺东西或有副作用的:bound_characters/scene_ref 引用不到(静默跳过)/ 没有 action+description(死镜)/ dialogue 含镜头语言(会被念出来)/ 单镜>15 秒 / action_overload(一镜塞了超过时长承载量的独立动作——约 3 秒 2 拍、5 秒 3 拍;一镜一个主要动作,另起的事拆下一镜;多人各做一件事可忽略)/ 镜号跳号 / mode=replace(替换本集全部分镜)/ 全无角色绑定(人物会漂)。★这里绿了,bulk_import_storyboards 就能一次过。",
         "tags": [
           "bulk-import"
         ],
@@ -5504,7 +5504,7 @@
       "post": {
         "operationId": "review_storyboards",
         "summary": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记",
-        "description": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),照着这两个去 update_shot 改掉即可,不用逐字猜。★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。",
+        "description": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),照着这两个去 update_shot 改掉即可,不用逐字猜。★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。",
         "tags": [
           "episodes"
         ],
