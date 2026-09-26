@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.90",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.90 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.91",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.91 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -3543,7 +3543,7 @@
       "get": {
         "operationId": "get_dialogue_repair_status",
         "summary": "查台词修复的进度(免费)",
-        "description": "查台词修复的进度(免费)。repair_episode_dialogue 是后台异步串行跑的,用这个轮询。\n★这个工具此前**不存在**,而 repair_episode_dialogue 的描述里却写着「进度用 dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。",
+        "description": "查台词修复的进度(免费)。repair_episode_dialogue 是后台异步串行跑的,用这个轮询。\n★这个工具此前**不存在**,而 repair_episode_dialogue 的描述里却写着「进度用 dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。\n★返回里带 **aborted** = 上一批因整账户级失败被提前中止(kind=account_overdue 平台上游账户欠费 / credits 点数不足),remaining 镜未执行。此时**原样重提必然同因失败**:credits 先充值;account_overdue 不是你的点数问题,停下告知用户稍后再试,别反复重提。",
         "tags": [
           "episodes"
         ],
@@ -4629,7 +4629,7 @@
       "post": {
         "operationId": "lipsync_episode",
         "summary": "给整集批量口型同步",
-        "description": "给整集批量口型同步。后台异步,按用量后付。用 get_lipsync_status 查进度。",
+        "description": "给整集批量口型同步。后台异步,按用量后付。用 get_lipsync_status 查进度。\n★收到 **503 code=lipsync.unavailable** = 平台当前没有可用的口型服务,本次未提交、未扣费,重试无用;按返回的 alternatives 改走别的路(重生该镜视频 / 定向编辑 / 只换音频——最后一个不改嘴型)。",
         "tags": [
           "episodes"
         ],
@@ -9093,7 +9093,7 @@
       "post": {
         "operationId": "lipsync_shot",
         "summary": "给单镜做口型同步(对白与人物嘴型对齐)",
-        "description": "给单镜做口型同步(对白与人物嘴型对齐)。按用量后付。",
+        "description": "给单镜做口型同步(对白与人物嘴型对齐)。按用量后付。\n★收到 **503 code=lipsync.unavailable** = 平台当前没有可用的口型服务,本次未提交、未扣费,重试无用;按返回的 alternatives 改走别的路(重生该镜视频 / 定向编辑 / 只换音频——最后一个不改嘴型)。",
         "tags": [
           "storyboards"
         ],

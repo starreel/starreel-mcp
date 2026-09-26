@@ -709,7 +709,11 @@ the mouth isn't readable (back turned, wide, off-screen) that is invisible; on
 sustained close-ups, regenerate instead. Reach for `regenerate_shot_video` when
 the shot is a close-up, or when the picture itself is also wrong.
 `repair_episode_dialogue` runs in the background — poll it with
-`get_dialogue_repair_status`.
+`get_dialogue_repair_status`. If the status carries `aborted`, the batch stopped
+early on an account-level failure (`credits` = out of points; `account_overdue` =
+the platform's upstream vendor account, not yours) and the `remaining` shots never
+ran. Resubmitting unchanged will fail the same way — top up for `credits`; for
+`account_overdue`, tell the user and retry later instead of looping.
 Either way, `compose_episode` afterwards — the final cut still holds the old audio until you do.
 
 Four distinct causes; they need **opposite** fixes, so identify the family first.

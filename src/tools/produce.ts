@@ -1946,7 +1946,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'get_dialogue_repair_status',
     '查台词修复的进度(免费)。repair_episode_dialogue 是后台异步串行跑的,用这个轮询。'
       + '\n★这个工具此前**不存在**,而 repair_episode_dialogue 的描述里却写着「进度用 '
-      + 'dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。',
+      + 'dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。'
+      + '\n★返回里带 **aborted** = 上一批因整账户级失败被提前中止(kind=account_overdue 平台上游账户欠费 / '
+      + 'credits 点数不足),remaining 镜未执行。此时**原样重提必然同因失败**:credits 先充值;'
+      + 'account_overdue 不是你的点数问题,停下告知用户稍后再试,别反复重提。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.produceGet(`/episodes/${episode_id}/dialogue-repair-status`)),
@@ -2416,15 +2419,18 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
 
   // ========== P2 · 口型 / 海报封面 ==========
+  const LIPSYNC_UNAVAILABLE_HINT =
+    '\n★收到 **503 code=lipsync.unavailable** = 平台当前没有可用的口型服务,本次未提交、未扣费,重试无用;' +
+    '按返回的 alternatives 改走别的路(重生该镜视频 / 定向编辑 / 只换音频——最后一个不改嘴型)。'
   server.tool(
     'lipsync_shot',
-    '给单镜做口型同步(对白与人物嘴型对齐)。按用量后付。',
+    '给单镜做口型同步(对白与人物嘴型对齐)。按用量后付。' + LIPSYNC_UNAVAILABLE_HINT,
     { storyboard_id: z.number().int().positive() },
     async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/lipsync`)),
   )
   server.tool(
     'lipsync_episode',
-    '给整集批量口型同步。后台异步,按用量后付。用 get_lipsync_status 查进度。',
+    '给整集批量口型同步。后台异步,按用量后付。用 get_lipsync_status 查进度。' + LIPSYNC_UNAVAILABLE_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/lipsync-batch`)),
   )
