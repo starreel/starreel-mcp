@@ -2133,7 +2133,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_budget_status',
-    '查一部剧的预算状态(预算/已花费/剩余)。免费。',
+    '查一部剧的预算状态(预算/已花费/剩余)。免费。' +
+      'spent 与网页「本剧已花费」同源(平台扣费账本净额,已减退款),by_kind 为按类分项(ai_image/ai_video/ai_text/ai_music/tts_local…)。' +
+      'spent_source=usage_mirror 表示账本暂不可达、回退到本地镜像(偏少,不含文本/配乐),向客户报数时须注明。' +
+      '★不含账号级语音扣费:音色库克隆、音色设计、音色试听不属于任何一部剧,只记在账号账单里——' +
+      '客户问「一共花了多少」时要说明这部分另计,不要把 spent 当成全部费用。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/budget-status`)),
   )
