@@ -242,7 +242,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '7 出帧(镜头图)',
-    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'tail_frame_plan(免费,首帧出完必调)', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'chain_frames', 'upload_shot_frame'],
+    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'tail_frame_plan(免费,首帧出完必调)', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'chain_frames(先 dry_run:true 看计划与预估)', 'chain_shot_from_prev(免费,单道接缝)', 'quote_chain_shot_from', 'chain_shot_from', 'quote_align_prev_shot', 'align_prev_shot', 'upload_shot_frame'],
     billing: '报价确认后扣点',
     gate: 'review_frames(镜头图审查;免费;generate_videos 前必过)',
     note: '★出帧是**两趟**:generate_frames 默认只出首帧,首帧出完必须调一次免费的 `tail_frame_plan` ' +
@@ -250,7 +250,12 @@ export const PIPELINE: PipelineStep[] = [
       '生产实测 32 集里 30 集整集只出了首帧,其中 23 集一路出完了视频;那些镜出视频时只有首帧一个锚,末态由模型自由发挥。' +
       'pending=还在生成,别重复调 `generate_frames`(重复扣费)。' +
       '★开跑前用 `get_pipeline_status` 核对 generate_scene_images 的 completed/total——缺基板照样能出帧,' +
-      '但背景从每个场景的首镜起就开始漂;`review_storyboards` 也会把缺口报成 scene_plate_missing。',
+      '但背景从每个场景的首镜起就开始漂;`review_storyboards` 也会把缺口报成 scene_plate_missing。' +
+      '★首尾帧补齐后、出视频前**接缝**:逐镜出帧不会触发平台的自动帧链,镜与镜之间多半没接过。' +
+      '`get_storyboards` 看每镜 seam_state(unchained=标了连续却没接、broken=接过没接上),' +
+      '整集用 `chain_frames` 先 dry_run:true 报计划与预估(copy 免费、reframe 每道一张图)、客户确认后执行——' +
+      '已接好的缝不进计划,重复执行不重复扣费;只补个别缝用 `chain_shot_from_prev`(免费,同景别延续)' +
+      '或 `chain_shot_from` mode=reframe(报价后执行,保景别)。`review_frames` 会把两类缝报成 seam_unchained / seam_broken。',
   },
   {
     step: '8 出视频',
@@ -350,6 +355,7 @@ export const COMMON_REQUESTS: CommonRequest[] = [
   { customer_says: '换了定妆图 / 换脸后镜头没变', do: '`set_character_portrait` 响应里的 stale_frames 逐镜 `generate_shot_frame`,再重生视频。' },
   { customer_says: '图片一直没出来', do: '`get_storyboards` 看 frame_status:pending=在生成(每张几十秒到数分钟、整集十几分钟),别重复调 `generate_frames`;failed 才是失败,读 fail_reason / fail_hint。' },
   { customer_says: '预算多少 / 怎么更便宜', do: '各步 quote_* + `get_cost_estimate`;降本:hailuo-3(约 1/3)或 wan3.0(约 4 折,仅风格化/空镜/产品镜,写实真人绝不选)+ 草稿期低分辨率。' },
+  { customer_says: '镜头之间接不上 / 画面跳 / 衔接不顺', do: '`get_storyboards` 看 seam_state:unchained / broken 才要修(unknown 是系统没判、intended 是有意切换,都别动)。还没出视频:整集 `chain_frames`(先 dry_run),单道同景别 `chain_shot_from_prev`(免费)、景别有变化 `quote_chain_shot_from` → `chain_shot_from` mode=reframe。上一镜视频已出好、不想动本镜首帧:`quote_align_prev_shot` → `align_prev_shot`(重生上一镜视频)。改了首帧的镜视频要重生。' },
   { customer_says: '成片里话没说完 / 切太快', do: '先 `scan_dialogue_coverage` / `scan_intra_shot_cuts` 定病因,再按 qa_tools 的 then 修;别默认去加长镜头。' },
   { customer_says: '我想自己剪', do: '`export_handoff_pack` + `get_handoff_toolchain`,不走 `compose_episode`。' },
   { customer_says: '要配音 / 不要视频原声', do: '`update_project_settings` use_clip_audio=false → `assign_voices` → `generate_tts` → `compose_episode`。' },

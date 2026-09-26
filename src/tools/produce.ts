@@ -705,7 +705,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '(presence=on_screen 在画面 / voice_only 只有声音、不进画面)、scene_id、prop_ids、active_wardrobe_id。' +
       '出图注入谁的定妆图/哪张场景图/哪些道具图由这几项决定;角色名对照 get_characters、道具名对照 get_props。' +
       '改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;' +
-      '改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。',
+      '改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。' +
+      '★每镜带 **seam_state**(本镜与上一镜的镜间接缝,与官网帧时间线同一判据):' +
+      'ok=已续接(首帧就是上镜尾帧,或平台做过首尾帧衔接) / unchained=标了连续却从没接过 / ' +
+      'broken=接过但没接上(seam_failed_dims 给出哪几维不连续:characters/wardrobe/props/lighting/scene) / ' +
+      'intended=有意切换(硬切/换场/时间跳跃/景别大跳/插入镜/外部上传帧),不用管 / missing=两侧帧没齐 / ' +
+      'unknown=没标意图也没接过(系统没判,不是有问题) / na=首镜或旁白卡。' +
+      'seam_audit_status=pending 表示已接、平台的衔接审计还没出结论(若本镜 frame_status=failed,说明衔接那次重生没出成,缝其实没接上)。' +
+      '出视频前只需处理 unchained 与 broken:整集用 chain_frames(先 dry_run),单道用 chain_shot_from_prev / chain_shot_from。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.produceGet(`/episodes/${episode_id}/storyboards`)),
@@ -855,7 +862,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '【第③道硬闸·免费】审查镜头图片层:角色身份锚覆盖(缺定妆图的角色在镜头里必漂)、出图失败率、' +
       '孤儿角色变体、场景图被人物污染。★generate_videos 之前必须先跑本工具——出视频是全链最贵的一步,' +
       '拿着漂移的首帧整集出视频是最典型的废片形态。按 findings.action 修完(多为 generate_character_portraits / ' +
-      'generate_shot_frame 单镜重生)再复审。',
+      'generate_shot_frame 单镜重生)再复审。' +
+      '★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接)/' +
+      'seam_broken(接过但没接上),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,' +
+      '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/frames`)),
   )
@@ -2449,9 +2459,93 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   // ========== P2 · 连续性 / 场景组 / 多画幅 ==========
   server.tool(
     'chain_frames',
-    '整集首尾帧接力链:让每镜首帧承接上镜尾帧,镜间画面连续(比各镜独立出帧更顺)。按用量后付。',
-    { episode_id: z.number().int().positive() },
-    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/chain-frames`)),
+    '整集首尾帧接力链:让每镜首帧承接上镜尾帧,镜间画面连续(比各镜独立出帧更顺)。' +
+      '★何时调:首帧出完、tail_frame_plan 要的尾帧也补完之后,review_frames / generate_videos 之前。' +
+      '平台只在官网批量出帧结束时自动跑一次;逐镜出帧(generate_frames / generate_shot_frame)的集多半从没接过——' +
+      'get_storyboards 的 seam_state=unchained 就是这种缝。\n' +
+      '★先 dry_run:true(免费,不写库不出图):回 planned_copy / planned_reframe / estimated_points / needs_last_frame。' +
+      'copy=本镜首帧直接换成上镜尾帧(免费,但本镜景别会变成和上镜一样);reframe=以上镜尾帧为锚按本镜画面描述重生首帧' +
+      '(每道一张图,保景别)。把计划和 estimated_points 告诉客户,确认后**不带 dry_run** 再调一次执行(按用量后付)。\n' +
+      '★平台自己判哪道缝该接:有意切换(换场/时间跳跃/换装/插入镜)、已出视频的镜、已经接好的缝都会跳过——' +
+      '「已接好」= 首帧就是上镜尾帧,或 reframe 接在上镜**当前**尾帧上,所以重复执行不会重复扣费。' +
+      '上镜尾帧后来被重生过的缝会重新出现在计划里,那道缝确实断了。只补个别缝用 chain_shot_from_prev / chain_shot_from。' +
+      '执行后改了首帧的镜若已有视频会被标为待重生。执行完用 get_storyboards 核对 seam_state。',
+    {
+      episode_id: z.number().int().positive(),
+      dry_run: z.boolean().optional().describe('true=只看计划与预估(免费,推荐先调一次);不传=真执行'),
+    },
+    async ({ episode_id, dry_run }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/chain-frames`, dry_run ? { dry_run: true } : {})),
+  )
+  // ---------- 单道接缝修复(帧时间线「接上一镜」「对齐上一镜」的门面版) ----------
+  server.tool(
+    'chain_shot_from_prev',
+    '(免费)把上一镜的尾帧**直接**设为本镜首帧:画面 100% 接上,零成本、不出图。' +
+      '★适用:两镜是同一机位、同一景别的延续(seam_state=unchained/broken 且本镜本来就该和上镜一个构图)。' +
+      '★别用于景别有变化的缝(全景→近景等):那会把本镜的景别设计冲掉,且后续出图可能被判「与设计不符」——' +
+      '这种缝用 chain_shot_from 的 mode=reframe。本镜已有视频的会被标为待重生。' +
+      '本镜首帧若已被客户定稿(first_frame_pinned)会被拒;客户明确同意覆盖才传 force:true。',
+    {
+      storyboard_id: z.number().int().positive().describe('要改首帧的那一镜(缝的右侧)'),
+      force: z.boolean().optional().describe('仅当客户明确同意覆盖已定稿的首帧时传 true'),
+    },
+    async ({ storyboard_id, force }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/chain-from-prev`, force ? { force: true } : {})),
+  )
+  server.tool(
+    'quote_chain_shot_from',
+    '(免费报价)chain_shot_from 的 mode=reframe 要扣**一张图**(以源帧为锚重生本镜首帧),执行前先报价、经客户确认。' +
+      '回 quote_id / estimated_points;quote_id 一次性、只对这一镜有效。mode=copy 不需要报价。',
+    { storyboard_id: z.number().int().positive().describe('要重生首帧的那一镜') },
+    async ({ storyboard_id }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/chain-from/quote`)),
+  )
+  server.tool(
+    'chain_shot_from',
+    '把同一集**任一镜**的首帧或尾帧接为本镜首帧。两种落法:\n' +
+      '· mode=copy(默认,免费):本镜首帧直接换成源帧,画面逐像素相同——适合「回到一模一样的画面」或同机位延续。\n' +
+      '· mode=reframe(扣一张图,必须带 quote_chain_shot_from 的 quote_id):以源帧为锚、按本镜画面描述重生首帧——' +
+      '人物/服装/道具/光线/场景延续,但保留本镜自己的景别与构图。景别有变化的缝要接,用这个。\n' +
+      '★源不是上一镜尾帧时(首尾呼应/回到某个画面),平台会把本镜与上一镜的缝记为「有意切换」,自动帧链不会再覆盖它。' +
+      '本镜已有视频的会被标为待重生;首帧已定稿的会被拒,客户同意覆盖才传 force:true。',
+    {
+      storyboard_id: z.number().int().positive().describe('要改首帧的那一镜'),
+      source_storyboard_id: z.number().int().positive().describe('源镜 id(必须同一集);接上一镜就传上一镜的 id'),
+      source_frame: z.enum(['first', 'last']).optional().describe('取源镜的哪一帧,默认 last(尾帧)'),
+      mode: z.enum(['copy', 'reframe']).optional().describe('默认 copy(免费);reframe 需 quote_id'),
+      quote_id: z.string().optional().describe('mode=reframe 时必填,来自 quote_chain_shot_from'),
+      force: z.boolean().optional().describe('仅当客户明确同意覆盖已定稿的首帧时传 true'),
+    },
+    async ({ storyboard_id, source_storyboard_id, source_frame, mode, quote_id, force }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/chain-from`, {
+        source_storyboard_id,
+        ...(source_frame ? { source_frame } : {}),
+        ...(mode ? { mode } : {}),
+        ...(quote_id ? { quote_id } : {}),
+        ...(force ? { force: true } : {}),
+      })),
+  )
+  server.tool(
+    'quote_align_prev_shot',
+    '(免费报价)align_prev_shot 会重生**上一镜的视频**(扣一条视频),执行前先报价、经客户确认。' +
+      '回 quote_id / estimated_points / prev_storyboard_id(被重生的是哪一镜);含首次人像核验费时另列 kyc_first_time_points。',
+    { storyboard_id: z.number().int().positive().describe('缝右侧那一镜(它的首帧将作为上一镜视频的收尾画面)') },
+    async ({ storyboard_id }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/align-prev/quote`)),
+  )
+  server.tool(
+    'align_prev_shot',
+    '缝裂修复「对齐上一镜」:本镜首帧**不动**,以它为收尾画面、用首尾帧模式重生**上一镜的视频**(上一镜首帧不变),' +
+      '让上一镜真实收在本镜的开场画面上。扣一条视频,必须带 quote_align_prev_shot 的 quote_id。' +
+      '★适用:客户换过本镜首帧(比如上传或重生了一张更满意的),而上一镜的视频已经出好、不想改本镜首帧去迁就它。' +
+      '两镜都还没出视频时别用它——改首帧(chain_shot_from_prev / chain_shot_from)更便宜。' +
+      '异步:轮询 get_storyboards 看上一镜 video_status。',
+    {
+      storyboard_id: z.number().int().positive().describe('缝右侧那一镜'),
+      quote_id: z.string().describe('来自 quote_align_prev_shot'),
+    },
+    async ({ storyboard_id, quote_id }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/align-prev`, { quote_id })),
   )
   server.tool(
     'get_scene_group_plan',

@@ -39,7 +39,9 @@ create_drama → set_script(raw) → rewrite_script(AI draft, user may edit)
   → scene-images(empty-set plates = the background anchor — every shot in a scene
     anchors on its plate; skip it and each scene's FIRST shot has no background
     anchor at all, and the backdrop drifts from shot to shot)
-  → frames → [review_frames] → videos → generate_tts(voiceover) → compose_episode → final cut (.mp4 link)
+  → frames(first frames → tail_frame_plan → tail frames)
+  → seams(chain_frames dry_run → confirm → run; per-shot fixes via chain_shot_from*)
+  → [review_frames] → videos → generate_tts(voiceover) → compose_episode → final cut (.mp4 link)
 ```
 
 The three `[review_*]` steps are free and **enforced** — see discipline 11.
@@ -293,6 +295,36 @@ content that will be rejected.
    **9.4%** of the time versus **40.2%** with one. `generate_shot_frame` does accept
    `allow_missing_terminal: true` for the rare shot that genuinely should barely change,
    but reach for the text fix first.
+   **Then join the seams, before `review_frames`.** Each shot's first frame should pick
+   up where the previous shot's last frame left off; otherwise the cut is a visible jump.
+   The platform joins them automatically only when a batch runs from the website —
+   frames generated through this API (`generate_frames` / `generate_shot_frame`) do not
+   trigger it, so an API-driven episode has usually never been joined.
+   `get_storyboards` reports every shot's `seam_state` (the seam between it and the shot
+   before it): act on `unchained` (marked continuous, never joined) and `broken` (joined,
+   but the platform's continuity check says it doesn't hold — `seam_failed_dims` names
+   which of characters / wardrobe / props / lighting / scene broke). Leave `intended`
+   (hard cut, scene or time change, big shot-size jump, insert shot, customer upload) and
+   `unknown` (never evaluated — not a defect) alone.
+   Whole episode: `chain_frames` with `dry_run: true` first (free — no writes, no images)
+   returns `planned_copy` / `planned_reframe` / `estimated_points`. *copy* makes the
+   shot's first frame the previous shot's last frame (free, but the shot inherits the
+   previous shot's framing); *reframe* regenerates the first frame anchored on that last
+   frame (one image per seam, keeps the shot's own framing). Tell the customer, then run
+   it without `dry_run`. Seams that are already joined — the first frame *is* the
+   previous last frame, or a reframe landed on the previous shot's **current** last
+   frame — are left out of the plan, so running it again does not re-bill them; a seam
+   reappears only when the previous shot's last frame was regenerated afterwards (then it
+   really is broken). To fix individual seams: `chain_shot_from_prev` (free,
+   same-framing continuation) or
+   `quote_chain_shot_from` → `chain_shot_from` with `mode: "reframe"` (framing changes).
+   If the previous shot's video is already done and the customer does not want to touch
+   this shot's first frame, `quote_align_prev_shot` → `align_prev_shot` regenerates the
+   **previous** shot's video so it ends on this shot's opening frame (one video).
+   Any shot whose first frame changes gets its video marked for regeneration.
+   `review_frames` flags the two actionable states as `seam_unchained` / `seam_broken`
+   (warnings — they do not block `generate_videos`, but this is the cheapest point to fix
+   them: the video is generated from the first frame).
    **Image model**: images use a drama-level model (default **ChatGPT Image 2.5
    Flare** = `gpt-image-2.5-flare`), set via `create_drama` /
    `update_project_settings` field `image_model` for one consistent look across
@@ -790,6 +822,11 @@ Four distinct causes; they need **opposite** fixes, so identify the family first
 
 ### "切太快" / "一个镜头里画面跳来跳去"
 
+If the jump is *between* two shots (the picture changes abruptly at the cut), look at
+`seam_state` in `get_storyboards` first — `unchained` / `broken` on that shot means the
+two frames were never joined, and the fix is in the frames (see the seam step under the
+disciplines), not in the edit.
+
 Run **`scan_intra_shot_cuts`** (free) before touching anything. What a viewer
 perceives as cutting speed is *shot seams + cuts the vendor made inside a single
 shot*, and the second half is invisible in the shot list, in the timeline, and
@@ -973,7 +1010,9 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   or `enabled: false` means the user has to switch it on in the drama settings.
 - **Shots → video**: `quote/generate_storyboards`, `get_storyboards`,
   `quote/generate_frames`, `tail_frame_plan` (free — which shots need their own
-  last frame), `chain_frames`, `quote/generate_videos`
+  last frame), `chain_frames` (`dry_run: true` first), `chain_shot_from_prev` (free),
+  `quote_chain_shot_from` / `chain_shot_from`, `quote_align_prev_shot` / `align_prev_shot`,
+  `quote/generate_videos`
 - **Audio**: `generate_tts` (required before final cut), `clone_voice`,
   `design_voice` → `get_voice_design` → `save_designed_voice` (no sample needed),
   `speak_with_voice`, `set_character_voice`, `list_voices`, `delete_voice`,
