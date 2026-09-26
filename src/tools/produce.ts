@@ -646,8 +646,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   // ---------- 拆镜(storyboards) ----------
   server.tool(
     'quote_storyboards',
-    '报价:把某一集的剧本拆成分镜(storyboards)要多少点。返回 estimated_points 与 quote_id。零扣费。' +
-      '拿到后把点数告诉用户征求同意,再用 quote_id 调 generate_storyboards。',
+    '报价:把某一集的剧本拆成分镜(storyboards)要多少点。零扣费。返回 quote_id 与一个**区间**:' +
+      'estimated_points=预算上沿(按它备余额,拆到一半不会 402)、typical_points=通常花费——两个都告诉用户,' +
+      '只报上沿显得贵得离谱,只报典型又会让余额备不够。拆出几镜由 AI 按剧本决定(estimated_shots 是估算),故无法精确到点。' +
+      '★price_breakdown 里除「拆镜」外还有拆完**自动**触发的补全(每镜补空字段;有服装资产时排服装时间线)——' +
+      '它们随拆镜一起发生、会一起扣费,告诉用户总数时要含在内。拿到后征求同意,再用 quote_id 调 generate_storyboards。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/storyboards/quote`)),
@@ -697,7 +700,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '修复正路是删掉外部图改走 generate_shot_frame 平台重生。' +
       '★若某镜带 reopen_pair_id:该镜首尾帧同时生成时只有一侧真的有问题、另一侧是无辜陪拒,' +
       '原样传给 generate_shot_frame 的 reopen_pair_id 参数可以只重掷有问题的那一侧(省一半算力/费用,' +
-      '不会拿去生成一张这次根本没打算重做的图)。没有这个字段就按 fail_reason/retryable 走常规重试。免费。',
+      '不会拿去生成一张这次根本没打算重做的图)。没有这个字段就按 fail_reason/retryable 走常规重试。免费。' +
+      '★每镜还带**绑定**(只有 ID):character_ids(本镜绑定的角色)、character_bindings[{character_id,presence}]' +
+      '(presence=on_screen 在画面 / voice_only 只有声音、不进画面)、scene_id、prop_ids、active_wardrobe_id。' +
+      '出图注入谁的定妆图/哪张场景图/哪些道具图由这几项决定;角色名对照 get_characters、道具名对照 get_props。' +
+      '改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;' +
+      '改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.produceGet(`/episodes/${episode_id}/storyboards`)),
@@ -1861,15 +1869,18 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_shot',
-    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)与角色绑定(character_ids)。只传要改的字段、其余不动。' +
+    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。' +
       '**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);' +
-      '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果。' +
+      '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids)。' +
       '★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,' +
       '不重生就终拼,成片里念的仍是改动前的台词(典型现象:台词像是跑到了别的镜头上)。' +
       'compose_episode 会以 advisory `stale_video_after_edit` 列出这些镜;正确处置是先 regenerate_shot_video 再终拼。' +
       '★也可直接改本镜的四条提示词正文(image_prompt/video_prompt/first_frame_prompt/last_frame_prompt):' +
       '改前先用 get_shot_prompts 读现值,' +
-      '别凭空覆盖——正文里的 @char:N / @scene:M 是角色/场景参考图的引用标记,删掉本镜就不注入对应定妆图/场景图(形象漂移)。' +
+      '别凭空覆盖——正文里的 @char:N / @scene:M 是出图时的补充参考标记,照原样保留即可。' +
+      '★注入谁的定妆图由 character_ids 决定、背景由 scene_id 决定:删标记不会让已绑定的人从画面消失,' +
+      '要让某人不出现就改 character_ids,他只有声音(画外音)就用 character_presence 标 voice_only;' +
+      '反过来别给未绑定的角色写 @char 标记——会把他的图注入进来。' +
       '★★【出尾帧被拦下就是来改这里】出尾帧若报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」' +
       '(TERMINAL_DESC_GATE),修法是把**结束时画面是什么样**写进本镜 last_frame_prompt,然后重新出尾帧。' +
       '别去重试出图——这类镜(action_motion_class=state_change 却没写终态)的尾帧历史成功率 9.4%,' +
@@ -1879,6 +1890,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       storyboard_id: z.number().int().positive(),
       character_ids: z.array(z.number().int().positive()).optional()
         .describe('本镜出场角色 ID 列表(★全量覆盖式,非增量,漏传的角色会被解绑)。决定出图时注入哪些角色的定妆图/设定图——非人角色(动物/生物)也必须绑定,否则形象会漂移。id 必须来自当前集已关联角色'),
+      character_presence: z.array(z.object({
+        character_id: z.number().int().positive(),
+        presence: z.enum(['on_screen', 'voice_only']),
+      })).optional()
+        .describe('画外音标记:[{character_id, presence}]。voice_only = 这一镜他只有声音、人不在画面(画外音/门外说话/电话那头)——' +
+          '出图时他的定妆图、人脸锁、站位、主体脸锚全部跳过,台词与配音不受影响;on_screen = 恢复在画面。' +
+          '角色必须在本镜绑定里(可与 character_ids 同一请求,先改绑再标)。只列要改的角色,没列的不动。' +
+          '★完全没出现在画面、台词也不是他说的 → 直接从 character_ids 去掉,不用标 voice_only'),
       title: z.string().optional().describe('镜头标题'),
       description: z.string().optional().describe('画面描述'),
       shot_type: z.string().optional().describe('景别(如 特写/中景/全景/远景)'),
@@ -1893,7 +1912,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       shot_intent: z.string().optional().describe('这镜为什么存在(叙事意图)'),
       duration: z.number().positive().optional().describe('本镜时长(秒,可带小数如 2.5)。上限=本剧视频引擎的单镜上限,超出直接拒并告知上限(更长内容用 split_shot 拆镜)。有台词时平台按语速律只抬不降,抬了会在回执 speech_duration_note 里说。★改时长不会自动重出视频:已有视频仍是旧长度,要厂商按新时长出就 regenerate_shot_video(报价按新时长算)。★别拿加长治「动作太慢」——同样的动作摊到更长时间里只会更慢,见 qa_tools「动作太慢」'),
       speed_factor: z.number().positive().nullable().optional().describe('成片变速:<1 慢镜、>1 快放、null 清除(0.5–2.0,越界被钳到范围内)。只在终拼/剪映导出时变速播放(画面 setpts + 声音 atempo,音高不变),**不重出视频、不扣费**,但会改变本镜在成片里占的时长。适合做慢镜/升格氛围;治不了「动作没演出来」——那是视频内容本身,要改 video_prompt 重出;也治不了一镜塞太多动作(action_overload)——那要拆镜重出。有台词的镜慎用(人声也跟着变快变慢)'),
-      image_prompt: z.string().optional().describe('首帧画面提示词**正文**(全量覆盖本镜现值)。★先 get_shot_prompts 读现值再改;★原样保留其中的 @char:N / @scene:M 引用标记,删了就不注入对应定妆图/场景图。出图时平台会在正文之上再拼身份锚与一致性约束,不必你写。★写法坑:别写「no X / without X / 不要 X / 没有 X」这类否定式约束——图像模型把名词当正向线索,反而把 X 画出来;要正向写出那块画面该有什么(材质/形状/颜色/远近)。保存响应带 image_prompt_negation_advisory 即命中,按其 note 改写'),
+      image_prompt: z.string().optional().describe('首帧画面提示词**正文**(全量覆盖本镜现值)。★先 get_shot_prompts 读现值再改;★原样保留其中的 @char:N / @scene:M 补充参考标记(注入谁由 character_ids / scene_id 决定,删标记不会让已绑定的人消失)。出图时平台会在正文之上再拼身份锚与一致性约束,不必你写。★写法坑:别写「no X / without X / 不要 X / 没有 X」这类否定式约束——图像模型把名词当正向线索,反而把 X 画出来;要正向写出那块画面该有什么(材质/形状/颜色/远近)。保存响应带 image_prompt_negation_advisory 即命中,按其 note 改写'),
       video_prompt: z.string().optional().describe('视频(动态/运镜/表演)提示词**正文**(全量覆盖本镜现值)。★同 image_prompt:先读现值、保留 @char/@scene 标记'),
       first_frame_prompt: z.string().optional().describe('本镜**开始时**画面是什么样(首帧目标状态正文,全量覆盖现值)。送达提示词里作为 [START FRAME] 段排在最前,优先级高于 image_prompt——所以 image_prompt 改了不生效时,往往是这条在压着它。★同 image_prompt:先 get_shot_prompts 读现值、原样保留 @char/@scene 标记'),
       last_frame_prompt: z.string().optional().describe('本镜**结束时**画面是什么样(尾帧目标状态正文,全量覆盖现值)。送达提示词里作为 [END FRAME] 段。★★出尾帧被 TERMINAL_DESC_GATE 拦下时就是补这一条:写清结束时的状态(什么变了/变成什么样),再重新出尾帧。不补而直接重试必然重复被拒且照常扣费。get_shot_prompts 的 terminal_desc_missing=true 即本镜需要它'),
@@ -1909,9 +1928,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 update_shot 写回。免费。' +
       '★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——' +
       '出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。' +
-      '★逐镜按需:改哪镜读哪镜(整集列表 get_storyboards 是纯进度视图,不含提示词)。' +
-      '★返回的 asset_tokens 是正文里的角色/场景参考图引用标记(@char:N / @scene:M)——改写时原样保留,' +
-      '删掉本镜就不注入对应定妆图/场景图,画面会漂。' +
+      '★逐镜按需:改哪镜读哪镜(整集列表 get_storyboards 不含提示词)。' +
+      '★返回的 asset_tokens 是正文里的补充参考标记(@char:N / @scene:M),改写时原样保留即可:' +
+      '本镜注入谁的定妆图由绑定决定(get_storyboards 的 character_ids / scene_id),删标记不会让已绑定的人消失;' +
+      '带 #变体 的标记是那张变体图的唯一来源;给未绑定的角色写标记会把他的图注入进来。' +
       '★这是分镜表里的正文层;出图/出视频时平台还会在其上拼身份锚、一致性约束与参考图指令(不在此处,也无需你写)。' +
       '改完提示词不会自动重出图/视频,要让画面跟上得再 regen 对应镜。',
     { storyboard_id: z.number().int().positive() },

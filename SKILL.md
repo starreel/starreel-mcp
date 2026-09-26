@@ -180,7 +180,13 @@ content that will be rejected.
    and `typical_points` is what it usually costs. Give the user both — the upper
    bound alone reads as far more expensive than the job really is, and the
    typical figure alone under-funds the run. Fixed-price models (the Nano Banana
-   family) return the two equal. Other AI-generation steps (TTS, posters, sheets,
+   family) return the two equal. **Storyboards** are a range for the same
+   reason: the AI decides how many shots the script needs, so the shot count
+   (`estimated_shots`) is an estimate. The storyboard quote also includes the
+   work that runs **automatically** right after breaking (filling empty shot
+   fields, one call per shot; a wardrobe timeline when the drama has wardrobe
+   assets) — see `price_breakdown`; it is billed together with the breakdown,
+   so quote the user the total. Other AI-generation steps (TTS, posters, sheets,
    style locks, MV story/script …) have no quote and bill by usage — still tell
    the user before running them. Never auto-approve large spends for the user.
 
@@ -570,8 +576,16 @@ When the frame or the motion is off in a way the business text cannot express,
 edit the shot's prompt bodies directly: `get_shot_prompts` reads the current
 `image_prompt` / `video_prompt` for one shot, `update_shot` writes them back.
 Keep the `@char:N` / `@scene:M` markers the response lists under `asset_tokens`
-— they are what pulls each character's portrait and each scene's plate into the
-render; drop one and that reference silently stops being sent. The prompt body
+as they are — but know what they do. They are a supplementary reference channel
+for frame rendering only. Which characters' portraits and which scene plate are
+injected is decided by the shot's bindings, `character_ids` and `scene_id`, which
+`get_storyboards` returns per shot (with `character_bindings`, `prop_ids`,
+`active_wardrobe_id`). Dropping a marker does not take a bound character out of
+the frame; writing a marker for an unbound character pulls that character's image
+in; a `#variant` marker is the only source of that variant image. To take someone
+out of a shot, change `character_ids` (it is a full overwrite — read the current
+list first). If they only speak off-screen, keep them bound and mark them
+`voice_only` through `update_shot`'s `character_presence`. The prompt body
 is only the part you write: the platform still layers identity anchors and
 consistency constraints on top at generation time. Editing a prompt does not
 re-generate anything — regenerate the shot afterwards.
