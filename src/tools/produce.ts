@@ -153,6 +153,10 @@ const WORKFLOW_HINT =
   '★客户自带图:定妆图须单人、单张单角度、无文字;场景图须空景无人、无叠加文字——set_character_portrait/upload_scene_image 会自动检查、不合规 422 拒收。' +
   '★别先建角色形象/道具设定图/动作模板再分镜——分镜是纯文本步、不依赖任何图;资产在分镜后建更省更准(动作模板本就必须分镜后)。收费步照现有 quote 报价确认流程。' +
   '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script。' +
+  '★★【原声剧先锁声线,再批量出视频】use_clip_audio=true(默认)时每镜嗓音由视频厂商各自采样,不锁必漂,事后统一要逐镜重出。' +
+  '有客户授权音源→clone_voice+set_character_voice,在 generate_videos 之前;没有→每个说话角色先出一镜台词较长的,' +
+  '用 set_voice_anchor_from_shot 从那一镜选定声线,再出其余镜。get_pipeline_status 的 native_voice_anchor 会列出还没锁的' +
+  ' unanchored_speakers 和锁之前出的、需要重出的 stale_shots。' +
   '★世界观概念图=默认必做(提升整剧一致性、很多第三方平台漏做这步):分镜后默认调 generate_world_concept,' +
   '仍走报价确认流程(告知客户预估点数、确认再扣)——不静默扣费、也别跳过。' +
   '★★【色彩脚本/动作模板别跳·它们在主干里】generate_color_script(统一全片调色)与 generate_motion_templates' +
@@ -1916,7 +1920,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★产物自动写回该镜(返回 persisted:true),但写回 ≠ 进成片:' +
       '以 get_dialogue_repair_status 的 productEffective 为准——true 就 rerender_episode 重拼;' +
       'false 时按 pendingCompose 先补合成再重拼,否则成片仍是旧音频。' +
-      '★该镜已有对口型产物时,成片优先用对口型版,换轨不会生效。整集批量用 repair_episode_dialogue。',
+      '★该镜已有对口型产物时,成片优先用对口型版,换轨不会生效。整集批量用 repair_episode_dialogue。' +
+      '\n★写回前会对产物复核(与 scan_dialogue_coverage 同一判据):换完仍断音(truncated)、重复念/多念(extra_speech)、' +
+      '念的不是台词(off_script)→ **不写回**、本次费用自动退回,返回错误说明哪一类——这类镜换音修不好,改用 regenerate_shot_video。' +
+      '成功时返回 verify:verified=false 表示没判出来(转写失败/台词太短),照常写回但没复核过,自己听一下。',
     { storyboard_id: z.number().int().positive() },
     async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/dialogue-replace`)),
   )
@@ -1929,6 +1936,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★代价是口型:画面按原音演的,换音后可能对不上。口型看不清的镜(背身/远景/画外)几乎无损;' +
       '若整集都是大特写对白,宁可选 regenerate_shot_video 重生。' +
       '后台异步串行(CosyVoice 合成不并发),进度用 dialogue-repair-status 查;余额不足会中止且不扣费。' +
+      '每镜换完都会复核,仍断音/重复念/念错的镜不写回、费用退回,列进 status 的 verify_rejected。' +
       '修完先看 get_dialogue_repair_status 的 productEffective:true 才重拼成片(compose_episode / rerender_episode);' +
       'false 时按 pendingCompose 先补合成,否则成片里还是旧音频。',
     {
@@ -1950,7 +1958,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + 'dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。'
       + '\n★返回里带 **aborted** = 上一批因整账户级失败被提前中止(kind=account_overdue 平台上游账户欠费 / '
       + 'credits 点数不足),remaining 镜未执行。此时**原样重提必然同因失败**:credits 先充值;'
-      + 'account_overdue 不是你的点数问题,停下告知用户稍后再试,别反复重提。',
+      + 'account_overdue 不是你的点数问题,停下告知用户稍后再试,别反复重提。'
+      + '\n★带 **verify_rejected** = 这些镜换完复核没通过(断音/重复念/念错),产物没写回、费用已退——换音修不好,改 regenerate_shot_video。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.produceGet(`/episodes/${episode_id}/dialogue-repair-status`)),
@@ -2640,6 +2649,24 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async ({ character_id, voice_id }) =>
       jsonResult(await client.producePost(`/characters/${character_id}/voice`, { voice_id })),
+  )
+  server.tool(
+    'set_voice_anchor_from_shot',
+    '从本剧某一镜选定角色的声线(声音基准)。免费。不需要客户提供外部音源——就用片子里这个角色已经念出来的声音。' +
+      '\n★★【原声剧(use_clip_audio=true,默认)里这就是「锁声线」】选定后,之后生成的视频会把这段声音交给视频厂商当参考音频,' +
+      '同一角色前后镜的嗓音跟它走;不锁的话每镜由厂商各自采样,前后镜声线会漂。' +
+      '\n★选哪一镜:该角色**独自说话、台词较长、没有背景音乐和别人插话**的镜;start_s/dur_s 可只截其中一段(不传则取默认窗口,时长会按各引擎上限自动钳制)。' +
+      '\n★只对**之后**生成的视频生效。锁之前已经出好的镜会出现在 get_pipeline_status 的 native_voice_anchor.stale_shots 里,' +
+      '用 regenerate_shot_video 重出才会统一。所以最省的做法是:每个说话角色先出一镜、选定声线,再批量出其余镜。' +
+      '\n★有客户授权的外部音源时改用 clone_voice + set_character_voice;两者二选一,后设的覆盖先设的。',
+    {
+      character_id: z.number().int().positive(),
+      storyboard_id: z.number().int().positive().describe('本剧里有该角色台词、已出视频的镜'),
+      start_s: z.number().min(0).optional().describe('可选:从该镜第几秒开始截'),
+      dur_s: z.number().positive().optional().describe('可选:截多长(秒)'),
+    },
+    async ({ character_id, ...rest }) =>
+      jsonResult(await client.producePost(`/characters/${character_id}/voice-anchor-from-shot`, rest)),
   )
 
   // ── 素材交接包：客户自己拼片的通道 ──────────────────────────────────────

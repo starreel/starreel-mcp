@@ -118,6 +118,17 @@ export const ENTRY_POINTS: EntryPoint[] = [
     flow: 'clone_voice → speak_with_voice(试听) → set_character_voice(原声剧:在 generate_videos 之前) / assign_voices',
   },
   {
+    customer_has: '没有外部音源,想用片子里某个角色已经念出来的声音当基准',
+    use: [
+      'set_voice_anchor_from_shot(从本剧某一镜选定角色声线;免费;选该角色独自说话、台词较长、无配乐的镜)',
+      'get_pipeline_status(native_voice_anchor:unanchored_speakers=还没锁的角色,stale_shots=锁之前出的、要重出的镜)',
+      'regenerate_shot_video(重出 stale_shots)',
+    ],
+    note: '原声剧里这就是锁声线:之后出的视频把这段声音交给厂商当参考音频。只对之后出的视频生效——' +
+      '最省的顺序是每个说话角色先出一镜、选定声线,再批量出其余镜。',
+    flow: 'generate_videos(每个说话角色先出一镜) → set_voice_anchor_from_shot → generate_videos(其余镜) → get_pipeline_status 看 stale_shots',
+  },
+  {
     customer_has: '歌曲 + 歌词(MV)',
     use: [
       'create_drama(project_type=mv)',

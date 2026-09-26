@@ -83,6 +83,7 @@ announces a condensed version as MCP `instructions` at connect time.
 | A clip that should **drive the motion** of an AI shot (a blocking/previz pass, a dance or action reference) | `edit_video_shot` with `reference_video_urls` — the shot keeps its AI video and borrows the clip's movement. To make the clip itself the source and restyle it in place, `upload_shot_footage` it first, then `edit_video_shot` with `replace_user_footage: true` | `upload_shot_footage` alone — that registers the clip as the finished shot, so nothing gets restyled and every later AI call on it returns 409 |
 | A scene plate that came out wrong (backdrop, era, light, layout) | `get_scene_prompt` → `update_scene` (`image_prompt`) → `regenerate_scene_image`; already-rendered shot frames still anchor on the old plate, so regenerate those shots too | re-running `generate_scene_images` (it only fills scenes that have **no** plate — it will not touch this one) |
 | A voice sample / a required voice | `clone_voice` → `speak_with_voice` → `set_character_voice` / `assign_voices` | cloning without the rights-holder's consent |
+| No sample, but a character already speaks in a rendered shot | `set_voice_anchor_from_shot` (free; native-audio dramas: locks the voice for later videos) → regenerate `stale_shots` | picking the voice after the whole episode is rendered |
 | **No sample** — just an idea of the voice (a narrator, a character that deserves its own voice) | `design_voice` (one-sentence description, free) → `get_voice_design` until `done` (candidates arrive as local wav files — let the customer listen) → `save_designed_voice` (pick one; billed like a clone) → `set_character_voice` | generating every line straight from the description — each generation is a different person; naming a real person to imitate their voice |
 | A song + lyrics | `create_drama` (`project_type: "mv"`) → `set_mv_lyrics` → `generate_mv_story` → `generate_mv_script` | `rewrite_script` (blocked for MV) |
 | A product / brand | `create_drama` (`project_type: "ad"` or `"brand_film"`) → `add_product` → `generate_product_sheet` | writing brand copy as dialogue (it gets spoken) |
@@ -216,6 +217,17 @@ content that will be rejected.
    portrait/sheet — have those ready first. Bind **before** `generate_videos`;
    for videos that already exist, use `repair_episode_dialogue`
    (`only_flagged=false`) rather than regenerating whole episodes.
+
+   **No outside sample, but the film already has the voice?** Pick it from a
+   shot: `set_voice_anchor_from_shot` (free) takes a shot where the character
+   speaks alone, at length, without music, and locks that as the character's
+   voice — no customer recording needed. It locks only videos generated
+   *afterwards*, so the cheapest order is: generate one shot per speaking
+   character, pick the voice, then generate the rest. `get_pipeline_status` →
+   `native_voice_anchor` lists `unanchored_speakers` (not locked yet) and
+   `stale_shots` (made before the lock — `regenerate_shot_video` them). Decide
+   the voice reference early; picking it after the whole episode is rendered
+   means redoing shots.
 
    **No sample? Design one.** `design_voice` turns a one-sentence description
    (age, gender, timbre, pace, mood — say what you want, not what you don't)
@@ -714,6 +726,12 @@ early on an account-level failure (`credits` = out of points; `account_overdue` 
 the platform's upstream vendor account, not yours) and the `remaining` shots never
 ran. Resubmitting unchanged will fail the same way — top up for `credits`; for
 `account_overdue`, tell the user and retry later instead of looping.
+Every replaced shot is re-checked before it is written back (same test as
+`scan_dialogue_coverage`): if the new audio is still cut off, repeats or adds
+words, or isn't the line, the product is **not** written back and the charge is
+refunded. Those shots show up as `verify_rejected` in the status (or as an
+error from `replace_shot_dialogue`) — re-voicing can't fix them; regenerate the
+shot instead.
 Either way, `compose_episode` afterwards — the final cut still holds the old audio until you do.
 
 Four distinct causes; they need **opposite** fixes, so identify the family first.
