@@ -959,6 +959,25 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   `get_bgm_prompt_guide`, `replace_shot_dialogue`
 - **Finish**: `compose_episode`, `get_final_cut`, `get_export`,
   `generate_episode_poster`, `generate_cover`
+- **What did this drama cost?** `get_drama_bill` — per kind `charged` / `refunded`
+  / `net`. **`net` is the spend** (same number as the web "spent on this drama"
+  and `get_budget_status`); `charged` includes failed calls that were refunded
+  automatically, so never report it as cost. `in_flight` = charged, result not
+  out yet (the platform charges on submit and refunds on failure — there is no
+  separate hold). `rework.video` = second-and-later successful videos of the
+  same shot. `account_level` = voice clones / designs / auditions that belong to
+  no drama — listed separately, **not** in the drama's total. Build a cost
+  write-up from this, not from your own tally.
+- **Every platform cut is versioned automatically.** Each `compose_episode` /
+  `rerender_episode` / multi-aspect render registers a `source=platform` entry in
+  `list_deliveries`: file sha256, and a manifest of what that render actually
+  used — per shot whether it was the raw clip, the composed clip, the re-voiced
+  clip or the lip-synced one (`source_kind`), which dialogue / music / SFX files,
+  subtitle count and text hash, plus the dialogue-audit tally at that moment.
+  Write delivery notes and "which version did we ship" answers **from that
+  manifest**, not from memory — notes written for v1 silently go stale by v4.
+  Platform entries never become the current delivery on their own;
+  `set_current_delivery` the one the customer actually gets.
 - **Delivered a cut you finished outside the platform** (re-voiced lines, trims,
   an ending card, music): `register_external_delivery` the exact file you hand to
   the customer — **every time**, including revisions. Otherwise the platform's

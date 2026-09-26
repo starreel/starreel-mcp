@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.94",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.94 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.95",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.95 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -1259,6 +1259,53 @@
         "operationId": "get_assets",
         "summary": "读一部剧的全部资产聚合(角色/场景/道具/图片)",
         "description": "读一部剧的全部资产聚合(角色/场景/道具/图片)。免费。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/dramas/{drama_id}/bill": {
+      "get": {
+        "operationId": "get_drama_bill",
+        "summary": "本剧净费用账单(免费)",
+        "description": "本剧净费用账单(免费)。核账、回答「到底花了多少、钱花在哪、退了多少」时用它,别自己拼流水。\n· totals / by_kind:每类 charged(扣费)、refunded(已退回)、net(净额)、charges/refunds(笔数)。**net 才是花费**,与网页「本剧已花费」、get_budget_status 同源;charged 含失败后自动退回的空转,只用于核账。\n· in_flight:已扣费、结果还没出的任务(平台是提交即扣、失败再退,没有单独的预扣)。\n· rework.video:同一镜第 2 次起的成功出片(返工);出图不计(首帧/尾帧/best-of-N 候选本来就是同镜多张)。\n· account_level:音色库克隆/设计/试听等**不属于任何一部剧**的语音扣费,单列、counted_in_drama=false,不计入本剧。\n· available=false:账本暂时不可达,不给数字(不拿估算冒充),稍后重试。",
         "tags": [
           "dramas"
         ],
@@ -3326,8 +3373,8 @@
     "/episodes/{episode_id}/deliveries": {
       "get": {
         "operationId": "list_deliveries",
-        "summary": "列本集已登记的外部交付版本(新→旧),每条含 sha256、时长、is_current 与完整交付清单(每镜来源 + 外部后期说明)",
-        "description": "列本集已登记的外部交付版本(新→旧),每条含 sha256、时长、is_current 与完整交付清单(每镜来源 + 外部后期说明)。免费。",
+        "summary": "列本集**所有成片版本**(新→旧,平台成片与外部交付共用一条版本号),每条含 sha256、时长、is_current 与完整清单",
+        "description": "列本集**所有成片版本**(新→旧,平台成片与外部交付共用一条版本号),每条含 sha256、时长、is_current 与完整清单。免费。\n★source=platform:平台每出一版成片(compose_episode / rerender_episode / 多画幅)都会**自动登记**,清单记的是**渲染用的那份时间线**——每镜用的是原片/合成片/换轨产物/口型产物(source_kind)、对白/配乐/音效各用了哪些文件、字幕条数与文本哈希、文件 sha256,以及登记时刻的台词审计分族计数。写交付说明、核对「交出去的是哪一版」以它为准,别凭记忆。平台版本**不会自动成为当前交付版**;客户选定哪一版,用 set_current_delivery 指过去。\n★source=external:register_external_delivery 登记的外部后期成片。",
         "tags": [
           "episodes"
         ],
@@ -3373,8 +3420,8 @@
     "/episodes/{episode_id}/deliveries/{delivery_id}/current": {
       "post": {
         "operationId": "set_current_delivery",
-        "summary": "把本集的某个已登记交付版本设为当前(例如客户最终选了较早的一版)",
-        "description": "把本集的某个已登记交付版本设为当前(例如客户最终选了较早的一版)。免费。只影响 get_final_cut 的 delivery,不改平台成片。",
+        "summary": "把本集的某个成片版本设为当前交付版(例如客户最终选了较早的一版)",
+        "description": "把本集的某个成片版本设为当前交付版(例如客户最终选了较早的一版)。免费。平台版本(source=platform)与外部版本都可以设。只影响 get_final_cut 的 delivery,不改平台成片。",
         "tags": [
           "episodes"
         ],
@@ -4316,7 +4363,7 @@
       "get": {
         "operationId": "get_final_cut",
         "summary": "查某一集成片状态与下载链接",
-        "description": "查某一集成片状态与下载链接。status=completed 时返回 download_url(我方 COS 直链,可直接下载)。免费。★bgm_stale=true 表示配乐在成片之后生成/改动、尚未进成片:重新 compose_episode(免费)即可,别用 re-render。★若登记过外部交付版本(register_external_delivery),另返回 delivery——那才是客户实际收到的一版;download_url 仍是平台自己拼的成片。",
+        "description": "查某一集成片状态与下载链接。status=completed 时返回 download_url(我方 COS 直链,可直接下载)。免费。★bgm_stale=true 表示配乐在成片之后生成/改动、尚未进成片:重新 compose_episode(免费)即可,别用 re-render。★若设过当前交付版(register_external_delivery 登记的外部版,或 set_current_delivery 指定的平台版),另返回 delivery——那才是客户实际收到的一版;download_url 仍是平台最新一次拼的成片。要看每一版成片用了什么、哈希是多少,用 list_deliveries。",
         "tags": [
           "episodes"
         ],

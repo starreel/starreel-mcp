@@ -1031,7 +1031,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'get_final_cut',
     '查某一集成片状态与下载链接。status=completed 时返回 download_url(我方 COS 直链,可直接下载)。免费。' +
       '★bgm_stale=true 表示配乐在成片之后生成/改动、尚未进成片:重新 compose_episode(免费)即可,别用 re-render。' +
-      '★若登记过外部交付版本(register_external_delivery),另返回 delivery——那才是客户实际收到的一版;download_url 仍是平台自己拼的成片。',
+      '★若设过当前交付版(register_external_delivery 登记的外部版,或 set_current_delivery 指定的平台版),另返回 delivery——那才是客户实际收到的一版;download_url 仍是平台最新一次拼的成片。' +
+      '要看每一版成片用了什么、哈希是多少,用 list_deliveries。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/final-cut`)),
   )
@@ -1598,13 +1599,19 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'list_deliveries',
-    '列本集已登记的外部交付版本(新→旧),每条含 sha256、时长、is_current 与完整交付清单(每镜来源 + 外部后期说明)。免费。',
+    '列本集**所有成片版本**(新→旧,平台成片与外部交付共用一条版本号),每条含 sha256、时长、is_current 与完整清单。免费。' +
+      '\n★source=platform:平台每出一版成片(compose_episode / rerender_episode / 多画幅)都会**自动登记**,清单记的是**渲染用的那份时间线**——' +
+      '每镜用的是原片/合成片/换轨产物/口型产物(source_kind)、对白/配乐/音效各用了哪些文件、字幕条数与文本哈希、文件 sha256,' +
+      '以及登记时刻的台词审计分族计数。写交付说明、核对「交出去的是哪一版」以它为准,别凭记忆。' +
+      '平台版本**不会自动成为当前交付版**;客户选定哪一版,用 set_current_delivery 指过去。' +
+      '\n★source=external:register_external_delivery 登记的外部后期成片。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/deliveries`)),
   )
   server.tool(
     'set_current_delivery',
-    '把本集的某个已登记交付版本设为当前(例如客户最终选了较早的一版)。免费。只影响 get_final_cut 的 delivery,不改平台成片。',
+    '把本集的某个成片版本设为当前交付版(例如客户最终选了较早的一版)。免费。平台版本(source=platform)与外部版本都可以设。' +
+      '只影响 get_final_cut 的 delivery,不改平台成片。',
     { episode_id: z.number().int().positive(), delivery_id: z.number().int().positive() },
     async ({ episode_id, delivery_id }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/deliveries/${delivery_id}/current`)),
@@ -2124,6 +2131,18 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '异步生成后用它看进度。免费。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/jobs`)),
+  )
+  server.tool(
+    'get_drama_bill',
+    '本剧净费用账单(免费)。核账、回答「到底花了多少、钱花在哪、退了多少」时用它,别自己拼流水。' +
+      '\n· totals / by_kind:每类 charged(扣费)、refunded(已退回)、net(净额)、charges/refunds(笔数)。' +
+      '**net 才是花费**,与网页「本剧已花费」、get_budget_status 同源;charged 含失败后自动退回的空转,只用于核账。' +
+      '\n· in_flight:已扣费、结果还没出的任务(平台是提交即扣、失败再退,没有单独的预扣)。' +
+      '\n· rework.video:同一镜第 2 次起的成功出片(返工);出图不计(首帧/尾帧/best-of-N 候选本来就是同镜多张)。' +
+      '\n· account_level:音色库克隆/设计/试听等**不属于任何一部剧**的语音扣费,单列、counted_in_drama=false,不计入本剧。' +
+      '\n· available=false:账本暂时不可达,不给数字(不拿估算冒充),稍后重试。',
+    { drama_id: z.number().int().positive() },
+    async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/bill`)),
   )
   server.tool(
     'get_cost_estimate',
