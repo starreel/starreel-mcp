@@ -1723,6 +1723,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '否则同一个毛病会一直复现。已实测:客户写「不能采用参考图举手单脚的静态舞姿」,成片开头的抬臂手势就被参考图那个举手带跑了。' +
       '\n★收到 **409「本镜是用户上传的实拍素材」** = 这一镜被 upload_shot_footage 登记成了实拍素材镜,不是模型或引擎的问题,换引擎重试无用。' +
       '两条出路:要以该素材为源做 AI 重绘 → 带 replace_user_footage=true 重发;要恢复成普通 AI 镜 → 先 clear_shot_footage。' +
+      '\n★收到 **409 + `in_flight_generation_id`** = 这一镜还有一条生成没跑完(上一次编辑 / 重生 / 批量出视频),' +
+      '这次编辑没提交、没扣费,quote 已作废。编辑的源是本镜当前视频,在途那条一完成就会换掉它——所以先等它完成、看过结果,' +
+      '再重新 quote 并编辑;**别连发**多条编辑想让它们叠加,每一条都只基于当时的源。' +
+      '若在途那条正是你刚提交的同一次编辑(例如调用超时后重发),直接等它的结果,不必再发。' +
+      '同一次编辑原样重发(指令、参考素材、区间、引擎都一样)不会 409,会挂到在途那条上、不重复扣费。' +
       CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
@@ -1752,6 +1757,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '确认后重生某镜视频(可选新 prompt)。' +
       '\n★收到 **409「本镜是用户上传的实拍素材」** = 该镜被 upload_shot_footage 登记成实拍素材镜,不是模型问题,换引擎无用;' +
       '要用 AI 视频覆盖它就带 replace_user_footage=true,要保留素材就别重生。' +
+      '\n★收到 **409 + `in_flight_generation_id`** = 这一镜还有一条生成没跑完,而且它不是按这次的提示词发起的' +
+      '(你带了新 prompt / 之后用 update_shot 改过该镜 prompt / 在途的是一次编辑)。这次重生没提交、没扣费,quote 已作废。' +
+      '先等在途那条完成、看过结果,再重新 quote 并重生——否则拿到的视频是旧提示词出的,会误以为新提示词没效果。' +
+      '\n★成功但返回里带 **`reused_in_flight: true`** = 同样的内容已经在生成(重发/双击/批量出视频已派发),' +
+      '这次没有新建、没有新扣费,返回的就是在途那一条,看它的进度即可,不必再发。' +
       CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),

@@ -1078,7 +1078,12 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   start**, not to the final timeline — add whatever overlapping transitions you like
   and let `compile_timeline.py` expand them, never hand-compute the shift.
 - **Edit**: `edit_video_shot`, `regenerate_shot_video`, `split_shot`,
-  `trim_shot`, `rerender_episode`
+  `trim_shot`, `rerender_episode`. One generation per shot at a time: a **409 with
+  `in_flight_generation_id`** means that shot is still generating from *different*
+  input (another prompt, an edit, or a prompt you changed since) — nothing was
+  submitted or charged and the quote is spent; wait for that generation, look at it,
+  then quote and retry. A success carrying `reused_in_flight: true` means the same
+  input was already generating — follow that generation, don't send it again.
 - **Read back (all free)**: `list_dramas`, `get_drama`, `get_characters`,
   `get_scenes`, `get_assets`, `get_jobs`, `get_pipeline_status`,
   `get_autofill_status` (progress of the background completion batch started by an
