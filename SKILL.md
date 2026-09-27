@@ -301,7 +301,9 @@ content that will be rejected.
    frames generated through this API (`generate_frames` / `generate_shot_frame`) do not
    trigger it, so an API-driven episode has usually never been joined.
    `get_storyboards` reports every shot's `seam_state` (the seam between it and the shot
-   before it): act on `unchained` (marked continuous, never joined) and `broken` (joined,
+   before it): act on `unchained` (marked continuous and never joined — or a join the
+   platform started whose regenerated first frame never landed: rejected, failed, or still
+   generating) and `broken` (joined,
    but the platform's continuity check says it doesn't hold — `seam_failed_dims` names
    which of characters / wardrobe / props / lighting / scene broke). Leave `intended`
    (hard cut, scene or time change, big shot-size jump, insert shot, customer upload) and

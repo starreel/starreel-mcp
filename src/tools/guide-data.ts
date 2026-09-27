@@ -252,7 +252,7 @@ export const PIPELINE: PipelineStep[] = [
       '★开跑前用 `get_pipeline_status` 核对 generate_scene_images 的 completed/total——缺基板照样能出帧,' +
       '但背景从每个场景的首镜起就开始漂;`review_storyboards` 也会把缺口报成 scene_plate_missing。' +
       '★首尾帧补齐后、出视频前**接缝**:逐镜出帧不会触发平台的自动帧链,镜与镜之间多半没接过。' +
-      '`get_storyboards` 看每镜 seam_state(unchained=标了连续却没接、broken=接过没接上),' +
+      '`get_storyboards` 看每镜 seam_state(unchained=标了连续却没接、或衔接重生没落地,broken=接过没接上),' +
       '整集用 `chain_frames` 先 dry_run:true 报计划与预估(copy 免费、reframe 每道一张图)、客户确认后执行——' +
       '已接好的缝不进计划,重复执行不重复扣费;只补个别缝用 `chain_shot_from_prev`(免费,同景别延续)' +
       '或 `chain_shot_from` mode=reframe(报价后执行,保景别)。`review_frames` 会把两类缝报成 seam_unchained / seam_broken。',

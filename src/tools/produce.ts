@@ -707,11 +707,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;' +
       '改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。' +
       '★每镜带 **seam_state**(本镜与上一镜的镜间接缝,与官网帧时间线同一判据):' +
-      'ok=已续接(首帧就是上镜尾帧,或平台做过首尾帧衔接) / unchained=标了连续却从没接过 / ' +
+      'ok=已续接(首帧就是上镜尾帧,或平台做过首尾帧衔接且已落地) / ' +
+      'unchained=该连续却没接上(标了连续从没接过,或平台发起的衔接重生没落地:被拒/失败/还在生成——本镜 frame_status 会是 failed/processing) / ' +
       'broken=接过但没接上(seam_failed_dims 给出哪几维不连续:characters/wardrobe/props/lighting/scene) / ' +
       'intended=有意切换(硬切/换场/时间跳跃/景别大跳/插入镜/外部上传帧),不用管 / missing=两侧帧没齐 / ' +
       'unknown=没标意图也没接过(系统没判,不是有问题) / na=首镜或旁白卡。' +
-      'seam_audit_status=pending 表示已接、平台的衔接审计还没出结论(若本镜 frame_status=failed,说明衔接那次重生没出成,缝其实没接上)。' +
+      'seam_audit_status=pending 表示衔接已落地、平台的衔接审计还没出结论。' +
       '出视频前只需处理 unchained 与 broken:整集用 chain_frames(先 dry_run),单道用 chain_shot_from_prev / chain_shot_from。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
@@ -863,7 +864,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '孤儿角色变体、场景图被人物污染。★generate_videos 之前必须先跑本工具——出视频是全链最贵的一步,' +
       '拿着漂移的首帧整集出视频是最典型的废片形态。按 findings.action 修完(多为 generate_character_portraits / ' +
       'generate_shot_frame 单镜重生)再复审。' +
-      '★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接)/' +
+      '★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接,或发起的衔接重生没落地)/' +
       'seam_broken(接过但没接上),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,' +
       '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。',
     { episode_id: z.number().int().positive() },
