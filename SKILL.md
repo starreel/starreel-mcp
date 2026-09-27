@@ -303,9 +303,11 @@ content that will be rejected.
    `get_storyboards` reports every shot's `seam_state` (the seam between it and the shot
    before it): act on `unchained` (marked continuous and never joined — or a join the
    platform started whose regenerated first frame never landed: rejected, failed, or still
-   generating) and `broken` (joined,
+   generating — or whose checked first frame was regenerated afterwards) and `broken` (joined,
    but the platform's continuity check says it doesn't hold — `seam_failed_dims` names
-   which of characters / wardrobe / props / lighting / scene broke). Leave `intended`
+   which of characters / wardrobe / props / lighting / scene broke — or the previous shot's
+   last frame was regenerated after the join: `seam_audit_status: "stale"`, no dims, this
+   shot still opens on the old last frame). Leave `intended`
    (hard cut, scene or time change, big shot-size jump, insert shot, customer upload) and
    `unknown` (never evaluated — not a defect) alone.
    Whole episode: `chain_frames` with `dry_run: true` first (free — no writes, no images)
