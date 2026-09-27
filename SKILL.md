@@ -1028,7 +1028,12 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   separate hold). `rework.video` = second-and-later successful videos of the
   same shot. `account_level` = voice clones / designs / auditions that belong to
   no drama — listed separately, **not** in the drama's total. Build a cost
-  write-up from this, not from your own tally.
+  write-up from this, not from your own tally. `get_cost_estimate` adds what is
+  still to be made: its `already_spent_points` is the same ledger number, split
+  across `breakdown[].done_points` (text spend is one combined `text_spent` row —
+  the ledger can't tell rewrite from storyboarding). If `spent_source` is
+  `usage_mirror` (also on `get_budget_status`), the ledger was unreachable and the
+  number is a low fallback without text/music — say so, or retry later.
 - **Every platform cut is versioned automatically.** Each `compose_episode` /
   `rerender_episode` / multi-aspect render registers a `source=platform` entry in
   `list_deliveries`: file sha256, and a manifest of what that render actually

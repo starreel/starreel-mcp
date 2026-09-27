@@ -2181,7 +2181,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_cost_estimate',
-    '查一部剧的整体成本预估(点数)。免费。',
+    '查一部剧的整体成本(点数):已花费 + 还没做的部分的待花费区间 + 分类明细。免费。' +
+      'already_spent_points 与 get_budget_status 的 spent、网页「本剧已花费」同源(平台扣费账本净额,已减退款),是同一个数。' +
+      'spent_source=usage_mirror 表示账本暂不可达、回退到本地镜像(偏少,不含文本/配乐),向客户报数时须注明,稍后重试即恢复;spent_note 是口径说明。' +
+      'breakdown 各行 done_points 之和 = already_spent_points:账本分不出文本用在改写/拆镜/补全/提取哪一步,' +
+      '文本已花费合计只在 kind=text_spent 一行(text / text_rewrite 行的 done_points 恒为 0,别报成「文本没花钱」;回退时没有 text_spent 行);' +
+      '配乐、声音克隆等没有单列预估的类别在 other_spent(note 列出构成)。total = 已花费 + 待花费。' +
+      '★同样不含账号级语音(音色库克隆/设计/试听),核账用 get_drama_bill。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/cost-estimate`)),
   )
