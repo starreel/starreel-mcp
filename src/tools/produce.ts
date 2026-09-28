@@ -84,10 +84,10 @@ const REVIEW_ARGS = {
 //   create_drama → set_script(原始) → rewrite_script(AI改写) → [get_script/edit_rewritten_script 审改]
 //   → extract_assets(角色/场景/道具) → quote/generate_storyboards(先分镜·纯文本拆镜)
 //   → generate_portraits_and_sheets(定妆图+设定图·一致性关键·分镜后建只给出场角色更省;设定图不能省)
-//   → generate_color_script + generate_motion_templates(剧目级资产·分镜后出图前·文本步无报价)
+//   → generate_color_script(剧目级资产·分镜后出图前·文本步无报价)
 //   → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费) → generate_frames(frame_type=last_frame) → quote/generate_videos
 //   → compose_episode → get_final_cut / get_export
-// 项目设定随时可 update_project_settings;世界观图/美术圣经为增强项(色彩脚本/动作模板已进主干)。
+// 项目设定随时可 update_project_settings;色彩脚本保留主干，动作模板仅可选实验。
 const WORKFLOW_HINT =
   '★三档执行策略(别把三档混着问客户):' +
   '①【基础项目设定·免费·必做地基·建剧即设好,别建空壳】project_type/setting_brief(世界观·ERA LOCK)/' +
@@ -129,7 +129,7 @@ const WORKFLOW_HINT =
   '(get_script 取全文 → 只改那几场、其余逐字照抄 → 提交整篇),免费秒级、结果确定;' +
   '误重跑用 get_script(include_previous=1) 回捞上一版。' +
   'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→' +
-  '★generate_color_script(色彩脚本·统一调色)+generate_motion_templates(动作模板·从分镜抽运动语言)→assign_voices(分配音色;旁白/角色库里没合适的→design_voice 按描述造一个,定样后 set_character_voice)→' +
+  '★generate_color_script(色彩脚本·统一调色)→assign_voices(分配音色;旁白/角色库里没合适的→design_voice 按描述造一个,定样后 set_character_voice)→' +
   '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames(默认只出首帧)→★tail_frame_plan(免费·哪几镜要独立尾帧)→frames(frame_type=last_frame)→★review_frames→videos→generate_tts→compose;' +
   '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
   '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
@@ -159,11 +159,10 @@ const WORKFLOW_HINT =
   ' unanchored_speakers 和锁之前出的、需要重出的 stale_shots。' +
   '★世界观概念图=默认必做(提升整剧一致性、很多第三方平台漏做这步):分镜后默认调 generate_world_concept,' +
   '仍走报价确认流程(告知客户预估点数、确认再扣)——不静默扣费、也别跳过。' +
-  '★★【色彩脚本/动作模板别跳·它们在主干里】generate_color_script(统一全片调色)与 generate_motion_templates' +
-  '(从分镜抽取统一运动语言,必须分镜后)是出图/出视频时的注入源:缺了照样能出帧出视频、不报错不拦你,' +
-  '代价是出图/出视频**静默不注入**调色指令与运动提示,各镜色调、动作风格各自发挥。' +
-  '两者都是**文本步、没有 quote_* 工具**,按用量后付——告知客户在做即可,不必等一个不存在的报价。' +
-  '进度自检看 get_pipeline_status 的 generate_color_script / generate_motion_templates 两步,review_storyboards 也会在出帧前报缺口。' +
+  '★★【色彩脚本】generate_color_script 统一全片调色,分镜后、出帧前做;文本步无 quote_*,按用量后付。' +
+  '进度自检看 get_pipeline_status 的 generate_color_script,review_storyboards 会报色彩脚本缺口。' +
+  '★动作模板为可选实验:generate_motion_templates(动作模板提取)仅客户明确要求时在分镜后调用,文本步按用量后付。' +
+  '首尾帧默认不注入动作模板;缺模板无需补做,不阻碍出图、出视频或成片。视频模板可能被裁剪,不承诺送达或增益。' +
   '★场景 Bible(每场景详细设定)顺序在**场景图片出图之后**——据出好的场景图完善(MCP 暂无此工具、在官网做);' +
   '别在出场景图前做场景 Bible。' +
   '★音频默认用视频原声(use_clip_audio 默认开、跳过 TTS 直接用 AI 视频自带声):' +
@@ -1496,7 +1495,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ drama_id }) => jsonResult(await client.producePost(`/dramas/${drama_id}/video-style`)),
   )
 
-  // ========== 剧目级共享资产(色彩脚本/动作模板属主干,分镜后、出帧前)==========
+  // ========== 剧目级共享资产(色彩脚本属主干，动作模板仅可选实验)==========
   server.tool(
     'generate_color_script',
     '生成剧目色彩脚本(统一全片配色情绪)。★产线主干步:分镜后、出帧(generate_frames)前做。' +
@@ -1512,10 +1511,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'generate_motion_templates',
-    '从分镜自动抽取动作模板(统一全片运动语言)。★产线主干步:**需先有分镜**(先 generate_storyboards),出帧(generate_frames)前做。' +
-    '出视频时按镜头动作匹配模板注入运动提示;跳过不报错、不拦你,代价是静默不注入、各镜动作风格各异。' +
-    '同步返回 created_count;完成后 get_pipeline_status 的 generate_motion_templates 变 done。' +
-    '文本步、无 quote_*,按用量后付不欠费——告知客户即可。',
+    '可选实验：从已有分镜提取动作模板，仅客户明确要求时调用，不是产线必做步。' +
+    '首尾帧默认不注入动作模板，无需在 generate_frames 前补做；视频模板可能被裁剪，不保证送达或增益。' +
+    '同步返回 created_count；保留 get_motion_templates 读取和管理能力。文本步无 quote_*，按用量后付。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.producePost(`/dramas/${drama_id}/motion-templates`)),
   )

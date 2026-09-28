@@ -227,15 +227,14 @@ export const PIPELINE: PipelineStep[] = [
     step: '6 剧目级一致性资产(分镜后、出图前)',
     tools: [
       'generate_portraits_and_sheets(定妆图+设定图,一致性锚·两者都要:调一次推进一步,定妆图齐了再调一次出设定图)', 'quote_character_portraits(只报定妆图;设定图无需报价)',
-      'generate_world_concept(默认必做,仍走报价)', 'generate_motion_templates', 'generate_color_script',
+      'generate_world_concept(默认必做,仍走报价)', 'generate_color_script',
       'generate_art_bible', 'extract_visual_lock', 'extract_setting_brief', 'generate_video_style',
       'quote_scene_images', 'generate_scene_images', 'generate_prop_sheet',
       'get_scene_prompt(读某场空景图的提示词正文,免费)', 'update_scene(image_prompt 改正文)', 'regenerate_scene_image(单场重出)',
     ],
     billing: '报价确认后扣点',
-    note: '分镜后建只给出场角色出图更省;动作模板本就必须分镜后。' +
-      '★色彩脚本(generate_color_script)与动作模板(generate_motion_templates)是主干步不是增强项:' +
-      '出图/出视频按它们注入调色与运动提示,缺了静默不注入、不报错;两者是文本步无 quote_*,按用量后付。' +
+    note: '分镜后建只给出场角色出图更省。' +
+      '★色彩脚本(generate_color_script)是主干步:出图/出视频按它注入调色指令,文本步无 quote_*,按用量后付。' +
       '★这一步的两个锚缺一不可:定妆图锚人(generate_portraits_and_sheets)、空景基板锚景(generate_scene_images)。' +
       '基板长期被第三方漏掉——跳过不报错、不被拦,但每个场景的第一镜会完全没有背景锚' +
       '(平台的兜底补图只惠及同场景后续镜),而首镜往往定调。',
@@ -314,6 +313,7 @@ export const QA_TOOLS: QaTool[] = [
 ]
 
 export const OPTIONAL_BOOSTS = [
+  { what: '动作模板（可选实验）', tool: 'generate_motion_templates', when: '仅客户明确要求时，已有分镜后手动提取；按用量后付。首尾帧默认不注入，缺失无需补做；不保证视频送达或增益' },
   { what: '世界观概念图', tool: 'generate_world_concept', when: '分镜后默认做(提升整剧一致性),仍走报价确认' },
   { what: '美术圣经 / 视觉锁 / 世界观 Brief 抽取', tool: 'generate_art_bible', when: '建剧后;或 `extract_visual_lock` / `extract_setting_brief` 从剧本反推' },
   { what: '场景组(同场景多镜一次成组出视频)', tool: 'generate_scene_groups', when: '先 `get_scene_group_plan` 看方案' },

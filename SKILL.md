@@ -23,6 +23,11 @@ Never invent character names, titles, dialogue, or genre from your own
 imagination and bake them into calls — the content comes from the user's script.
 All examples below use placeholders like `<raw script>` and `<drama title>`.
 
+Motion templates are optional experiments: call `generate_motion_templates` only when the
+user explicitly requests it, after storyboards exist (text usage is billed). Missing templates
+never require remediation. First/last frames do not inject template hints by default.
+Existing templates and manual tools remain available; video delivery or benefit is not guaranteed.
+
 ## What you produce
 
 One episode, the **full** pipeline — nothing skipped:
@@ -32,10 +37,7 @@ create_drama → set_script(raw) → rewrite_script(AI draft, user may edit)
   → [review_script] → extract_assets(cast/scenes/props)
   → storyboards → [review_storyboards]
   → generate_portraits_and_sheets(portraits + sheets = the shot consistency anchor)
-  → generate_color_script + generate_motion_templates(color-script + motion-templates =
-    the grading and motion cues injected into every frame/video; skip them and nothing
-    is injected — no error, each shot just grades and moves its own way. Text steps,
-    no quote_*: billed by usage)
+  → generate_color_script(unified grading; text step billed by usage, no quote_*)
   → scene-images(empty-set plates = the background anchor — every shot in a scene
     anchors on its plate; skip it and each scene's FIRST shot has no background
     anchor at all, and the backdrop drifts from shot to shot)
