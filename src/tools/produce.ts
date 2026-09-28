@@ -11,6 +11,7 @@
  * 用 get_storyboards / get_episode_status 轮询到完成。下载链接只发我方 COS 链接。
  */
 import { z } from 'zod'
+import { imageHandoff, localColorHandoff } from './local-postproduction.js'
 import { readFileSync, writeFileSync, chmodSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,10 +24,12 @@ const TOOLCHAIN_USAGE = [
   '1. 三个脚本放同一目录(assemble.sh 需可执行位)。',
   '2. 把 export_handoff_pack 的返回体存成 manifest.json。',
   '3. python3 fetch_pack.py manifest.json -o ./pack   # 下载素材 + 内联字幕落成逐镜 SRT + 改写成本地路径',
+  '本地调色包:下载后读 POSTPRODUCTION.md 并打开 comparison.html;图片包不执行视频装配。',
   '4. python3 compile_timeline.py ./pack [--transitions plan.json]   # 展开时间轴',
   '5. ./assemble.sh ./pack out.mp4 [plan.json]   # 装配成片',
 ]
 const TOOLCHAIN_NOTE =
+  '本地调色包不自动套平台 LUT,只下载与交接,未执行调色。' +
   'assemble.sh 会先自检 ffmpeg 是否带 libass;不带则字幕以软字幕轨输出而非烧录(竖屏发布必须烧录)。' +
   '包里若带 render_target.color_lut,fetch_pack.py 会把调色查找表一并下载,assemble.sh 自动施加——' +
   '不施加的话你的成片与平台成片会有色差。'
@@ -2835,6 +2838,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'export_handoff_pack',
     '导出本集「素材交接包」清单:逐镜裸片 + 对白音轨 + 音效 + 配乐 + 字幕的可下载 URL,' +
       '交给你在**自己那边**完成转场决策、拼接、混音、烧字幕——平台不参与终拼。免费,零扣费。\n' +
+      '★本地调色/第三方 AI 后期:purpose=local_color;只有图片时传 media_type=images,无需生成视频。' +
+      '本模式保留源文件、关闭导出包的自动 LUT、附带后期说明和本地对比页流程;不上传第三方、不收费生成、不回填平台。' +
+      '图片来源可能已有处理,不能把所有导出图承诺为未调色原片。\n' +
       '\n【推荐流程】① 调本工具拿 manifest;② 按 clips[].url 把裸片下载到本地;' +
       '③ 你自己看片判断每个接缝该用什么转场(manifest 给了 scene_boundary 场景边界作判据),' +
       '写一份 plan.json;④ 用 get_handoff_toolchain 拿到 compile_timeline.py 展开时间轴、' +
@@ -2853,9 +2859,19 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '③ 字幕 cue、dialogue_audio.offset_ms、sfx[].offset_ms 的基准都是「该镜 trim 之后的第 0 毫秒」,' +
       '不是成片绝对时间。你加多少重叠转场都不用改它们——交给 compile_timeline.py 展开,别手算累加。\n' +
       '\n想让平台代拼、要平台级质量闸(终拼预检/音画等长/响度母带),改用 compose_episode。',
-    { episode_id: z.number().int().positive() },
-    async ({ episode_id }) => {
+    {
+      episode_id: z.number().int().positive(),
+      media_type: z.enum(['videos', 'images']).optional().describe('默认 videos；images 导出现有首尾帧并自动走本地后期流程'),
+      purpose: z.enum(['assembly', 'local_color']).optional().describe('默认 assembly 保持平台装配；local_color 交接本地调色，关闭本包自动 LUT'),
+      color_goal: z.string().max(4000).optional().describe('客户的后期目标与保护项；作为说明保存，不发送给模型'),
+    },
+    async ({ episode_id, media_type, purpose, color_goal }) => {
+      if (media_type === 'images') {
+        const rows = await client.produceGet(`/episodes/${episode_id}/storyboards`)
+        return jsonResult(imageHandoff(episode_id, rows, color_goal))
+      }
       const manifest: any = await client.produceGet(`/episodes/${episode_id}/handoff-pack`)
+      if (purpose === 'local_color') return jsonResult(localColorHandoff(manifest, color_goal))
       return jsonResult({
         ...manifest,
         assembly_guide: {

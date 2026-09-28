@@ -1,6 +1,6 @@
 {
   "name": "@starreel/mcp",
-  "version": "0.1.103",
+  "version": "0.1.104",
   "mcpName": "ai.starreel/starreel",
   "description": "StarReel MCP server — drive the AI short-drama production pipeline (script → storyboards → frames → video → final cut) from Claude, Cursor, or any MCP client",
   "license": "MIT",
@@ -22,7 +22,8 @@
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && node scripts/release-check.mjs",
-    "generate:openapi": "tsx scripts/generate-openapi.ts"
+    "generate:openapi": "tsx scripts/generate-openapi.ts",
+    "test": "node --test test/*.test.mjs"
   },
   "engines": {
     "node": ">=18"

@@ -26,6 +26,9 @@ fetch_pack.py — 把 export_handoff_pack 返回的 manifest 拉成一个本地�
 只用标准库，无第三方依赖。
 """
 import argparse
+import hashlib
+import html
+from urllib.parse import urlparse
 import json
 import os
 import sys
@@ -82,6 +85,57 @@ def write_srt(path: str, cues) -> int:
     return n
 
 
+
+def write_postproduction(out, manifest, jobs):
+    """仅写本地交接说明与人工对比页，不执行调色、不上传素材。"""
+    post = manifest["postproduction"]
+    post["status"] = "downloaded_not_processed"
+    lines = ["# 本地后期交接", "", "状态：素材已下载，尚未调色或验收。", "",
+             "## 客户目标（仅作素材说明）", "", post.get("goal") or "待客户确认", "",
+             "## 操作步骤", ""]
+    lines.extend(f"{i+1}. {step}" for i, step in enumerate(post.get("steps", [])))
+    lines.extend(["", post.get("assembly_policy", ""), "", post.get("limitations", ""), "",
+                  "源文件保持不变，处理结果另存。参考图只表达意图，批准样张才是本项目调色基准。",
+                  "对比后记录采用文件、配方/软件版本及未完成检查；此页面不会自动批准或回传。"])
+    if post.get("missing_shots"):
+        lines.append("缺少图片的镜号：" + ", ".join(map(str, post["missing_shots"])))
+    with open(os.path.join(out, "POSTPRODUCTION.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    hashes = {}
+    for _, rel in jobs:
+        digest = hashlib.sha256()
+        with open(os.path.join(out, rel), "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                digest.update(chunk)
+        hashes[rel] = digest.hexdigest()
+    with open(os.path.join(out, "checksums.json"), "w", encoding="utf-8") as f:
+        json.dump(hashes, f, ensure_ascii=False, indent=2)
+    page = ['''<!doctype html><meta charset="utf-8"><title>本地后期对比</title>
+<style>body{background:#16191d;color:#eee;font:16px sans-serif;margin:24px}.pair{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:30px}img,video{max-width:100%;max-height:65vh}input{margin:12px}pre{white-space:pre-wrap}a{color:#ade}</style>
+<h1>本地后期对比</h1><p>源素材与处理后版本人工对比；选择文件仅在浏览器本地预览，不会上传。未选择结果不代表已完成。</p>
+<p>参考图：<input type="file" accept="image/*" data-target="reference"></p><img id="reference">
+<pre>''', html.escape(post.get("goal") or "目标待确认"), "</pre>"]
+    count = 0
+    for shot in manifest.get("shots", []):
+        media = list(shot.get("images") or [])
+        if (shot.get("clip") or {}).get("file"):
+            media.append(shot["clip"])
+        for item in media:
+            rel = item.get("file")
+            if not rel:
+                continue
+            count += 1
+            tag = "video" if item is shot.get("clip") else "img"
+            controls = " controls" if tag == "video" else ""
+            accept = "video/*" if tag == "video" else "image/*"
+            label = html.escape(f"镜头 {shot['shot_number']} {item.get('frame_type', 'video')}")
+            page.append(f'<h2>{label}</h2><div class="pair"><div><p>源素材</p><{tag}{controls} src="{html.escape(rel, quote=True)}"></{tag}></div>'
+                        f'<div><p>处理后（待选择）</p><input type="file" accept="{accept}" data-target="result-{count}"><{tag}{controls} id="result-{count}"></{tag}></div></div>')
+    page.append('''<script>document.querySelectorAll('input[data-target]').forEach(input=>input.addEventListener('change',()=>{const f=input.files[0];if(!f)return;const el=document.getElementById(input.dataset.target);if(el.dataset.url)URL.revokeObjectURL(el.dataset.url);el.dataset.url=URL.createObjectURL(f);el.src=el.dataset.url}));</script>''')
+    with open(os.path.join(out, "comparison.html"), "w", encoding="utf-8") as f:
+        f.write("".join(page))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("manifest", help="manifest.json 路径，或 - 表示从 stdin 读")
@@ -98,12 +152,29 @@ def main():
         sys.exit(f"不认识的 manifest_version: {m.get('manifest_version')!r}，拒绝猜测")
 
     out = a.outdir
+    local_color = (m.get("postproduction") or {}).get("workflow") == "local_color"
+    if local_color and os.path.exists(out) and os.listdir(out):
+        sys.exit("本地后期请使用新的空目录，避免覆盖源素材或误用旧版本缓存")
     os.makedirs(out, exist_ok=True)
+    if local_color:
+        with open(os.path.join(out, "source-manifest.json"), "w", encoding="utf-8") as f:
+            json.dump(m, f, ensure_ascii=False, indent=2)
+        # 再次兜底：本地后期不自动烘焙项目 LUT。
+        m.setdefault("render_target", {})["color_lut"] = None
     jobs = []            # (url, 包内相对路径)
 
     for i, sh in enumerate(m.get("shots", [])):
         n = int(sh["shot_number"])
         tag = f"{n:03d}"
+        for k, image in enumerate(sh.get("images") or []):
+            if not image.get("url"):
+                continue
+            ext = os.path.splitext(urlparse(image["url"]).path)[1].lower()
+            if ext not in (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"):
+                ext = ".img"
+            rel = f"originals/shot_{tag}_{k}{ext}"
+            jobs.append((image.pop("url"), rel))
+            image["file"] = rel
         clip = sh.get("clip") or {}
         if clip.get("url"):
             rel = f"clips/shot_{tag}.mp4"
@@ -161,6 +232,9 @@ def main():
     with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as ex:
         list(ex.map(one, jobs))
 
+    if local_color and not errors:
+        write_postproduction(out, m, jobs)
+
     with open(os.path.join(out, "manifest.json"), "w", encoding="utf-8") as f:
         json.dump(m, f, ensure_ascii=False, indent=2)
 
@@ -170,6 +244,10 @@ def main():
             print("  " + e, file=sys.stderr)
         print("URL 有有效期，过期就重新调 export_handoff_pack 拿新的 manifest。", file=sys.stderr)
         sys.exit(1)
+
+    if local_color:
+        print("素材下载完成，尚未调色。下一步：阅读 POSTPRODUCTION.md，在本地工具处理后打开 comparison.html 对比。")
+        return
 
     print(f"完成。下一步：\n  python3 compile_timeline.py {out}\n  ./assemble.sh {out} out.mp4")
 

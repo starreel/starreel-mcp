@@ -1059,6 +1059,22 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   changed outside in `manifest`. `get_final_cut` then returns it as `delivery`
   next to the platform's own `download_url`; `list_deliveries` /
   `set_current_delivery` manage versions.
+- **Local color grading / third-party AI finishing**: call `export_handoff_pack`
+  with `purpose="local_color"`; for existing still frames use `media_type="images"`
+  (no video generation required). Save the result as `manifest.json`, obtain the
+  toolchain, and run `python3 fetch_pack.py manifest.json -o ./pack` in a new empty
+  directory on the customer's computer. Read `POSTPRODUCTION.md` and use
+  `comparison.html` to select local references and processed versions. Selection
+  stays in the browser; no third-party upload or billed generation is performed.
+  The package disables automatic LUT application, preserving the project LUT as
+  metadata without changing project settings. Existing uploaded frames may already
+  be graded: an export cannot undo prior processing. Preserve originals and save
+  edits separately. Color scripts describe targets and protected regions, not a
+  guarantee of precise color control. Obtain authorization before third-party
+  uploads or paid processing. Inspect actual results (video also needs flicker,
+  duration, frame-rate and audio checks); downloading is not finishing or approval.
+  This path does not automatically replace platform assets. Image-only packs must
+  not be passed to the video assembler.
 - **Assemble it yourself**: `export_handoff_pack`, `get_handoff_toolchain` —
   download the per-shot raw clips, dialogue tracks, SFX, BGM and subtitles, then
   decide transitions and assemble the cut on your own side. Use this instead of

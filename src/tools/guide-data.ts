@@ -357,6 +357,7 @@ export const COMMON_REQUESTS: CommonRequest[] = [
   { customer_says: '预算多少 / 怎么更便宜', do: '各步 quote_* + `get_cost_estimate`;降本:hailuo-3(约 1/3)或 wan3.0(约 4 折,仅风格化/空镜/产品镜,写实真人绝不选)+ 草稿期低分辨率。' },
   { customer_says: '镜头之间接不上 / 画面跳 / 衔接不顺', do: '`get_storyboards` 看 seam_state:unchained / broken 才要修(unknown 是系统没判、intended 是有意切换,都别动)。还没出视频:整集 `chain_frames`(先 dry_run),单道同景别 `chain_shot_from_prev`(免费)、景别有变化 `quote_chain_shot_from` → `chain_shot_from` mode=reframe。上一镜视频已出好、不想动本镜首帧:`quote_align_prev_shot` → `align_prev_shot`(重生上一镜视频)。改了首帧的镜视频要重生。' },
   { customer_says: '成片里话没说完 / 切太快', do: '先 `scan_dialogue_coverage` / `scan_intra_shot_cuts` 定病因,再按 qa_tools 的 then 修;别默认去加长镜头。' },
+  { customer_says: '下载原图或视频到本地调色、用第三方 AI 后期', do: '`export_handoff_pack` purpose=local_color；只有图片传 media_type=images；按 local_postproduction.color_handoff 执行。' },
   { customer_says: '我想自己剪', do: '`export_handoff_pack` + `get_handoff_toolchain`,不走 `compose_episode`。' },
   { customer_says: '要配音 / 不要视频原声', do: '`update_project_settings` use_clip_audio=false → `assign_voices` → `generate_tts` → `compose_episode`。' },
 ]
@@ -375,13 +376,22 @@ export interface PostProductionStage {
  */
 export const LOCAL_POSTPRODUCTION = {
   when:
-    '客户要把镜头下载到自己电脑上剪、配乐、烧字幕、优化转场、做字卡、补旁白时走这条;' +
+    '客户要把镜头下载到自己电脑上调色、使用第三方 AI 后期、剪辑、配乐、烧字幕、优化转场、做字卡、补旁白时走这条;' +
     '想让平台代拼并要平台级质量闸(终拼预检 / 音画等长 / 响度母带)用 `compose_episode`。两条二选一。',
   where_it_runs:
     '★脚本与 ffmpeg 全部跑在**客户自己的机器**上,平台只发素材 URL 与工具链源码。' +
     'manifest 里是远程 URL,不是服务器上的本地路径;`save_handoff_toolchain` 的 dir 也是客户机器上的绝对路径。' +
     '别把服务器路径当成客户电脑上的路径,也别替客户声称"已经在本地跑完了"——真正执行的是客户那侧。',
   tools: ['export_handoff_pack', 'save_handoff_toolchain', 'get_handoff_toolchain'],
+  color_handoff: {
+    entry: 'export_handoff_pack(purpose=local_color)；图片用 media_type=images，无需出视频。color_goal 填客户目标和保护项。',
+    download: 'save_handoff_toolchain → python3 fetch_pack.py manifest.json -o ./pack；得到源素材、POSTPRODUCTION.md、comparison.html。',
+    reference: '客户在本地选择参考图，批准本项目试调样张后再扩到其他镜头；色彩脚本作为后期交接说明，不承诺精准控制。',
+    tools: '客户选择第三方 AI 或传统调色软件；仅调色优先非生成式处理，重绘需核对身份与构图变化。上传或收费须明确授权。',
+    verify: '保留源文件，另存版本；逐镜检查肤色、高光与蒙版，视频检查闪烁、时长与音轨；下载与退出码不代表验收。',
+    lut: 'local_color 包禁用自动 LUT，仅记录平台原设置，避免重复调色；不更改平台项目。',
+    delivery: '本地交付并记录采用版本；不自动回传覆盖，不承诺尚未支持的回传流程。',
+  },
   stages: [
     {
       stage: '1 对需求',

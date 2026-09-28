@@ -137,3 +137,22 @@ env = { "STARREEL_API_KEY" = "srk_live_xxx" }
 |---|---|---|
 | `STARREEL_API_KEY` | ✅ | — |
 | `STARREEL_AUTH_BASE` | | `https://api.shortreelai.com` |
+
+## 本地调色与第三方 AI 后期
+
+先调用 `get_capabilities_guide(section="local_postproduction")`。
+`export_handoff_pack` 默认仍导出视频剪辑包；设置 `purpose="local_color"`
+可导出本地调色交接包，只有镜头图片时加 `media_type="images"`，无需生成视频。
+`color_goal` 可填写客户确认的色彩目标和保护项，不会发送给生成模型。
+
+将清单保存为 `manifest.json`，用 `save_handoff_toolchain` 保存工具链后运行：
+
+```sh
+python3 fetch_pack.py manifest.json -o ./pack
+```
+
+本地调色使用新的空目录，输出源素材、`source-manifest.json`、`checksums.json`、
+`POSTPRODUCTION.md` 和 `comparison.html`。在对比页选择本地参考图及处理结果，
+文件只在浏览器中预览。交接不收费生成、不上传第三方、不回填平台。
+外部工具收费和上传须另行授权；导出包关闭自动 LUT，平台项目设定保持不变。
+已有素材是否曾调色需要核对来源，不能把导出等同于恢复未调色原件。
