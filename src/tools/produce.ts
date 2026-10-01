@@ -606,6 +606,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'get_pipeline_status',
     '查某一集完整工作流的进度(script_rewrite/提取/分镜/语音/出图/出视频/合成/配乐/终拼…各步 ' +
       'done/partial/pending/not_required)。照它按序推进、不跳步。免费。' +
+      'asset_versions_summary 将 generated、input_consistent、review_valid、adopted 和 current_effective 分开计数；不能把 generate_videos.completed 当当前有效数量。' +
       '★not_required=当前模式不需要该步(如原声剧的 TTS 三步、关配乐的 generate_bgm),不是没做完,别去补做。' +
       '图片/视频分母已剔除卡镜(shots_not_applicable);merge_episode.bgm_stale=true 表示配乐晚于成片,重新 compose_episode 即可。',
     { episode_id: z.number().int().positive() },
@@ -684,14 +685,30 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       })),
   )
   server.tool(
+    'get_asset_versions',
+    '只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/asset-versions`)),
+  )
+  server.tool(
+    'get_asset_binding_repair_plan',
+    '只读生成一集历史缺失场景绑定的可审核修复提案。返回原始地点/时段、候选 ID、匹配依据、歧义和 proposed_scene_id；applied=false，绝不按名字自动回填。逐项核对后才由客户决定是否改绑。免费。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/asset-binding-repair-plan`)),
+  )
+  server.tool(
     'get_storyboards',
     '读某一集的分镜列表(供审阅/查进度)。含每镜首帧(first_frame_image)与视频(video_url)是否就绪。' +
+      'asset_versions 按首帧/尾帧/视频分别给出 generated(已生成)、input_consistent(与当前输入一致)、review_valid(审核有效)、adopted(已采用)、current_effective(当前有效)。null=缺少证据；ready 只表示存在产物，不代表当前有效。旧素材仍可查看。' +
       '★每镜带**台词与说话人**:dialogue(原文,无台词为 null)、dialogue_lines([{speaker,text}] 逐行,' +
       '与字幕/配音同一个解析器拆的——这里的 speaker 就是成片里被配音的那个;舞台提示已剥),' +
       '以及 is_key_moment(1=关键镜,走高端图模)与 emotion_intensity(1-10)。' +
       '核对「台词有没有丢/谁说的/关键镜是哪几镜/情绪曲线」用这一次调用即可,不用逐镜拉;update_shot 改完台词也在这里核对。' +
       '画面/视频/首尾帧提示词仍只在 get_shot_prompts 逐镜读。' +
       '★每镜还带**结构化状态**:frame_status/video_status(ready/pending/authorizing/rejected/failed/none/not_required)、' +
+      '★video_status=ready 只表示视频已生成，不等于画面验收通过。video_quality_issues 若含 terminal_cut：' +
+      'status=suspected 表示片尾疑似短促切镜，cut_at_s/tail_duration_s 给出位置；status=unavailable 表示探测未完成，不能当检测通过。' +
+      '两者均暂停本次自动尾帧回写与续接，先复核视频；字段缺席不代表做过检测，也不要直接重试收费生成。' +
       '★not_required=旁白/片尾卡镜:帧与视频由成片层渲染,本镜不需要生成——数补齐进度时把它当已完成,别重试。' +
       'fail_reason(sensitive/text_sensitive/copyright/face_mismatch/account_overdue/quota_full/authorizing/' +
       'insufficient_credits/transient/repeat_rejected/pair_collateral)、retryable(true=可重试;false=改内容换图,重试无效)、fail_hint(人读文案)。' +
@@ -1815,12 +1832,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '★客户报「镜头切太快 / 一个镜头里画面跳来跳去」时先跑这个。免费零扣费。'
       + '一个分镜本应是**一个连续镜头**,但厂商可能在片内自行换机位硬切(望远镜特写→高空全景→人物中景),'
       + '这类切点在分镜表和 timeline 里都看不到——只能扫画面。'
-      + '返回 shots_with_cuts(有镜内跳切的镜号)/total_cuts/engine_suspect/message。'
+      + '返回 shots_with_cuts(有镜内跳切的镜号)/total_cuts/engine_suspect/message；shots_with_terminal_cuts 单列疑似短促片尾切镜，detail.terminal_cut 给出位置和状态。'
       + '★判读:成片观感切点 = 镜与镜的接缝 + 这里报的镜内跳切;若本项占了大头,那不是剪辑节奏问题,'
       + '重新拆镜或改转场都没用。engine_suspect=true 表示本剧引擎是已知高发源(WAN),'
       + '实测 WAN 11/12 镜有镜内跳切、Seedance 1/6、H3 0/5,且提示词层拦不住(负向约束已在其中)——'
-      + '要根治只能 regenerate_shot_video 这些镜并换 seedance-2.5 或 hailuo-3。'
-      + '组模式镜与显式快剪蒙太奇镜天然多机位,已自动排除(detail 里标 skipped)。',
+      + '先复核实际切点与叙事意图，再决定调整切分还是重新生成；不要因扫描告警直接重试收费生成。'
+      + '普通镜内多切统计仍排除组模式与显式蒙太奇；但组切分后的单段不能豁免片尾检查，需另看 shots_with_terminal_cuts/detail.terminal_cut。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.produceGet(`/episodes/${episode_id}/intra-shot-cuts`)),

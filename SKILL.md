@@ -488,7 +488,14 @@ content that will be rejected.
     storyboards; `get_characters` after portraits to confirm every on-screen
     character has an image and a sheet; `get_storyboards` after frames and after
     videos to read `frame_status` / `video_status` / `fail_reason` / `fail_hint`
-    and fix failed shots before moving on; `get_pipeline_status` before the
+    and fix failed shots before moving on. `video_status=ready` means generation
+    finished, not visual acceptance. Read `video_quality_issues`: `terminal_cut`
+    with `suspected` blocks automatic tail promotion and chaining for that result;
+    `unavailable` means the check failed, not that a defect was confirmed. A missing
+    issue does not prove a scan happened. `scan_intra_shot_cuts` also reports
+    `shots_with_terminal_cuts` and `detail.terminal_cut`, including individual
+    clips split from a group. Review the footage before any paid regeneration.
+    Use `get_pipeline_status` before the
     final cut to confirm no shot is missing. `review_all` gives a whole-episode
     checkup at any time (it issues no token — the gates want a review of the
     *current* artifact).
@@ -1123,3 +1130,10 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   outside the kept window)
 
 Full reference: https://api.shortreelai.com/docs/mcp
+
+### 资产引用与版本有效性
+
+- `get_storyboards.asset_versions` 对首帧、尾帧和视频分别返回四项事实：`generated`（已生成）、`input_consistent`（与当前输入一致）、`review_valid`（审核有效）、`adopted`（已采用）。`null` 表示证据不足，不能当作 true。
+- `ready` 和生成数量只表示产物存在；当前有效数量使用 `get_pipeline_status.asset_versions_summary.*.current_effective`。换帧后旧视频仍可查看，但失效版本不能混入当前有效汇总。
+- `get_asset_versions(storyboard_id)` 查看历史版本链接、依赖 ID/版本哈希及各自状态。历史没有快照时不从当前绑定伪造依赖。
+- `get_asset_binding_repair_plan(episode_id)` 只返回缺失场景绑定的候选和依据，`applied=false`。必须逐项审核，不按名字自动回填，也不自动重新生成客户已完成的片子。
