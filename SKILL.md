@@ -121,6 +121,17 @@ Don't ask the user at every step. Sort work into three tiers:
    `video_style_prompt`) are all free and the foundation that steers every later
    generation. Set them up front via `create_drama` / `update_project_settings`
    — don't build an empty shell, or all downstream generation drifts.
+   **Honor explicit creative requirements.** `creative_contract` on
+   `create_drama` / `update_project_settings` accepts `version: 1`, optional
+   `speech` (`unspecified` / `forbidden` / `required`), `music`
+   (`unspecified` / `forbidden`), and `pacing` (`unspecified` / `quiet`).
+   Set these only from the customer's explicit choice, never infer them from
+   genre. Omission preserves settings; `null` clears; an object replaces the
+   whole contract. Forbidden speech covers dialogue, narration and singing;
+   environmental/action sounds remain allowed. Forbidden music applies to
+   video output and final composition; customers may still generate, save and
+   select music assets. Music already mixed into native clip audio needs
+   separate handling. Quiet pacing suppresses generic climax/valley advice.
    **Set the structured era contract for anything non-contemporary.**
    `setting_brief` is free text: it supplies background but cannot hold the
    frame. The one mechanism that outranks the visual lock is the structured

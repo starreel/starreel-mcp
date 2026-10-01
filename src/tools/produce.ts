@@ -240,6 +240,12 @@ const VIDEO_ENGINES = ['seedance-2.5', 'hailuo-3', 'wan3.0', 'wan3.0-prime'] as 
 // 后端内部 PUT /dramas 已接受写库,facade 白名单 Wave3 已放行(produce-create-fields.ts)。
 // 不含内部产线/成本开关(strict_mode/best_of_n/shoppable/budget_points 等,需产品决策)。
 const PROJECT_SETTINGS_FIELDS = {
+  creative_contract: z.object({
+    version: z.literal(1),
+    speech: z.enum(['unspecified', 'forbidden', 'required']).optional(),
+    music: z.enum(['unspecified', 'forbidden']).optional(),
+    pacing: z.enum(['unspecified', 'quiet']).optional(),
+  }).strict().nullable().optional().describe('客户明确创作约束：speech=forbidden 禁止对白/旁白/演唱，music=forbidden 仅禁止本片输出混入配乐（允许生成/保存/选择音乐素材），pacing=quiet 保持平静节奏。不推断；整对象替换，null 清除，省略保持。环境声/音效不受禁止人声影响。'),
   // drama 级图片模型(整剧统一画风):默认 ChatGPT Image 2.5 Flare(v0.9.1558)
   image_model: z.string().optional().describe('图片模型(★drama级·整剧统一画风·默认 ChatGPT Image 2.5 Flare)。可选:' +
     'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准·慢约5秒)/' +
