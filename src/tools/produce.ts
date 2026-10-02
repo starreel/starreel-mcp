@@ -11,7 +11,7 @@
  * 用 get_storyboards / get_episode_status 轮询到完成。下载链接只发我方 COS 链接。
  */
 import { z } from 'zod'
-import { imageHandoff, localColorHandoff } from './local-postproduction.js'
+import { localColorHandoff } from './local-postproduction.js'
 import { readFileSync, writeFileSync, chmodSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -731,6 +731,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '出图注入谁的定妆图/哪张场景图/哪些道具图由这几项决定;角色名对照 get_characters、道具名对照 get_props。' +
       '改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;' +
       '改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。' +
+      '★启用双边版本审核时，seam_review.status 为 passed/failed/not_checked/stale；stale 是证据过期，不是画面失败，不据此付费重生。continuity_intent 可用 update_shot 明确。' +
       '★每镜带 **seam_state**(本镜与上一镜的镜间接缝,与官网帧时间线同一判据):' +
       'ok=已续接(首帧就是上镜尾帧,或平台做过首尾帧衔接、已落地且之后两侧都没再重生) / ' +
       'unchained=该连续却没接上(标了连续从没接过,或平台发起的衔接重生没落地:被拒/失败/还在生成——本镜 frame_status 会是 failed/processing;' +
@@ -1628,23 +1629,20 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'register_external_delivery',
-    '★后期在平台外完成(本地换旁白/裁剪/加片尾/配乐)后,把**最终交给客户的那一版成片**登记回平台。免费。' +
-      '不登记的话,平台里的成片记录并不代表客户实际收到的版本,事后无法追溯「交付的是哪一版、每镜用的哪次生成」。' +
-      '平台会自己下载复核 sha256/大小/时长(不采信你报的值),并自动快照每镜此刻的来源素材(当前视频、采用的生成 id 及其哈希、裁剪窗口)' +
-      '和最近一次平台成片;你可在 manifest 里附上外部后期做了什么(例如 {audio:{narration:"本地替换",music:"..."}, trims:[...], ending:"..."})。' +
-      '新登记即为当前交付版,版本号每集递增;不改平台成片(get_final_cut 的 download_url 不变,另返回 delivery)。' +
-      '传 file_path(本地视频,≤300MB,自动上传)或已用 upload-url(kind=footage)上传得到的 file_url,二选一。',
+    '登记外部后期成片，服务端核验 sha256、大小和时长。免费。有原始导出时传导出时的 handoff_pack_id 与 handoff_manifest_sha256；平台使用原始冻结清单，不按登记时最新素材猜来源。没有原始导出时来源标未知。登记不代表客户接受；启用追溯后还需 set_current_delivery 选择当前版本，confirm_delivery_acceptance 记录客户明确确认。file_path 或 file_url 二选一。',
     {
       episode_id: z.number().int().positive(),
       file_path: z.string().optional().describe('本地成片路径(mp4/mov/webm/m4v,≤300MB)'),
       file_url: z.string().optional().describe('已上传到本平台的 public_url(与 file_path 二选一)'),
+      handoff_pack_id:z.string().optional(),
+      handoff_manifest_sha256:z.string().regex(/^[a-f0-9]{64}$/).optional(),
       note: z.string().max(500).optional(),
       manifest: z.record(z.unknown()).optional().describe('外部后期做了什么(≤64KB),原样存进交付清单的 client 段'),
     },
-    async ({ episode_id, file_path, file_url, note, manifest }) => {
+    async ({ episode_id, file_path, file_url, note, manifest, handoff_pack_id, handoff_manifest_sha256 }) => {
       const url = file_path ? await client.uploadLocalFile(file_path, 'footage') : file_url
       if (!url) throw new Error('file_path 与 file_url 必须给一个')
-      return jsonResult(await client.producePost(`/episodes/${episode_id}/deliveries`, { file_url: url, note, manifest }))
+      return jsonResult(await client.producePost(`/episodes/${episode_id}/deliveries`, { file_url: url, note, manifest, handoff_pack_id, handoff_manifest_sha256 }))
     },
   )
   server.tool(
@@ -1657,6 +1655,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★source=external:register_external_delivery 登记的外部后期成片。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/deliveries`)),
+  )
+  server.tool(
+    'confirm_delivery_acceptance',
+    '只有客户明确确认后才记录接受或撤销接受；不得把下载成功、模型判断或生成完成当客户验收。delivery_id=null 表示只有客户口头确认、文件未核验；否则绑定指定交付版本。选择当前与客户接受是独立事实，使用 set_current_delivery 选定后平台才显示该文件已交付完成。免费，不生成、不改素材。',
+    {episode_id:z.number().int().positive(),delivery_id:z.number().int().positive().nullable(),client_accepted:z.boolean(),confirm_client_statement:z.literal(true),note:z.string().min(1).max(1000)},
+    async({episode_id,...body})=>jsonResult(await client.producePost(`/episodes/${episode_id}/delivery-confirmation`,body)),
   )
   server.tool(
     'set_current_delivery',
@@ -1935,6 +1939,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。',
     {
       storyboard_id: z.number().int().positive(),
+      product_text_contract: z.object({version:z.literal(1),strategy:z.enum(['generate_with_review','original_media','postproduction']),targets:z.array(z.object({asset_kind:z.enum(['prop','product']),asset_id:z.number().int().positive(),reference_url:z.string().url(),region:z.object({x:z.number(),y:z.number(),width:z.number(),height:z.number()}),exact_text:z.string().min(1).max(256)})).min(1).max(4)}).nullable().optional().describe('明确保留的实物原字：资产 ID、原图、归一化区域、原文及处理方式；生成不保证逐字正确，必须人工核对。null 清除声明，不回填历史。'),
+      continuity_intent: z.enum(['continuous_action','shot_change','insert_detail','jump_cut']).optional().describe('本镜相对上镜的剪辑意图：连续动作、换景别、插入细节、有意跳切。改变后旧双边审核失效；不自动生成或补审。'),
       character_ids: z.array(z.number().int().positive()).optional()
         .describe('本镜出场角色 ID 列表(★全量覆盖式,非增量,漏传的角色会被解绑)。决定出图时注入哪些角色的定妆图/设定图——非人角色(动物/生物)也必须绑定,否则形象会漂移。id 必须来自当前集已关联角色'),
       character_presence: z.array(z.object({
@@ -2210,12 +2216,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n· totals / by_kind:每类 charged(扣费)、refunded(已退回)、net(净额)、charges/refunds(笔数)。' +
       '**net 才是花费**,与网页「本剧已花费」、get_budget_status 同源;charged 含失败后自动退回的空转,只用于核账。' +
       '\n· in_flight:已扣费、结果还没出的任务(平台是提交即扣、失败再退,没有单独的预扣)。' +
-      '\n· rework.video:同一镜第 2 次起的成功出片(返工);出图不计(首帧/尾帧/best-of-N 候选本来就是同镜多张)。' +
+      '\n· rework.video:同一镜第 2 次起的成功出片计数(不证明浪费或失败);原因与图片费用用 get_cost_attribution 核验。旧统计出图不计(首帧/尾帧/best-of-N 候选本来就是同镜多张)。' +
       '\n· account_level:音色库克隆/设计/试听等**不属于任何一部剧**的语音扣费,单列、counted_in_drama=false,不计入本剧。' +
       '\n· available=false:账本暂时不可达,不给数字(不拿估算冒充),稍后重试。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/bill`)),
   )
+  server.tool('get_cost_attribution','读取实际扣费与退款逐行归因。免费；净额仍以账本为准。图片和视频均显示任务、冻结输入版本、是否采用和明确登记的返工原因。未知和歧义不猜测；未采用不等于浪费。available=false 时没有可靠金额；complete=false 时明细有截断但 totals 是全额。历史 rework.video 只是重复成功出片的计数，不证明失败或浪费。',{drama_id:z.number().int().positive()},async({drama_id})=>jsonResult(await client.produceGet(`/dramas/${drama_id}/cost-attribution`)))
+  server.tool('classify_cost_reason','按明确证据登记某一账本行原因，保留操作者和说明。免费，不改变任何扣费或退款；不能仅凭未采用、重试或报错就判为供应商失败。',{drama_id:z.number().int().positive(),ledger_id:z.number().int().positive(),category:z.enum(['normal_alternative','customer_change','platform_repair','provider_failure','unknown']),note:z.string().min(1).max(2000)},async({drama_id,ledger_id,category,note})=>jsonResult(await client.producePost(`/dramas/${drama_id}/cost-attribution/${ledger_id}/reason`,{category,note})))
   server.tool(
     'get_cost_estimate',
     '查一部剧的整体成本(点数):已花费 + 还没做的部分的待花费区间 + 分类明细。免费。' +
@@ -2497,6 +2505,29 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '读该剧已有的动作模板(运镜/动作预设)。generate_motion_templates 生成、此工具读取。免费。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/motion-templates`)),
+  )
+
+  server.tool(
+    'record_product_text_review',
+    '免费记录用户对当前产品原字的人工核对结果。只有用户明确打开文件逐字核对并确认结果后才能调用；不得用模型判断冒充人工核对。'+
+      '从 get_storyboards 的 product_text 取当前 contract_hash 和 reviews 中的帧位、文件、generation_id；上传素材 generation_id 为 null，必须传同一响应的 media_version。任一变化后旧审核不能沿用。不重生、不换采用版本、不代表整片客户验收。',
+    {storyboard_id:z.number().int().positive(),frame_type:z.enum(['first_frame','last_frame','video_identity']),generation_id:z.number().int().positive().nullable(),media_version:z.string().optional(),image_url:z.string(),contract_hash:z.string(),passed:z.boolean(),confirm_visual_review:z.literal(true),note:z.string().min(1).max(1000)},
+    async({storyboard_id,...body})=>jsonResult(await client.producePost(`/storyboards/${storyboard_id}/product-text-review`,body)),
+  )
+
+  server.tool(
+    'audit_seams',
+    '审核当前双边帧的剪辑连续性，只检查、不重生、不替换资产。默认 dry_run=true 返回待审范围，不收费。'+
+      '插入细节仅检查物体身份和状态，不要求复制构图。已有当前有效结论不重复审核。'+
+      '执行会按实际文本 token 用量计费，estimated_points=null 表示金额未报价，并非免费。'+
+      '先展示计划和计费方式，经客户明确接受后才传 dry_run=false 与 confirm_usage_billing=true。'+
+      '执行后用 get_storyboards 的 seam_review 检查实际结果；attempted 不代表通过。',
+    {
+      episode_id:z.number().int().positive(),
+      dry_run:z.boolean().optional().describe('默认 true，只读计划'),
+      confirm_usage_billing:z.boolean().optional().describe('仅客户明确接受按实际文本 token 用量计费后传 true'),
+    },
+    async({episode_id,dry_run,confirm_usage_billing})=>jsonResult(await client.producePost(`/episodes/${episode_id}/audit-seams`,{dry_run:dry_run!==false,confirm_usage_billing:confirm_usage_billing===true})),
   )
 
   // ========== P2 · 连续性 / 场景组 / 多画幅 ==========
@@ -2859,6 +2890,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   // 你自己决定转场、自己拼」。两条路都不丢客户的对白/音效/配乐/字幕成果。
   server.tool(
     'export_handoff_pack',
+    '启用交付追溯后会保存不可变导出清单（不改素材）。保留 pack_id 和 manifest_sha256，回传外部成片时引用。' +
     '导出本集「素材交接包」清单:逐镜裸片 + 对白音轨 + 音效 + 配乐 + 字幕的可下载 URL,' +
       '交给你在**自己那边**完成转场决策、拼接、混音、烧字幕——平台不参与终拼。免费,零扣费。\n' +
       '★本地调色/第三方 AI 后期:purpose=local_color;只有图片时传 media_type=images,无需生成视频。' +
@@ -2890,10 +2922,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async ({ episode_id, media_type, purpose, color_goal }) => {
       if (media_type === 'images') {
-        const rows = await client.produceGet(`/episodes/${episode_id}/storyboards`)
-        return jsonResult(imageHandoff(episode_id, rows, color_goal))
+        const manifest:any = await client.produceGet(`/episodes/${episode_id}/handoff-pack?media_type=images`)
+        return jsonResult(localColorHandoff(manifest, color_goal, manifest.missing_shots??[]))
       }
-      const manifest: any = await client.produceGet(`/episodes/${episode_id}/handoff-pack`)
+      const manifest: any = await client.produceGet(`/episodes/${episode_id}/handoff-pack${purpose==='local_color'?'?purpose=local_color':''}`)
       if (purpose === 'local_color') return jsonResult(localColorHandoff(manifest, color_goal))
       return jsonResult({
         ...manifest,

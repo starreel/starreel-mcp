@@ -1073,10 +1073,17 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   the customer — **every time**, including revisions. Otherwise the platform's
   records describe a cut the customer never received, and nobody can later tell
   which version shipped or which generation each shot came from. The platform
-  re-hashes the file itself and snapshots every shot's source clip; put what you
-  changed outside in `manifest`. `get_final_cut` then returns it as `delivery`
-  next to the platform's own `download_url`; `list_deliveries` /
-  `set_current_delivery` manage versions.
+  re-hashes the file itself. When delivery provenance is enabled, pass the original
+  `handoff_pack_id` and `handoff_manifest_sha256`: registration uses that frozen
+  export, never today's shot pointers. Without an export, provenance stays unknown.
+  Keep `source-manifest.json` and `download-receipt.json`; downloaded hashes are
+  client-side evidence, not proof of customer acceptance. Put finishing edits in
+  `manifest`. Registration does not select or accept a version in the new flow.
+  Use `set_current_delivery` for selection and `confirm_delivery_acceptance` only
+  after the customer's explicit statement. For verbal completion without a file,
+  use `delivery_id=null`: the platform reports completion with file unverified.
+  Read `delivery_completion` independently of historical production warnings.
+  `get_final_cut.download_url` remains the platform render URL.
 - **Local color grading / third-party AI finishing**: call `export_handoff_pack`
   with `purpose="local_color"`; for existing still frames use `media_type="images"`
   (no video generation required). Save the result as `manifest.json`, obtain the
@@ -1137,3 +1144,18 @@ Full reference: https://api.shortreelai.com/docs/mcp
 - `ready` 和生成数量只表示产物存在；当前有效数量使用 `get_pipeline_status.asset_versions_summary.*.current_effective`。换帧后旧视频仍可查看，但失效版本不能混入当前有效汇总。
 - `get_asset_versions(storyboard_id)` 查看历史版本链接、依赖 ID/版本哈希及各自状态。历史没有快照时不从当前绑定伪造依赖。
 - `get_asset_binding_repair_plan(episode_id)` 只返回缺失场景绑定的候选和依据，`applied=false`。必须逐项审核，不按名字自动回填，也不自动重新生成客户已完成的片子。
+
+### Original product lettering
+
+Use `update_shot(product_text_contract=...)` only for explicitly chosen assets,
+source images, normalized source regions, and exact original text. Never infer
+these bindings from names or backfill old shots. `quote_shot_frame` and
+`quote_frames` expose the rendering limitation and original-media/postproduction
+alternatives before generation. Generated text matching the requested text still
+needs a visual check. `record_product_text_review` may record a result only after
+the user explicitly confirms they inspected that exact file. Bind the current
+contract hash, generation ID and URL from `get_storyboards.product_text`;
+model output is not human acceptance. This does not accept the entire film.
+
+### 费用归因
+核对任务、素材版本、采用情况和返工原因使用 `get_cost_attribution`。实际花费是账本净额，未知证据不猜测；未采用不等于浪费，图片修改也可能产生费用。明确原因后用 `classify_cost_reason` 登记说明，不会改变账单。旧 `rework.video` 是重复成功出片计数，不是平台失败归责。

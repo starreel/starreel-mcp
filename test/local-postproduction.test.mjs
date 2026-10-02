@@ -13,21 +13,21 @@ test('external color handoff disables automatic LUT without losing audio or sour
  assert.equal(r.render_target.color_lut,null);assert.deepEqual(r.shots,base.shots)
  assert.deepEqual(r.postproduction.platform_lut,base.render_target.color_lut)
  assert.equal(r.postproduction.goal,'[用户色彩目标]');assert.equal(r.postproduction.status,'not_processed')
- assert.deepEqual(calls,['/episodes/1/handoff-pack']);assert.ok(base.render_target.color_lut)
+ assert.deepEqual(calls,['/episodes/1/handoff-pack?purpose=local_color']);assert.ok(base.render_target.color_lut)
 })
 test('legacy assembly keeps its LUT and voice guidance',async()=>{
  const {run}=setup(base);const r=await run({episode_id:1})
  assert.deepEqual(r.render_target,base.render_target);assert.ok(r.assembly_guide.step_1b_verify_voice);assert.equal(r.postproduction,undefined)
 })
 test('image-only episode exports existing frames without video requests',async()=>{
- const {run,calls}=setup([{id:2,storyboard_number:1,first_frame_image:'https://example.test/a.png',last_frame_image:'https://example.test/a.png',last_frame_source:'first-copy'},{id:3,storyboard_number:2,first_frame_image:null}])
+ const {run,calls}=setup({media_type:'images',missing_shots:[2],shots:[{shot_number:1,images:[{url:'https://example.test/a.png',prior_grade:'unknown'}]}],render_target:{color_lut:null}})
  const r=await run({episode_id:1,media_type:'images',purpose:'local_color'})
- assert.deepEqual(calls,['/episodes/1/storyboards']);assert.equal(r.shots.length,1)
+ assert.deepEqual(calls,['/episodes/1/handoff-pack?media_type=images']);assert.equal(r.shots.length,1)
  assert.equal(r.shots[0].images.length,1);assert.deepEqual(r.postproduction.missing_shots,[2]);assert.equal(r.render_target.color_lut,null)
  assert.equal(r.shots[0].images[0].prior_grade,'unknown')
 })
 test('missing images fail without generating assets',async()=>{
- const {run}=setup([{id:2,storyboard_number:1}]);await assert.rejects(run({episode_id:1,media_type:'images'}),/没有可导出/)
+ const {run}=setup(null,Error('没有可导出图片'));await assert.rejects(run({episode_id:1,media_type:'images'}),/没有可导出/)
 })
 test('ownership denial propagates without fallback',async()=>{
  const {run,calls}=setup(null,Error('403'));await assert.rejects(run({episode_id:1,media_type:'images'}),/403/);assert.equal(calls.length,1)

@@ -204,7 +204,7 @@ def compile_timeline(pack_dir, plan_path=None, outdir=None):
     total = cursor
     by_n = {s["shot_number"]: s for s in shots}
     bgm = []
-    for b in manifest.get("bgm", []):
+    for b in ([] if (manifest.get("audio_contract") or {}).get("music_output") == "forbidden" else manifest.get("bgm", [])):
         anchor = by_n.get(int(b.get("anchor_shot", 1)))
         if not anchor:
             warnings.append(f"BGM {b.get('file')}: anchor_shot 不存在，按 0 处理")

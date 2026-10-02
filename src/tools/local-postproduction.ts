@@ -8,7 +8,7 @@ export function localColorHandoff(manifest: any, goal = '', missingShots: number
       workflow: 'local_color',
       status: 'not_processed',
       goal,
-      platform_lut: manifest.render_target?.color_lut ?? null,
+      platform_lut: manifest.render_target?.source_color_lut ?? manifest.render_target?.color_lut ?? null,
       missing_shots: missingShots,
       steps: [
         '将本清单保存为 manifest.json，用 save_handoff_toolchain 保存工具链，再运行 python3 fetch_pack.py manifest.json -o ./pack；使用新的输出目录。',

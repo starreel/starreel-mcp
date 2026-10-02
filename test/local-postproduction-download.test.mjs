@@ -16,7 +16,7 @@ test('MCP image export → download → local brief/comparison; originals preser
  const server=createServer((req,res)=>{res.setHeader('Content-Type','image/png');res.end(bytes)})
  await new Promise(r=>server.listen(0,'127.0.0.1',r))
  try {
-  const rows=[{id:1,storyboard_number:1,first_frame_image:`http://127.0.0.1:${server.address().port}/image.png`}]
+  const rows={manifest_version:'0.1',media_type:'images',shots:[{shot_number:1,images:[{frame_type:'first_frame',url:`http://127.0.0.1:${server.address().port}/image.png`}]}],render_target:{color_lut:null}}
   let handler;registerProduceTools({tool:(n,d,s,h)=>{if(n==='export_handoff_pack')handler=h}},{produceGet:async()=>rows})
   const manifest=JSON.parse((await handler({episode_id:1,media_type:'images',color_goal:'<script>bad()</script>'})).content[0].text)
   const input=join(dir,'input.json'),out=join(dir,'pack');writeFileSync(input,JSON.stringify(manifest))

@@ -156,11 +156,14 @@ def main():
     if local_color and os.path.exists(out) and os.listdir(out):
         sys.exit("本地后期请使用新的空目录，避免覆盖源素材或误用旧版本缓存")
     os.makedirs(out, exist_ok=True)
-    if local_color:
+    if local_color or m.get("pack_id"):
         with open(os.path.join(out, "source-manifest.json"), "w", encoding="utf-8") as f:
             json.dump(m, f, ensure_ascii=False, indent=2)
+    if local_color:
         # 再次兜底：本地后期不自动烘焙项目 LUT。
         m.setdefault("render_target", {})["color_lut"] = None
+    expected_hashes = {}
+    receipts = []
     jobs = []            # (url, 包内相对路径)
 
     for i, sh in enumerate(m.get("shots", [])):
@@ -178,6 +181,7 @@ def main():
         clip = sh.get("clip") or {}
         if clip.get("url"):
             rel = f"clips/shot_{tag}.mp4"
+            expected_hashes[rel] = (sh.get("provenance") or {}).get("generation_sha256")
             jobs.append((clip.pop("url"), rel))
             clip["file"] = rel
 
@@ -225,12 +229,26 @@ def main():
     def one(job):
         url, rel = job
         try:
-            fetch(url, os.path.join(out, rel))
+            dest = os.path.join(out, rel)
+            fetch(url, dest)
+            digest = hashlib.sha256()
+            with open(dest, "rb") as downloaded:
+                for chunk in iter(lambda: downloaded.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            sha = digest.hexdigest()
+            expected = expected_hashes.get(rel)
+            if expected and expected != sha:
+                os.unlink(dest)
+                raise RuntimeError("downloaded file SHA-256 differs from exported version")
+            receipts.append({"file": rel, "source_url": url, "sha256": sha, "size_bytes": os.path.getsize(dest), "expected_sha256": expected})
         except Exception as e:            # 单个失败不中断整批，最后一起报
             errors.append(f"{rel}: {e}")
 
     with ThreadPoolExecutor(max_workers=max(1, a.jobs)) as ex:
         list(ex.map(one, jobs))
+
+    with open(os.path.join(out, "download-receipt.json"), "w", encoding="utf-8") as receipt:
+        json.dump({"pack_id": m.get("pack_id"), "manifest_sha256": m.get("manifest_sha256"), "status": "failed" if errors else "downloaded", "files": sorted(receipts, key=lambda r: r["file"]), "errors": errors}, receipt, ensure_ascii=False, indent=2)
 
     if local_color and not errors:
         write_postproduction(out, m, jobs)

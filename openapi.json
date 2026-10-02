@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.106",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.106 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.107",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.107 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -1375,7 +1375,7 @@
       "get": {
         "operationId": "get_drama_bill",
         "summary": "本剧净费用账单(免费)",
-        "description": "本剧净费用账单(免费)。核账、回答「到底花了多少、钱花在哪、退了多少」时用它,别自己拼流水。\n· totals / by_kind:每类 charged(扣费)、refunded(已退回)、net(净额)、charges/refunds(笔数)。**net 才是花费**,与网页「本剧已花费」、get_budget_status 同源;charged 含失败后自动退回的空转,只用于核账。\n· in_flight:已扣费、结果还没出的任务(平台是提交即扣、失败再退,没有单独的预扣)。\n· rework.video:同一镜第 2 次起的成功出片(返工);出图不计(首帧/尾帧/best-of-N 候选本来就是同镜多张)。\n· account_level:音色库克隆/设计/试听等**不属于任何一部剧**的语音扣费,单列、counted_in_drama=false,不计入本剧。\n· available=false:账本暂时不可达,不给数字(不拿估算冒充),稍后重试。",
+        "description": "本剧净费用账单(免费)。核账、回答「到底花了多少、钱花在哪、退了多少」时用它,别自己拼流水。\n· totals / by_kind:每类 charged(扣费)、refunded(已退回)、net(净额)、charges/refunds(笔数)。**net 才是花费**,与网页「本剧已花费」、get_budget_status 同源;charged 含失败后自动退回的空转,只用于核账。\n· in_flight:已扣费、结果还没出的任务(平台是提交即扣、失败再退,没有单独的预扣)。\n· rework.video:同一镜第 2 次起的成功出片计数(不证明浪费或失败);原因与图片费用用 get_cost_attribution 核验。旧统计出图不计(首帧/尾帧/best-of-N 候选本来就是同镜多张)。\n· account_level:音色库克隆/设计/试听等**不属于任何一部剧**的语音扣费,单列、counted_in_drama=false,不计入本剧。\n· available=false:账本暂时不可达,不给数字(不拿估算冒充),稍后重试。",
         "tags": [
           "dramas"
         ],
@@ -1547,6 +1547,140 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/dramas/{drama_id}/cost-attribution": {
+      "get": {
+        "operationId": "get_cost_attribution",
+        "summary": "读取实际扣费与退款逐行归因",
+        "description": "读取实际扣费与退款逐行归因。免费；净额仍以账本为准。图片和视频均显示任务、冻结输入版本、是否采用和明确登记的返工原因。未知和歧义不猜测；未采用不等于浪费。available=false 时没有可靠金额；complete=false 时明细有截断但 totals 是全额。历史 rework.video 只是重复成功出片的计数，不证明失败或浪费。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/dramas/{drama_id}/cost-attribution/{ledger_id}/reason": {
+      "post": {
+        "operationId": "classify_cost_reason",
+        "summary": "按明确证据登记某一账本行原因，保留操作者和说明",
+        "description": "按明确证据登记某一账本行原因，保留操作者和说明。免费，不改变任何扣费或退款；不能仅凭未采用、重试或报错就判为供应商失败。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "ledger_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "normal_alternative",
+                      "customer_change",
+                      "platform_repair",
+                      "provider_failure",
+                      "unknown"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "category",
+                  "note"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -3121,6 +3255,71 @@
         }
       }
     },
+    "/episodes/{episode_id}/audit-seams": {
+      "post": {
+        "operationId": "audit_seams",
+        "summary": "审核当前双边帧的剪辑连续性，只检查、不重生、不替换资产",
+        "description": "审核当前双边帧的剪辑连续性，只检查、不重生、不替换资产。默认 dry_run=true 返回待审范围，不收费。插入细节仅检查物体身份和状态，不要求复制构图。已有当前有效结论不重复审核。执行会按实际文本 token 用量计费，estimated_points=null 表示金额未报价，并非免费。先展示计划和计费方式，经客户明确接受后才传 dry_run=false 与 confirm_usage_billing=true。执行后用 get_storyboards 的 seam_review 检查实际结果；attempted 不代表通过。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dry_run": {
+                    "type": "boolean"
+                  },
+                  "confirm_usage_billing": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/episodes/{episode_id}/autofill-status": {
       "get": {
         "operationId": "get_autofill_status",
@@ -3577,6 +3776,87 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/delivery-confirmation": {
+      "post": {
+        "operationId": "confirm_delivery_acceptance",
+        "summary": "只有客户明确确认后才记录接受或撤销接受；不得把下载成功、模型判断或生成完成当客户验收",
+        "description": "只有客户明确确认后才记录接受或撤销接受；不得把下载成功、模型判断或生成完成当客户验收。delivery_id=null 表示只有客户口头确认、文件未核验；否则绑定指定交付版本。选择当前与客户接受是独立事实，使用 set_current_delivery 选定后平台才显示该文件已交付完成。免费，不生成、不改素材。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "delivery_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "client_accepted": {
+                    "type": "boolean"
+                  },
+                  "confirm_client_statement": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "delivery_id",
+                  "client_accepted",
+                  "confirm_client_statement",
+                  "note"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -4741,8 +5021,8 @@
     "/episodes/{episode_id}/handoff-pack": {
       "get": {
         "operationId": "export_handoff_pack",
-        "summary": "导出本集「素材交接包」清单:逐镜裸片 + 对白音轨 + 音效 + 配乐 + 字幕的可下载 URL,交给你在**自己那边**完成转场决策、拼接、混音、烧字幕——平台不参与终拼",
-        "description": "导出本集「素材交接包」清单:逐镜裸片 + 对白音轨 + 音效 + 配乐 + 字幕的可下载 URL,交给你在**自己那边**完成转场决策、拼接、混音、烧字幕——平台不参与终拼。免费,零扣费。\n★本地调色/第三方 AI 后期:purpose=local_color;只有图片时传 media_type=images,无需生成视频。本模式保留源文件、关闭导出包的自动 LUT、附带后期说明和本地对比页流程;不上传第三方、不收费生成、不回填平台。图片来源可能已有处理,不能把所有导出图承诺为未调色原片。\n\n【推荐流程】① 调本工具拿 manifest;② 按 clips[].url 把裸片下载到本地;③ 你自己看片判断每个接缝该用什么转场(manifest 给了 scene_boundary 场景边界作判据),写一份 plan.json;④ 用 get_handoff_toolchain 拿到 compile_timeline.py 展开时间轴、assemble.sh 装配出成片。工具链已经把「加了重叠转场之后字幕/对白/音效怎么跟着位移」算好了。\n\n【三个不看就会翻车的事实】\n① **人声在哪要逐镜读 `shots[].voice_track.location`,不能读整集的 audio_contract.mode**——后者是整剧级声明,而全画外旁白镜的旁白是平台在完成侧混进裸片的,同一集里逐镜可以不同。四种取值各有各的处置:`separate_file`=对白在 dialogue_audio,不铺这镜就没台词;`baked_in_clip`=已在裸片音轨里,再叠一遍会双声;`missing`=**平台侧确认缺失**(旁白补偿失败),字幕还在但声音哪都没有——回平台重生成该镜,拉长转场掩盖不了;`unknown`=有台词却查不到来源,**必须试听裸片**再决定。★有字幕从来不等于有声音:字幕是逐句的,音频是逐镜的。`conflicts_with_contract=true` 的镜以实测为准,notes 里已按镜号点名。\n② 每镜必须按 trim_head_ms / duration_ms 裁剪再用;直接拼整条裸片会把平台已经 QC 掉的首尾形变帧一起拼进去。\n③ 字幕 cue、dialogue_audio.offset_ms、sfx[].offset_ms 的基准都是「该镜 trim 之后的第 0 毫秒」,不是成片绝对时间。你加多少重叠转场都不用改它们——交给 compile_timeline.py 展开,别手算累加。\n\n想让平台代拼、要平台级质量闸(终拼预检/音画等长/响度母带),改用 compose_episode。",
+        "summary": "启用交付追溯后会保存不可变导出清单（不改素材）",
+        "description": "启用交付追溯后会保存不可变导出清单（不改素材）。保留 pack_id 和 manifest_sha256，回传外部成片时引用。导出本集「素材交接包」清单:逐镜裸片 + 对白音轨 + 音效 + 配乐 + 字幕的可下载 URL,交给你在**自己那边**完成转场决策、拼接、混音、烧字幕——平台不参与终拼。免费,零扣费。\n★本地调色/第三方 AI 后期:purpose=local_color;只有图片时传 media_type=images,无需生成视频。本模式保留源文件、关闭导出包的自动 LUT、附带后期说明和本地对比页流程;不上传第三方、不收费生成、不回填平台。图片来源可能已有处理,不能把所有导出图承诺为未调色原片。\n\n【推荐流程】① 调本工具拿 manifest;② 按 clips[].url 把裸片下载到本地;③ 你自己看片判断每个接缝该用什么转场(manifest 给了 scene_boundary 场景边界作判据),写一份 plan.json;④ 用 get_handoff_toolchain 拿到 compile_timeline.py 展开时间轴、assemble.sh 装配出成片。工具链已经把「加了重叠转场之后字幕/对白/音效怎么跟着位移」算好了。\n\n【三个不看就会翻车的事实】\n① **人声在哪要逐镜读 `shots[].voice_track.location`,不能读整集的 audio_contract.mode**——后者是整剧级声明,而全画外旁白镜的旁白是平台在完成侧混进裸片的,同一集里逐镜可以不同。四种取值各有各的处置:`separate_file`=对白在 dialogue_audio,不铺这镜就没台词;`baked_in_clip`=已在裸片音轨里,再叠一遍会双声;`missing`=**平台侧确认缺失**(旁白补偿失败),字幕还在但声音哪都没有——回平台重生成该镜,拉长转场掩盖不了;`unknown`=有台词却查不到来源,**必须试听裸片**再决定。★有字幕从来不等于有声音:字幕是逐句的,音频是逐镜的。`conflicts_with_contract=true` 的镜以实测为准,notes 里已按镜号点名。\n② 每镜必须按 trim_head_ms / duration_ms 裁剪再用;直接拼整条裸片会把平台已经 QC 掉的首尾形变帧一起拼进去。\n③ 字幕 cue、dialogue_audio.offset_ms、sfx[].offset_ms 的基准都是「该镜 trim 之后的第 0 毫秒」,不是成片绝对时间。你加多少重叠转场都不用改它们——交给 compile_timeline.py 展开,别手算累加。\n\n想让平台代拼、要平台级质量闸(终拼预检/音画等长/响度母带),改用 compose_episode。",
         "tags": [
           "episodes"
         ],
@@ -6380,7 +6660,7 @@
       "get": {
         "operationId": "get_storyboards",
         "summary": "读某一集的分镜列表(供审阅/查进度)",
-        "description": "读某一集的分镜列表(供审阅/查进度)。含每镜首帧(first_frame_image)与视频(video_url)是否就绪。asset_versions 按首帧/尾帧/视频分别给出 generated(已生成)、input_consistent(与当前输入一致)、review_valid(审核有效)、adopted(已采用)、current_effective(当前有效)。null=缺少证据；ready 只表示存在产物，不代表当前有效。旧素材仍可查看。★每镜带**台词与说话人**:dialogue(原文,无台词为 null)、dialogue_lines([{speaker,text}] 逐行,与字幕/配音同一个解析器拆的——这里的 speaker 就是成片里被配音的那个;舞台提示已剥),以及 is_key_moment(1=关键镜,走高端图模)与 emotion_intensity(1-10)。核对「台词有没有丢/谁说的/关键镜是哪几镜/情绪曲线」用这一次调用即可,不用逐镜拉;update_shot 改完台词也在这里核对。画面/视频/首尾帧提示词仍只在 get_shot_prompts 逐镜读。★每镜还带**结构化状态**:frame_status/video_status(ready/pending/authorizing/rejected/failed/none/not_required)、★video_status=ready 只表示视频已生成，不等于画面验收通过。video_quality_issues 若含 terminal_cut：status=suspected 表示片尾疑似短促切镜，cut_at_s/tail_duration_s 给出位置；status=unavailable 表示探测未完成，不能当检测通过。两者均暂停本次自动尾帧回写与续接，先复核视频；字段缺席不代表做过检测，也不要直接重试收费生成。★not_required=旁白/片尾卡镜:帧与视频由成片层渲染,本镜不需要生成——数补齐进度时把它当已完成,别重试。fail_reason(sensitive/text_sensitive/copyright/face_mismatch/account_overdue/quota_full/authorizing/insufficient_credits/transient/repeat_rejected/pair_collateral)、retryable(true=可重试;false=改内容换图,重试无效)、fail_hint(人读文案)。照 retryable 判该重试还是该改内容,别解析中文。★pair_collateral=同镜另一帧未通过、本帧随批结束——**本帧自身没被判不合格,别去改它**:有 reopen_pair_id 就用它只重掷有过错的一侧,否则直接重生本镜。★若某镜带 degraded_frames:[{frame_type,reason,reason_label,since,hint}],表示该帧是系统在同因连拒熔断后**放行**的(判据照记未拒),URL 上与干净帧无区别但需人工复核;不满意按 hint 修正输入后 generate_shot_frame 重生该帧。★terminal_desc_missing=true:该镜标为「状态改变」却三处都没说结束时什么样——**出尾帧前**就能看出来,现在整集一次拿到(此前只有 get_shot_prompts 能逐镜问,一集几十次没人会去问)。先 update_shot 把结束状态写进 last_frame_prompt 再出尾帧:照现状硬出的历史成功率 9.4%,写了终态的 40.2%,而每次被拒都照常扣费。确实该「几乎不变」的镜才用 generate_shot_frame 的 allow_missing_terminal 放行。★first_frame_source/last_frame_source='upload' 表示该帧是**外部上传图**(绕开了身份锚/画风锚/best-of-N/帧审计整条质量链路)——人物·服装·画风漂移排查先看这些镜;外部图导致的漂移不是平台生成质量问题,修复正路是删掉外部图改走 generate_shot_frame 平台重生。★若某镜带 reopen_pair_id:该镜首尾帧同时生成时只有一侧真的有问题、另一侧是无辜陪拒,原样传给 generate_shot_frame 的 reopen_pair_id 参数可以只重掷有问题的那一侧(省一半算力/费用,不会拿去生成一张这次根本没打算重做的图)。没有这个字段就按 fail_reason/retryable 走常规重试。免费。★每镜还带**绑定**(只有 ID):character_ids(本镜绑定的角色)、character_bindings[{character_id,presence}](presence=on_screen 在画面 / voice_only 只有声音、不进画面)、scene_id、prop_ids、active_wardrobe_id。出图注入谁的定妆图/哪张场景图/哪些道具图由这几项决定;角色名对照 get_characters、道具名对照 get_props。改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。★每镜带 **seam_state**(本镜与上一镜的镜间接缝,与官网帧时间线同一判据):ok=已续接(首帧就是上镜尾帧,或平台做过首尾帧衔接、已落地且之后两侧都没再重生) / unchained=该连续却没接上(标了连续从没接过,或平台发起的衔接重生没落地:被拒/失败/还在生成——本镜 frame_status 会是 failed/processing;或衔接审过之后本镜首帧又被重生过) / broken=接过但没接上(seam_failed_dims 给出哪几维不连续:characters/wardrobe/props/lighting/scene;seam_audit_status=stale 且没有维度 = 上一镜尾帧在衔接之后又重生过,本镜首帧接的还是旧尾帧) / intended=有意切换(硬切/换场/时间跳跃/景别大跳/插入镜/外部上传帧),不用管 / missing=两侧帧没齐 / unknown=没标意图也没接过(系统没判,不是有问题) / na=首镜或旁白卡。seam_audit_status=pending 表示衔接已落地、平台的衔接审计还没出结论。出视频前只需处理 unchained 与 broken:整集用 chain_frames(先 dry_run),单道用 chain_shot_from_prev / chain_shot_from。",
+        "description": "读某一集的分镜列表(供审阅/查进度)。含每镜首帧(first_frame_image)与视频(video_url)是否就绪。asset_versions 按首帧/尾帧/视频分别给出 generated(已生成)、input_consistent(与当前输入一致)、review_valid(审核有效)、adopted(已采用)、current_effective(当前有效)。null=缺少证据；ready 只表示存在产物，不代表当前有效。旧素材仍可查看。★每镜带**台词与说话人**:dialogue(原文,无台词为 null)、dialogue_lines([{speaker,text}] 逐行,与字幕/配音同一个解析器拆的——这里的 speaker 就是成片里被配音的那个;舞台提示已剥),以及 is_key_moment(1=关键镜,走高端图模)与 emotion_intensity(1-10)。核对「台词有没有丢/谁说的/关键镜是哪几镜/情绪曲线」用这一次调用即可,不用逐镜拉;update_shot 改完台词也在这里核对。画面/视频/首尾帧提示词仍只在 get_shot_prompts 逐镜读。★每镜还带**结构化状态**:frame_status/video_status(ready/pending/authorizing/rejected/failed/none/not_required)、★video_status=ready 只表示视频已生成，不等于画面验收通过。video_quality_issues 若含 terminal_cut：status=suspected 表示片尾疑似短促切镜，cut_at_s/tail_duration_s 给出位置；status=unavailable 表示探测未完成，不能当检测通过。两者均暂停本次自动尾帧回写与续接，先复核视频；字段缺席不代表做过检测，也不要直接重试收费生成。★not_required=旁白/片尾卡镜:帧与视频由成片层渲染,本镜不需要生成——数补齐进度时把它当已完成,别重试。fail_reason(sensitive/text_sensitive/copyright/face_mismatch/account_overdue/quota_full/authorizing/insufficient_credits/transient/repeat_rejected/pair_collateral)、retryable(true=可重试;false=改内容换图,重试无效)、fail_hint(人读文案)。照 retryable 判该重试还是该改内容,别解析中文。★pair_collateral=同镜另一帧未通过、本帧随批结束——**本帧自身没被判不合格,别去改它**:有 reopen_pair_id 就用它只重掷有过错的一侧,否则直接重生本镜。★若某镜带 degraded_frames:[{frame_type,reason,reason_label,since,hint}],表示该帧是系统在同因连拒熔断后**放行**的(判据照记未拒),URL 上与干净帧无区别但需人工复核;不满意按 hint 修正输入后 generate_shot_frame 重生该帧。★terminal_desc_missing=true:该镜标为「状态改变」却三处都没说结束时什么样——**出尾帧前**就能看出来,现在整集一次拿到(此前只有 get_shot_prompts 能逐镜问,一集几十次没人会去问)。先 update_shot 把结束状态写进 last_frame_prompt 再出尾帧:照现状硬出的历史成功率 9.4%,写了终态的 40.2%,而每次被拒都照常扣费。确实该「几乎不变」的镜才用 generate_shot_frame 的 allow_missing_terminal 放行。★first_frame_source/last_frame_source='upload' 表示该帧是**外部上传图**(绕开了身份锚/画风锚/best-of-N/帧审计整条质量链路)——人物·服装·画风漂移排查先看这些镜;外部图导致的漂移不是平台生成质量问题,修复正路是删掉外部图改走 generate_shot_frame 平台重生。★若某镜带 reopen_pair_id:该镜首尾帧同时生成时只有一侧真的有问题、另一侧是无辜陪拒,原样传给 generate_shot_frame 的 reopen_pair_id 参数可以只重掷有问题的那一侧(省一半算力/费用,不会拿去生成一张这次根本没打算重做的图)。没有这个字段就按 fail_reason/retryable 走常规重试。免费。★每镜还带**绑定**(只有 ID):character_ids(本镜绑定的角色)、character_bindings[{character_id,presence}](presence=on_screen 在画面 / voice_only 只有声音、不进画面)、scene_id、prop_ids、active_wardrobe_id。出图注入谁的定妆图/哪张场景图/哪些道具图由这几项决定;角色名对照 get_characters、道具名对照 get_props。改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。★启用双边版本审核时，seam_review.status 为 passed/failed/not_checked/stale；stale 是证据过期，不是画面失败，不据此付费重生。continuity_intent 可用 update_shot 明确。★每镜带 **seam_state**(本镜与上一镜的镜间接缝,与官网帧时间线同一判据):ok=已续接(首帧就是上镜尾帧,或平台做过首尾帧衔接、已落地且之后两侧都没再重生) / unchained=该连续却没接上(标了连续从没接过,或平台发起的衔接重生没落地:被拒/失败/还在生成——本镜 frame_status 会是 failed/processing;或衔接审过之后本镜首帧又被重生过) / broken=接过但没接上(seam_failed_dims 给出哪几维不连续:characters/wardrobe/props/lighting/scene;seam_audit_status=stale 且没有维度 = 上一镜尾帧在衔接之后又重生过,本镜首帧接的还是旧尾帧) / intended=有意切换(硬切/换场/时间跳跃/景别大跳/插入镜/外部上传帧),不用管 / missing=两侧帧没齐 / unknown=没标意图也没接过(系统没判,不是有问题) / na=首镜或旁白卡。seam_audit_status=pending 表示衔接已落地、平台的衔接审计还没出结论。出视频前只需处理 unchained 与 broken:整集用 chain_frames(先 dry_run),单道用 chain_shot_from_prev / chain_shot_from。",
         "tags": [
           "episodes"
         ],
@@ -8840,6 +9120,100 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "product_text_contract": {
+                    "type": "object",
+                    "properties": {
+                      "version": {
+                        "type": "number",
+                        "const": 1
+                      },
+                      "strategy": {
+                        "type": "string",
+                        "enum": [
+                          "generate_with_review",
+                          "original_media",
+                          "postproduction"
+                        ]
+                      },
+                      "targets": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "asset_kind": {
+                              "type": "string",
+                              "enum": [
+                                "prop",
+                                "product"
+                              ]
+                            },
+                            "asset_id": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            },
+                            "reference_url": {
+                              "type": "string",
+                              "format": "uri"
+                            },
+                            "region": {
+                              "type": "object",
+                              "properties": {
+                                "x": {
+                                  "type": "number"
+                                },
+                                "y": {
+                                  "type": "number"
+                                },
+                                "width": {
+                                  "type": "number"
+                                },
+                                "height": {
+                                  "type": "number"
+                                }
+                              },
+                              "required": [
+                                "x",
+                                "y",
+                                "width",
+                                "height"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "exact_text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 256
+                            }
+                          },
+                          "required": [
+                            "asset_kind",
+                            "asset_id",
+                            "reference_url",
+                            "region",
+                            "exact_text"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "minItems": 1,
+                        "maxItems": 4
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "strategy",
+                      "targets"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "continuity_intent": {
+                    "type": "string",
+                    "enum": [
+                      "continuous_action",
+                      "shot_change",
+                      "insert_detail",
+                      "jump_cut"
+                    ]
+                  },
                   "character_ids": {
                     "type": "array",
                     "items": {
@@ -9886,6 +10260,107 @@
                 },
                 "required": [
                   "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/product-text-review": {
+      "post": {
+        "operationId": "record_product_text_review",
+        "summary": "免费记录用户对当前产品原字的人工核对结果",
+        "description": "免费记录用户对当前产品原字的人工核对结果。只有用户明确打开文件逐字核对并确认结果后才能调用；不得用模型判断冒充人工核对。从 get_storyboards 的 product_text 取当前 contract_hash 和 reviews 中的帧位、文件、generation_id；上传素材 generation_id 为 null，必须传同一响应的 media_version。任一变化后旧审核不能沿用。不重生、不换采用版本、不代表整片客户验收。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "frame_type": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame",
+                      "video_identity"
+                    ]
+                  },
+                  "generation_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "media_version": {
+                    "type": "string"
+                  },
+                  "image_url": {
+                    "type": "string"
+                  },
+                  "contract_hash": {
+                    "type": "string"
+                  },
+                  "passed": {
+                    "type": "boolean"
+                  },
+                  "confirm_visual_review": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "note": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "required": [
+                  "frame_type",
+                  "generation_id",
+                  "image_url",
+                  "contract_hash",
+                  "passed",
+                  "confirm_visual_review",
+                  "note"
                 ]
               }
             }
