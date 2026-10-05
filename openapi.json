@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.108",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.108 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.109",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.109 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -8140,6 +8140,53 @@
         "operationId": "get_frame_retry_diagnosis",
         "summary": "免费只读查询图片任务的连败诊断、证据任务 ID 和下一步动作",
         "description": "免费只读查询图片任务的连败诊断、证据任务 ID 和下一步动作。diagnosis_required 时先调用本工具：审计故障重审已有候选，未知原因先复核；不得原样重抽或擅自改剧本。",
+        "tags": [
+          "images"
+        ],
+        "parameters": [
+          {
+            "name": "image_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/images/{image_id}/dispatch": {
+      "get": {
+        "operationId": "get_image_dispatch",
+        "summary": "免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词",
+        "description": "免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词。用于回答「到底用了哪张图、为什么画面不像」；先查清再决定是否重出，别靠猜反复付费重抽。ledger=partial/none 表示该图生成于台账上线前，缺失字段如实为 null。",
         "tags": [
           "images"
         ],

@@ -1154,6 +1154,7 @@ Full reference: https://api.shortreelai.com/docs/mcp
 - `get_storyboards.asset_versions` 对首帧、尾帧和视频分别返回四项事实：`generated`（已生成）、`input_consistent`（与当前输入一致）、`review_valid`（审核有效）、`adopted`（已采用）。`null` 表示证据不足，不能当作 true。
 - `ready` 和生成数量只表示产物存在；当前有效数量使用 `get_pipeline_status.asset_versions_summary.*.current_effective`。换帧后旧视频仍可查看，但失效版本不能混入当前有效汇总。
 - `get_asset_versions(storyboard_id)` 查看历史版本链接、依赖 ID/版本哈希及各自状态。历史没有快照时不从当前绑定伪造依赖。
+- `get_image_dispatch(image_id)` 查一张镜头帧的派发台账：每张参考图的用途、所属角色、是否送达模型，派发前被剔的图在哪一步因什么被剔（如时代预检点名的冲突物件），以及最终发给模型的提示词。画面「不像某角色/少了某道具」时先查它，确认是参考没送到还是模型没画对，再决定改什么；`ledger` 不是 `full` 时缺失项为 `null`，不能当作已送达。
 - `get_asset_binding_repair_plan(episode_id)` 只返回缺失场景绑定的候选和依据，`applied=false`。必须逐项审核，不按名字自动回填，也不自动重新生成客户已完成的片子。
 
 ### Original product lettering

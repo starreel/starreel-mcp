@@ -691,6 +691,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ image_id }) => jsonResult(await client.produceGet(`/images/${image_id}/diagnosis`)),
   )
   server.tool(
+    'get_image_dispatch',
+    '免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词。用于回答「到底用了哪张图、为什么画面不像」；先查清再决定是否重出，别靠猜反复付费重抽。ledger=partial/none 表示该图生成于台账上线前，缺失字段如实为 null。',
+    { image_id: z.number().int().positive() },
+    async ({ image_id }) => jsonResult(await client.produceGet(`/images/${image_id}/dispatch`)),
+  )
+  server.tool(
     'get_asset_versions',
     '只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。',
     { storyboard_id: z.number().int().positive() },
