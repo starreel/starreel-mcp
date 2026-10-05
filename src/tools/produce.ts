@@ -274,6 +274,7 @@ const PROJECT_SETTINGS_FIELDS = {
   bgm_source: z.enum(['own', 'clip']).optional().describe("BGM来源:own=自有BGM流水线(默认,抑制裸片BGM);clip=保留视频原生BGM、终拼不叠加"),
   bgm_volume_preset: z.enum(['off', 'low', 'auto', 'high']).optional().describe('BGM音量档:off静音/low轻(-28dB)/auto自适应(默认,静段可闻·对白不压麦)/high强'),
   bgm_volume_db: z.number().optional().describe('自定义BGM音量(dB,负值),覆盖预设档、关自适应'),
+  lufs_target: z.number().min(-23).max(-10).optional().describe('成片整体响度目标(LUFS,默认-16;越接近0越响)。终拼母带按它处理,改完需 compose_episode 重新合成'),
   use_clip_audio: z.boolean().optional().describe('用视频原声(★默认开):true/不传=跳过TTS配音直接用视频自带声;false=改回TTS配音。所有类型默认视频原声,建剧时应主动告知客户可切换配音(★直接改成片音频)'),
   // 字幕(烧录/双语/仅译文/位置/边距/动效)
   show_subtitles: z.boolean().optional().describe('字幕烧录总开关:false=不烧字幕轨'),
@@ -2124,6 +2125,42 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       })),
   )
   server.tool(
+    'set_episode_audio',
+    '设置**本集**配乐音量(覆盖整剧设定,免费)。整剧统一的用 update_project_settings。' +
+      '★只改设置:成片要 compose_episode 重新合成才变(rerender_episode 用旧时间线,不带上)。' +
+      '★想调某一段配乐的音量或淡入淡出,用 list_bgm_cues + update_bgm_cue。',
+    {
+      episode_id: z.number().int().positive(),
+      bgm_volume_preset: z.enum(['off', 'low', 'auto', 'high', 'inherit']).optional()
+        .describe('本集配乐音量档:off静音/low轻(-28dB)/auto自适应/high强(-16dB)/inherit跟随整剧'),
+      bgm_volume_db: z.number().min(-60).max(0).nullable().optional()
+        .describe('本集自定义配乐音量(dB,-60~0),覆盖档位并关自适应;null=清除、跟随整剧'),
+    },
+    async ({ episode_id, ...rest }) =>
+      jsonResult(await client.producePut(`/episodes/${episode_id}/audio`, rest)),
+  )
+  server.tool(
+    'list_bgm_cues',
+    '列出本集的配乐段(AI 配乐按情绪分幕,每段覆盖一段镜号 sb_from~sb_to):id、覆盖范围、gain_db(null=跟随音量档)、fade_in_ms / fade_out_ms。' +
+      'episode_id 为 null 的是**整剧共用段**,改它会影响所有集。免费。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/bgm-cues`)),
+  )
+  server.tool(
+    'update_bgm_cue',
+    '调某一段配乐的音量与淡入淡出(免费)。只改这三项;换曲目或改覆盖范围用 generate_bgm 重新生成。' +
+      '★例:配乐进得太突兀→加大 fade_in_ms;某段压对白→降 gain_db。改完 compose_episode 重新合成才生效。',
+    {
+      episode_id: z.number().int().positive(),
+      cue_id: z.number().int().positive().describe('来自 list_bgm_cues'),
+      gain_db: z.number().min(-60).max(0).nullable().optional().describe('这段配乐的音量(dB,-60~0),设了就覆盖音量档;null=恢复跟随本集/整剧音量档'),
+      fade_in_ms: z.number().int().min(0).max(15000).optional().describe('淡入毫秒(整数,0~15000)'),
+      fade_out_ms: z.number().int().min(0).max(15000).optional().describe('淡出毫秒(整数,0~15000)'),
+    },
+    async ({ episode_id, cue_id, ...rest }) =>
+      jsonResult(await client.producePut(`/episodes/${episode_id}/bgm-cues/${cue_id}`, rest)),
+  )
+  server.tool(
     'get_bgm_prompt_guide',
     '取「AI 配乐提示词」的书写规范:两个档位怎么选、该写哪些维度(附可照抄的示例)、' +
       '哪些是写了也不会生效的硬限制(纯器乐/时长/不做音效/不复刻具体曲目)、常见写坏的方式。' +
@@ -2915,12 +2952,16 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★选哪一镜:该角色**独自说话、台词较长、没有背景音乐和别人插话**的镜;start_s/dur_s 可只截其中一段(不传则取默认窗口,时长会按各引擎上限自动钳制)。' +
       '\n★只对**之后**生成的视频生效。锁之前已经出好的镜会出现在 get_pipeline_status 的 native_voice_anchor.stale_shots 里,' +
       '用 regenerate_shot_video 重出才会统一。所以最省的做法是:每个说话角色先出一镜、选定声线,再批量出其余镜。' +
+      '\n★台词栏为空也能用:以实际音频为准——平台用已标定的人声探测确认所选区间里有人声,并把转写文字当锚文本;' +
+      '探测不到人声、或转写不出可用文字就拒(锚选错会污染此后所有镜的嗓音,宁拒不猜)。响应里 text_source 标明文本来自台词还是转写。' +
+      '\n★先 preview:true 试听:只截取并返回 preview_url 与锚文本,**不写入角色**;听着对再去掉 preview、用同样的 start_s/dur_s 正式提交。' +
       '\n★有客户授权的外部音源时改用 clone_voice + set_character_voice;两者二选一,后设的覆盖先设的。',
     {
       character_id: z.number().int().positive(),
-      storyboard_id: z.number().int().positive().describe('本剧里有该角色台词、已出视频的镜'),
+      storyboard_id: z.number().int().positive().describe('本剧里已出视频、该角色在里面说话的镜(台词栏为空时以实际音频为准)'),
       start_s: z.number().min(0).optional().describe('可选:从该镜第几秒开始截'),
       dur_s: z.number().positive().optional().describe('可选:截多长(秒)'),
+      preview: z.boolean().optional().describe('true=只截取试听、返回 preview_url 与锚文本,不写入角色。建议先试听再正式提交'),
     },
     async ({ character_id, ...rest }) =>
       jsonResult(await client.producePost(`/characters/${character_id}/voice-anchor-from-shot`, rest)),

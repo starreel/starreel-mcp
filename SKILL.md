@@ -258,7 +258,13 @@ content that will be rejected.
    `native_voice_anchor` lists `unanchored_speakers` (not locked yet) and
    `stale_shots` (made before the lock — `regenerate_shot_video` them). Decide
    the voice reference early; picking it after the whole episode is rendered
-   means redoing shots.
+   means redoing shots. The shot's line field may be empty — then the actual
+   audio decides: a calibrated speech probe must hear a voice in the chosen
+   window, and its transcript becomes the anchor text (`text_source:
+   "transcript"`); no voice or no usable transcript is refused. Call it with
+   `preview: true` first: you get `preview_url` and the anchor text without
+   anything being written, then call again without `preview` (same
+   `start_s` / `dur_s`) to lock it.
 
    **No sample? Design one.** `design_voice` turns a one-sentence description
    (age, gender, timbre, pace, mood — say what you want, not what you don't)
@@ -1073,7 +1079,12 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   `design_voice` → `get_voice_design` → `save_designed_voice` (no sample needed),
   `speak_with_voice`, `set_character_voice`, `list_voices`, `delete_voice`,
   `generate_bgm` (optional `prompt` steers the music; read `get_bgm_prompt_guide` first),
-  `get_bgm_prompt_guide`, `replace_shot_dialogue`
+  `get_bgm_prompt_guide`, `replace_shot_dialogue`, `revoice_narration`
+- **Mix** (free; settings only — `compose_episode` again to hear them, `rerender_episode`
+  reuses the old timeline): whole drama via `update_project_settings`
+  (`bgm_volume_preset` / `bgm_volume_db` / `lufs_target`); one episode via
+  `set_episode_audio`; one music section's level and fades via `list_bgm_cues` →
+  `update_bgm_cue`. Don't download the cut to re-mix it locally.
 - **Finish**: `compose_episode`, `get_final_cut`, `get_export`,
   `generate_episode_poster`, `generate_cover`
 - **What did this drama cost?** `get_drama_bill` — per kind `charged` / `refunded`
