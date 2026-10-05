@@ -144,6 +144,16 @@ Don't ask the user at every step. Sort work into three tiers:
    glowing energy, floating landforms and non-human forms as "wrong era",
    dragging the look toward literal historical drama. A single scene can break
    away via `update_scene`'s `era_contract` (scene level outranks episode level).
+   **When the era check conflicts with a customer-uploaded portrait** (the upload
+   itself, or the body / hair / sheet images derived from it), frame generation
+   stops with `400 ERA_USER_REF_CONFLICT` — nothing generated, nothing billed. Do
+   not retry blindly and do not pass `allow_era_ref_conflict: true` on your own:
+   tell the customer which character and image was flagged, and let them choose —
+   keep the look (then pass `allow_era_ref_conflict: true` on `generate_shot_frame`
+   / `generate_frames`; the images are kept, not dropped), fix the portrait, or fix
+   the era contract. `generate_frames` dispatches in the background, so a shot
+   blocked this way does not error the batch call — after it, read `get_jobs`:
+   `frame_dispatch_rejections` lists every refused shot with its `code` and message.
    **Props are a separate chain and the era contract does not reach them.** The
    white-background prop sheet deliberately injects no visual lock and no era
    contract (long lock prose drowns the style words), so a prop's period rests
@@ -677,6 +687,7 @@ Map the reason to an action:
 | `transient` | true | BestOfN / quality-gate / rate-limit / network, or the audit itself failed to run | Back off, retry |
 | `contract_rejected` | true | A **content/contract** rejection (era, composition, shot size, head-count, readable text…) — **not** a network blip. Measured: a blind re-roll clears it about a third of the time | Retry once or twice; if the same reason keeps coming back, read `fail_hint` and change the shot (see *What you can actually change* below) instead of re-rolling |
 | `needs_content_fix` | false | A content/contract conflict that a re-roll almost never clears (measured ≤10%) — most often the character's wardrobe/accessory record conflicting with the approved portrait | Change the shot description / character record **first**, then regenerate. A blind retry is a full-price repeat |
+| `diagnosis_required` | false | Repeated same-input same-reason failures, or an existing candidate awaits a verdict | Call `get_frame_retry_diagnosis` with the image task ID. Reaudit the existing candidate for audit errors; review evidence for unknown reasons. Do not submit an unchanged paid retry or rewrite the script without authorization. |
 | `repeat_rejected` | false | Same shot rejected for the same reason until the circuit breaker tripped (auto-clears after 24 h) | Change the prompt / references / shot design **first** (see *What you can actually change* below); a blind retry is a full-price repeat of the same rejection |
 | `pair_collateral` | true | The **other** frame of this shot failed its audit; this frame was never judged bad — it was only closed out with the batch | Do **not** edit this frame. If the shot carries `reopen_pair_id`, pass it to `generate_shot_frame` to redo only the faulty side; otherwise regenerate the shot |
 | `unknown` | false | Unclassified | Read `fail_hint`; don't auto-retry |

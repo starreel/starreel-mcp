@@ -685,6 +685,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       })),
   )
   server.tool(
+    'get_frame_retry_diagnosis',
+    '免费只读查询图片任务的连败诊断、证据任务 ID 和下一步动作。diagnosis_required 时先调用本工具：审计故障重审已有候选，未知原因先复核；不得原样重抽或擅自改剧本。',
+    { image_id: z.number().int().positive() },
+    async ({ image_id }) => jsonResult(await client.produceGet(`/images/${image_id}/diagnosis`)),
+  )
+  server.tool(
     'get_asset_versions',
     '只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。',
     { storyboard_id: z.number().int().positive() },
@@ -711,7 +717,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '两者均暂停本次自动尾帧回写与续接，先复核视频；字段缺席不代表做过检测，也不要直接重试收费生成。' +
       '★not_required=旁白/片尾卡镜:帧与视频由成片层渲染,本镜不需要生成——数补齐进度时把它当已完成,别重试。' +
       'fail_reason(sensitive/text_sensitive/copyright/face_mismatch/account_overdue/quota_full/authorizing/' +
-      'insufficient_credits/transient/repeat_rejected/pair_collateral)、retryable(true=可重试;false=改内容换图,重试无效)、fail_hint(人读文案)。' +
+      'insufficient_credits/transient/repeat_rejected/diagnosis_required/pair_collateral)、retryable(true=可重试;false=先按fail_hint处理,勿原样重试)、fail_hint(人读文案)。' +
+      '★diagnosis_required=同输入同细因连败或已有候选等待判决:先查看已有候选及审计依据。审计故障先重审同一候选,原因未知先复核,不得直接改剧本或重复生成。' +
       '照 retryable 判该重试还是该改内容,别解析中文。' +
       '★pair_collateral=同镜另一帧未通过、本帧随批结束——**本帧自身没被判不合格,别去改它**:有 reopen_pair_id 就用它只重掷有过错的一侧,否则直接重生本镜。' +
       '★若某镜带 degraded_frames:[{frame_type,reason,reason_label,since,hint}],表示该帧是系统在同因连拒熔断后**放行**的(判据照记未拒),' +
@@ -978,7 +985,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '真实进度只看 get_storyboards 的 first_frame_image / get_jobs 的逐条生成记录;' +
       '余额不足(402)会中止整批,此时轮询再久也不会有结果,应去查余额而不是继续等。' +
       '★★**个别镜反复出不来、其余镜都好了**:那不是等得不够久,是这几镜被内容闸连拒。' +
-      '看 get_storyboards 的 fail_reason(repeat_rejected / needs_content_fix / contract_rejected),' +
+      '看 get_storyboards 的 fail_reason(repeat_rejected / diagnosis_required / needs_content_fix / contract_rejected),' +
+      '若 diagnosis_required,先按 fail_hint 诊断已有候选;审计错误先重审,证据不足先复核,不要原样重抽或擅自改剧本。' +
       '然后**跑 run_precheck**(事后也能跑,会告诉你是哪种矛盾),按它的提示用 update_shot 改景别/描述/绑定角色再重生。' +
       '别继续 generate_frames 空转,也别把客户支去外部工具做图——外部图绕开身份锚与帧审计,人脸服装画风必漂。' +
       REVIEW_GATE_HINT('review_storyboards', '分镜') + CONFIRM_HINT,
@@ -991,10 +999,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准)/' +
         'gemini-3.1-flash-image(Nano Banana 2·71点)/gemini-3-pro-image(Nano Banana Pro·更精细·175点)/' +
         'gemini-3.1-flash-lite-image(Nano Banana 2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream 5.0)'),
+      allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true:这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
     },
-    async ({ episode_id, quote_id, frame_type, image_model, review_token, acknowledge_review }) =>
+    async ({ episode_id, quote_id, frame_type, image_model, review_token, acknowledge_review, allow_era_ref_conflict }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/frames/generate`, {
-        quote_id, frame_type, image_model, review_token, acknowledge_review,
+        quote_id, frame_type, image_model, review_token, acknowledge_review, allow_era_ref_conflict,
       })),
   )
 
@@ -1037,9 +1046,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
       image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(★必须与 quote_shot_frame 传的那个一致,否则 400 IMAGE_MODEL_MISMATCH;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
+      allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true:这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
     },
-    async ({ storyboard_id, quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal })),
+    async ({ storyboard_id, quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict })),
   )
 
   // ---------- 出视频(videos,大额) ----------
@@ -1949,7 +1959,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       })).optional()
         .describe('画外音标记:[{character_id, presence}]。voice_only = 这一镜他只有声音、人不在画面(画外音/门外说话/电话那头)——' +
           '出图时他的定妆图、人脸锁、站位、主体脸锚全部跳过,台词与配音不受影响;on_screen = 恢复在画面。' +
-          '角色必须在本镜绑定里(可与 character_ids 同一请求,先改绑再标)。只列要改的角色,没列的不动。' +
+          '角色必须在本镜绑定里(可与 character_ids 同一请求,先改绑再标)。只列要改的角色,没列的不动(空数组 = 不改任何标记)。' +
           '★完全没出现在画面、台词也不是他说的 → 直接从 character_ids 去掉,不用标 voice_only'),
       title: z.string().optional().describe('镜头标题'),
       description: z.string().optional().describe('画面描述'),
@@ -2206,7 +2216,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'get_jobs',
     '查一部剧的任务队列进度(出图/出视频/合成各阶段的 pending/processing/done/failed)。' +
-      '异步生成后用它看进度。免费。',
+      '异步生成后用它看进度。免费。' +
+      '★整集出帧(generate_frames)是后台逐镜派发,被拒的镜不会出现在任务列表里——看响应的 frame_dispatch_rejections' +
+      '(每镜 storyboard_id/frame_type/code/message)。code=ERA_USER_REF_CONFLICT 表示客户上传的定妆图被时代审核判冲突:' +
+      '把 message 转告客户、由客户确认后,带 allow_era_ref_conflict=true 对那几镜 generate_shot_frame。重启后该列表清空。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/jobs`)),
   )

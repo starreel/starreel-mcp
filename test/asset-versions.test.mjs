@@ -19,3 +19,11 @@ test('historical scene binding proposal never performs a write',async()=>{
  assert.deepEqual(await s.run('get_asset_binding_repair_plan',{episode_id:5}),data)
  assert.deepEqual(s.calls,['/episodes/5/asset-binding-repair-plan'])
 })
+
+test('retry diagnosis preserves evidence and performs only a free read', async()=>{
+ const data={action:'reaudit_existing',evidenceIds:[12,13],threshold:2}
+ const s=setup(data)
+ assert.deepEqual(await s.run('get_frame_retry_diagnosis',{image_id:14}),data)
+ assert.deepEqual(s.calls,['/images/14/diagnosis'])
+ assert.match(s.tools.get('get_frame_retry_diagnosis').desc,/审计故障重审已有候选/)
+})
