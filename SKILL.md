@@ -441,6 +441,12 @@ content that will be rejected.
    in ~15 min; never reuse it or call `generate_*` twice for the same intent.
    Before regenerating an asset, read its current state first — don't re-pay for
    something already produced.
+   **Edit first, then quote.** Any `update_shot` on a shot — successful *or
+   rejected* — voids every outstanding quote covering that shot (and the
+   episode-level frames/videos quotes); generating with it returns
+   `409 QUOTE_INVALIDATED` with the reason. If an edit was rejected, fix it and
+   read the shot back (`get_storyboards`) before quoting again — never push the
+   old content through on an old quote.
 
 9. **Stay in your tenant.** You only ever see your own resources. Someone
    else's id returns `404` by design (cross-tenant probes never leak

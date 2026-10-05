@@ -1936,7 +1936,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_shot',
-    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。' +
+    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
       '**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);' +
       '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids)。' +
       '★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,' +
