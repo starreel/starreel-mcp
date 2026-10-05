@@ -608,6 +608,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '查某一集完整工作流的进度(script_rewrite/提取/分镜/语音/出图/出视频/合成/配乐/终拼…各步 ' +
       'done/partial/pending/not_required)。照它按序推进、不跳步。免费。' +
       'asset_versions_summary 将 generated、input_consistent、review_valid、adopted 和 current_effective 分开计数；不能把 generate_videos.completed 当当前有效数量。' +
+      '★generate_images / generate_videos 的 status=done 只表示「已生成」，不代表可交付：看同一步的 validity（current_effective 当前有效 / input_changed 生成后输入已变，changed_by 列出是剧级设定、镜头本身还是哪个角色变了 / input_unknown / unreviewed / review_failed），validity.note 不为空时先把它告诉客户。输入变了不一定影响画面，别据此整集重出（付费），先用 get_asset_versions 逐镜看原因。' +
       '★not_required=当前模式不需要该步(如原声剧的 TTS 三步、关配乐的 generate_bgm),不是没做完,别去补做。' +
       '图片/视频分母已剔除卡镜(shots_not_applicable);merge_episode.bgm_stale=true 表示配乐晚于成片,重新 compose_episode 即可。',
     { episode_id: z.number().int().positive() },

@@ -1184,7 +1184,7 @@ Full reference: https://api.shortreelai.com/docs/mcp
 ### 资产引用与版本有效性
 
 - `get_storyboards.asset_versions` 对首帧、尾帧和视频分别返回四项事实：`generated`（已生成）、`input_consistent`（与当前输入一致）、`review_valid`（审核有效）、`adopted`（已采用）。`null` 表示证据不足，不能当作 true。
-- `ready` 和生成数量只表示产物存在；当前有效数量使用 `get_pipeline_status.asset_versions_summary.*.current_effective`。换帧后旧视频仍可查看，但失效版本不能混入当前有效汇总。
+- `ready` 和生成数量只表示产物存在；当前有效数量使用 `get_pipeline_status.asset_versions_summary.*.current_effective`。出图、出视频两步的 `status=done` 同样只表示已生成，旁边的 `validity` 拆出当前有效、生成后输入已变（`changed_by` 给出是哪类依赖变了）、无法判断、未审核、审核未过；`validity.note` 非空时先告知客户，再决定重出哪些镜，不要因输入变更就整集重出。换帧后旧视频仍可查看，但失效版本不能混入当前有效汇总。
 - `get_asset_versions(storyboard_id)` 查看历史版本链接、依赖 ID/版本哈希及各自状态。历史没有快照时不从当前绑定伪造依赖。
 - `get_image_dispatch(image_id)` 查一张镜头帧的派发台账：每张参考图的用途、所属角色、是否送达模型，派发前被剔的图在哪一步因什么被剔（如时代预检点名的冲突物件），以及最终发给模型的提示词。画面「不像某角色/少了某道具」时先查它，确认是参考没送到还是模型没画对，再决定改什么；`ledger` 不是 `full` 时缺失项为 `null`，不能当作已送达。
 - `get_stale_portrait_frames(episode_id)` 换定妆图后查影响范围：列出在用帧仍基于角色旧资产的镜头，每条附证据（`ledger-old-asset` / `references-previous-asset` / `portrait-born-after-frame`）。`unknown` 是证据不足，不是已过期，不要据此批量重出。先把 `stale` 清单和 `has_video` 告诉客户，由客户决定重出哪些镜——重出帧和视频都要付费。
