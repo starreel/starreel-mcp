@@ -1144,10 +1144,16 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + '走 TTS 配音的片子不会有这个问题。'
       + '\n★**很慢**:每镜要完整解码音轨,实测 6~10 秒/镜(后端限并发 4),整集几十镜要等几分钟。'
       + '别在产线中途反复调,放在成片前查一次。'
-      + '\n★shots_probe_failed 是**没测成**的镜数,不代表那些镜有问题。',
-    { episode_id: z.number().int().positive() },
-    async ({ episode_id }) =>
-      jsonResult(await client.produceGet(`/episodes/${episode_id}/silent-shot-audio-audit`)),
+      + '\n★shots_probe_failed 是**没测成**的镜数,不代表那些镜有问题。'
+      + '\n★★probe_speech:true 再对**台词栏为空**的镜跑人声检测(已标定判据):厂商在无台词镜里自己念出一句话时,'
+      + '响度比测不出来,这个能——命中的镜列在 unexpected_speech,text 是念出的内容。更慢(每镜下载+转写),'
+      + '一次最多 20 镜,skipped_by_limit 是剩下的、再调一次接着扫。只报不改:由客户决定 mute_only 静掉还是重生成。',
+    {
+      episode_id: z.number().int().positive(),
+      probe_speech: z.boolean().optional().describe('true=对无台词镜额外跑人声检测(慢,一次≤20镜)'),
+    },
+    async ({ episode_id, probe_speech }) =>
+      jsonResult(await client.produceGet(`/episodes/${episode_id}/silent-shot-audio-audit${probe_speech ? '?probe_speech=1' : ''}`)),
   )
   server.tool(
     'get_asset_recovery',
