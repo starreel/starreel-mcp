@@ -697,6 +697,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ image_id }) => jsonResult(await client.produceGet(`/images/${image_id}/dispatch`)),
   )
   server.tool(
+    'get_stale_portrait_frames',
+    '免费只读查询一集里哪些镜头的在用首帧/尾帧，是拿角色已被换掉的旧资产（旧定妆图、旧设定图、旧身体/发型图）画的。换定妆图后用它确认影响范围，再由客户决定重出哪些镜（重出要付费，本工具不改任何数据）。verdict=stale 必附证据：ledger-old-asset（派发台账直接记录用了旧图）/ references-previous-asset（参考图里有该角色以前的旧资产）/ portrait-born-after-frame（当前定妆图晚于该帧诞生）；证不了的标 unknown 并给原因，不当作已过期。has_video=true 表示该镜视频也基于旧帧，重出帧后视频需重生。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/stale-portrait-frames`)),
+  )
+  server.tool(
     'get_asset_versions',
     '只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。',
     { storyboard_id: z.number().int().positive() },
@@ -2025,8 +2031,22 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★写回前会对产物复核(与 scan_dialogue_coverage 同一判据):换完仍断音(truncated)、重复念/多念(extra_speech)、' +
       '念的不是台词(off_script)→ **不写回**、本次费用自动退回,返回错误说明哪一类——这类镜换音修不好,改用 regenerate_shot_video。' +
       '成功时返回 verify:verified=false 表示没判出来(转写失败/台词太短),照常写回但没复核过,自己听一下。',
+    { storyboard_id: z.number().int().positive(), mute_only: z.boolean().optional().describe('只静音、不重配(不扣费):把视频原声里的人声段静掉。用于厂商在**没有台词的镜里自己念出声**的情况。★原声剧上本镜的旁白也在原声里,会一起被静掉——要换旁白用 revoice_narration,别用它') },
+    async ({ storyboard_id, mute_only }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/dialogue-replace`, mute_only ? { mode: 'mute' } : {})),
+  )
+  server.tool(
+    'revoice_narration',
+    '换某镜**旁白/画外音**的声音(或改过旁白文字后重配)。**不重新生成视频**:保留画面与出镜台词,只把旁白那几段静掉、' +
+      '按当前旁白声音重新合成并混回,再复核。同步调用,按 TTS 档(千字符)计费。' +
+      '★先改好再调:想换声音先 set_character_voice 给「旁白」角色(没有就 design_voice 造一个),想改文字先 update_shot 改 dialogue 里的旁白行。' +
+      '★纯旁白镜(本镜只有旁白)直接可用;**混合镜**(既有出镜台词又有旁白)要求分句数与视频里的语音段数一致,' +
+      '对不上就报错不猜(猜错会把出镜台词一起静掉)——这时只能 regenerate_shot_video。' +
+      '★台词栏没有旁白行会直接报错;厂商在无台词镜里乱念,用 replace_shot_dialogue 的 mute_only。' +
+      '★写回后成片会直接用它(不需要额外开关),rerender_episode 重拼即可;复核不通过不写回,旁白合成费不退。',
     { storyboard_id: z.number().int().positive() },
-    async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/dialogue-replace`)),
+    async ({ storyboard_id }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/dialogue-replace`, { mode: 'narration' })),
   )
   server.tool(
     'repair_episode_dialogue',
@@ -2045,11 +2065,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       only_flagged: z.boolean().optional()
         .describe('默认 true=只修被判有缺陷的镜。传 false 会把全集可替换镜都重配一遍——既花钱又可能把本来对的音频换坏,除非确有需要别关'),
       force: z.boolean().optional().describe('对已有替换产物的镜也重跑(默认跳过,幂等)'),
+      mute_only: z.boolean().optional().describe('只静音、不重配(不扣费):把视频原声里的人声段静掉。用于厂商在**没有台词的镜里自己念出声**的情况。★原声剧上本镜的旁白也在原声里,会一起被静掉——要换旁白用 revoice_narration,别用它'),
     },
-    async ({ episode_id, only_flagged, force }) =>
+    async ({ episode_id, only_flagged, force, mute_only }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/dialogue-repair`, {
         ...(only_flagged === undefined ? {} : { only_flagged }),
         ...(force ? { force: true } : {}),
+        ...(mute_only ? { mute_only: true } : {}),
       })),
   )
   server.tool(
