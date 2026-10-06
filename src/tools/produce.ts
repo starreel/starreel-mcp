@@ -1952,7 +1952,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_shot',
-    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
+    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
       '**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);' +
       '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids)。' +
       '★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,' +
@@ -2001,6 +2001,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       video_prompt: z.string().optional().describe('视频(动态/运镜/表演)提示词**正文**(全量覆盖本镜现值)。★同 image_prompt:先读现值、保留 @char/@scene 标记'),
       first_frame_prompt: z.string().optional().describe('本镜**开始时**画面是什么样(首帧目标状态正文,全量覆盖现值)。送达提示词里作为 [START FRAME] 段排在最前,优先级高于 image_prompt——所以 image_prompt 改了不生效时,往往是这条在压着它。★同 image_prompt:先 get_shot_prompts 读现值、原样保留 @char/@scene 标记'),
       last_frame_prompt: z.string().optional().describe('本镜**结束时**画面是什么样(尾帧目标状态正文,全量覆盖现值)。送达提示词里作为 [END FRAME] 段。★★出尾帧被 TERMINAL_DESC_GATE 拦下时就是补这一条:写清结束时的状态(什么变了/变成什么样),再重新出尾帧。不补而直接重试必然重复被拒且照常扣费。get_shot_prompts 的 terminal_desc_missing=true 即本镜需要它'),
+      expression_hint: z.string().max(120).nullable().optional().describe('本镜角色的**面部表情/神态**(≤120 字,一句具体的面部描述,如「眼眶泛红、强忍泪水、嘴角紧抿」)。' +
+        '填了就**压过**平台按台词/氛围的反推——反推只有 7 种预设情绪、且台词里没有情绪词时什么都不加,剧本神态写在动作或旁白里的镜常常因此画成平静脸。' +
+        '它总会压过平台反推并送进**出图**提示词;但「作为独立表情块送达、不被身份锁当成五官描述作废」与「送进视频提示词、整段保持首帧表情」两项**目前按剧灰度开放**' +
+        '(未开放的剧,视频提示词里不会出现它,视频只能沿用首帧上的表情),' +
+        '未开放的剧里写了也可能画不出来——花钱重生前先出一张首帧看效果,别向客户承诺一定生效。' +
+        '★写正向的面部状态,别写「不要笑/不要哭」这类否定式(模型会把名词当正向线索)。★改完不会自动重出,要让画面跟上需重生本镜首帧再重生视频。' +
+        '★超 120 字直接拒(不悄悄截断);null 或空串 = 清空,回到平台反推。现值用 get_shot_prompts 读'),
     },
     async ({ storyboard_id, ...fields }) => {
       const payload = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined))
@@ -2013,6 +2020,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 update_shot 写回。免费。' +
       '★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——' +
       '出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。' +
+      '★同时回 expression_hint(本镜作者指定的面部表情,null=未指定、由平台按台词反推),改它用 update_shot。' +
+      'expression_inferred 是拆镜 AI 在剧本没写神态时按本镜内容推断的表情(只读;null=没推断,或本镜台词/动作/氛围/描述/强度改过、推断已过期不再使用);它优先级低于 expression_hint——' +
+      '推断不合意就用 update_shot 写 expression_hint 覆盖它。' +
       '★逐镜按需:改哪镜读哪镜(整集列表 get_storyboards 不含提示词)。' +
       '★返回的 asset_tokens 是正文里的补充参考标记(@char:N / @scene:M),改写时原样保留即可:' +
       '本镜注入谁的定妆图由绑定决定(get_storyboards 的 character_ids / scene_id),删标记不会让已绑定的人消失;' +

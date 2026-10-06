@@ -324,6 +324,20 @@ content that will be rejected.
    **9.4%** of the time versus **40.2%** with one. `generate_shot_frame` does accept
    `allow_missing_terminal: true` for the rare shot that genuinely should barely change,
    but reach for the text fix first.
+   **If an emotional shot comes out with a blank, neutral face**, set the expression
+   explicitly: `update_shot` with `expression_hint` (one concrete sentence about the
+   face, ≤120 characters, written as what the face *does* — not "don't smile"), then
+   regenerate that shot's first frame (and its video). Without it the platform only
+   infers an expression from emotion words in the dialogue / atmosphere, which most
+   shots do not have — measured on 624 production shots with characters over 30 days,
+   **96 rated emotion intensity ≥7 still got no expression at all**. The hint always
+   overrides the inference in the **first-frame image** prompt and is read back by
+   `get_shot_prompts`. Two enhancements — delivering it as its own block the identity
+   locks do not discard, and sending it into the **video** prompt to hold the expression
+   through the clip — are **rolled out per drama and not yet on everywhere** (elsewhere the
+   video prompt does not carry it; the clip only inherits whatever face the first frame has),
+   so on other dramas the face may still come out flat: regenerate one first frame and
+   look before paying for more, and do not promise the customer it will take effect.
    **Then join the seams, before `review_frames`.** Each shot's first frame should pick
    up where the previous shot's last frame left off; otherwise the cut is a visible jump.
    The platform joins them automatically only when a batch runs from the website —

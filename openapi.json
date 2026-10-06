@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.115",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.115 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.116",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.116 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -730,39 +730,46 @@
                     "type": "string"
                   },
                   "creative_contract": {
-                    "type": "object",
-                    "properties": {
-                      "version": {
-                        "type": "number",
-                        "const": 1
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "version": {
+                            "type": "number",
+                            "const": 1
+                          },
+                          "speech": {
+                            "type": "string",
+                            "enum": [
+                              "unspecified",
+                              "forbidden",
+                              "required"
+                            ]
+                          },
+                          "music": {
+                            "type": "string",
+                            "enum": [
+                              "unspecified",
+                              "forbidden"
+                            ]
+                          },
+                          "pacing": {
+                            "type": "string",
+                            "enum": [
+                              "unspecified",
+                              "quiet"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "version"
+                        ],
+                        "additionalProperties": false
                       },
-                      "speech": {
-                        "type": "string",
-                        "enum": [
-                          "unspecified",
-                          "forbidden",
-                          "required"
-                        ]
-                      },
-                      "music": {
-                        "type": "string",
-                        "enum": [
-                          "unspecified",
-                          "forbidden"
-                        ]
-                      },
-                      "pacing": {
-                        "type": "string",
-                        "enum": [
-                          "unspecified",
-                          "quiet"
-                        ]
+                      {
+                        "type": "null"
                       }
-                    },
-                    "required": [
-                      "version"
-                    ],
-                    "additionalProperties": false
+                    ]
                   },
                   "image_model": {
                     "type": "string"
@@ -1070,39 +1077,46 @@
                     "type": "string"
                   },
                   "creative_contract": {
-                    "type": "object",
-                    "properties": {
-                      "version": {
-                        "type": "number",
-                        "const": 1
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "version": {
+                            "type": "number",
+                            "const": 1
+                          },
+                          "speech": {
+                            "type": "string",
+                            "enum": [
+                              "unspecified",
+                              "forbidden",
+                              "required"
+                            ]
+                          },
+                          "music": {
+                            "type": "string",
+                            "enum": [
+                              "unspecified",
+                              "forbidden"
+                            ]
+                          },
+                          "pacing": {
+                            "type": "string",
+                            "enum": [
+                              "unspecified",
+                              "quiet"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "version"
+                        ],
+                        "additionalProperties": false
                       },
-                      "speech": {
-                        "type": "string",
-                        "enum": [
-                          "unspecified",
-                          "forbidden",
-                          "required"
-                        ]
-                      },
-                      "music": {
-                        "type": "string",
-                        "enum": [
-                          "unspecified",
-                          "forbidden"
-                        ]
-                      },
-                      "pacing": {
-                        "type": "string",
-                        "enum": [
-                          "unspecified",
-                          "quiet"
-                        ]
+                      {
+                        "type": "null"
                       }
-                    },
-                    "required": [
-                      "version"
-                    ],
-                    "additionalProperties": false
+                    ]
                   },
                   "image_model": {
                     "type": "string"
@@ -3309,9 +3323,16 @@
                     ]
                   },
                   "bgm_volume_db": {
-                    "type": "number",
-                    "minimum": -60,
-                    "maximum": 0
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": -60,
+                        "maximum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -3611,9 +3632,16 @@
                 "type": "object",
                 "properties": {
                   "gain_db": {
-                    "type": "number",
-                    "minimum": -60,
-                    "maximum": 0
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": -60,
+                        "maximum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "fade_in_ms": {
                     "type": "integer",
@@ -4053,8 +4081,15 @@
                 "type": "object",
                 "properties": {
                   "delivery_id": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "client_accepted": {
                     "type": "boolean"
@@ -4419,7 +4454,11 @@
                 "type": "object",
                 "properties": {
                   "era": {
-                    "type": "string"
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "modern / republican / historical / fantasy(也收中文「现代 / 民国 / 古代 / 仙侠」)。传 null 清空本集契约"
                   },
                   "positive": {
                     "type": "array",
@@ -8185,8 +8224,16 @@
                 "type": "object",
                 "properties": {
                   "variant_id": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "传 null 解除关联"
                   }
                 },
                 "required": [
@@ -8955,31 +9002,38 @@
                     "type": "string"
                   },
                   "era_contract": {
-                    "type": "object",
-                    "properties": {
-                      "era": {
-                        "type": "string",
-                        "description": "modern / republican / historical / fantasy(也收中文「现代 / 民国 / 古代 / 仙侠」)"
-                      },
-                      "positive": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "era": {
+                            "type": "string",
+                            "description": "modern / republican / historical / fantasy(也收中文「现代 / 民国 / 古代 / 仙侠」)"
+                          },
+                          "positive": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "本场额外的正向约束(可留空,平台自带该档基线)"
+                          },
+                          "negative": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            },
+                            "description": "本场额外的禁止项(可留空)"
+                          }
                         },
-                        "description": "本场额外的正向约束(可留空,平台自带该档基线)"
+                        "required": [
+                          "era"
+                        ],
+                        "additionalProperties": false
                       },
-                      "negative": {
-                        "type": "array",
-                        "items": {
-                          "type": "string"
-                        },
-                        "description": "本场额外的禁止项(可留空)"
+                      {
+                        "type": "null"
                       }
-                    },
-                    "required": [
-                      "era"
-                    ],
-                    "additionalProperties": false
+                    ]
                   }
                 }
               }
@@ -9474,8 +9528,8 @@
     "/storyboards/{storyboard_id}": {
       "put": {
         "operationId": "update_shot",
-        "summary": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)",
-        "description": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids)。★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,不重生就终拼,成片里念的仍是改动前的台词(典型现象:台词像是跑到了别的镜头上)。compose_episode 会以 advisory `stale_video_after_edit` 列出这些镜;正确处置是先 regenerate_shot_video 再终拼。★也可直接改本镜的四条提示词正文(image_prompt/video_prompt/first_frame_prompt/last_frame_prompt):改前先用 get_shot_prompts 读现值,别凭空覆盖——正文里的 @char:N / @scene:M 是出图时的补充参考标记,照原样保留即可。★注入谁的定妆图由 character_ids 决定、背景由 scene_id 决定:删标记不会让已绑定的人从画面消失,要让某人不出现就改 character_ids,他只有声音(画外音)就用 character_presence 标 voice_only;反过来别给未绑定的角色写 @char 标记——会把他的图注入进来。★★【出尾帧被拦下就是来改这里】出尾帧若报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」(TERMINAL_DESC_GATE),修法是把**结束时画面是什么样**写进本镜 last_frame_prompt,然后重新出尾帧。别去重试出图——这类镜(action_motion_class=state_change 却没写终态)的尾帧历史成功率 9.4%,有终态描述的是 40.2%;不补描述就重生,送厂商的提示词里根本没有终态段,画出来仍和首帧一样、还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。",
+        "summary": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(chara",
+        "description": "逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids)。★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,不重生就终拼,成片里念的仍是改动前的台词(典型现象:台词像是跑到了别的镜头上)。compose_episode 会以 advisory `stale_video_after_edit` 列出这些镜;正确处置是先 regenerate_shot_video 再终拼。★也可直接改本镜的四条提示词正文(image_prompt/video_prompt/first_frame_prompt/last_frame_prompt):改前先用 get_shot_prompts 读现值,别凭空覆盖——正文里的 @char:N / @scene:M 是出图时的补充参考标记,照原样保留即可。★注入谁的定妆图由 character_ids 决定、背景由 scene_id 决定:删标记不会让已绑定的人从画面消失,要让某人不出现就改 character_ids,他只有声音(画外音)就用 character_presence 标 voice_only;反过来别给未绑定的角色写 @char 标记——会把他的图注入进来。★★【出尾帧被拦下就是来改这里】出尾帧若报「此镜标为状态改变,但没有任何地方说明结束时是什么样子」(TERMINAL_DESC_GATE),修法是把**结束时画面是什么样**写进本镜 last_frame_prompt,然后重新出尾帧。别去重试出图——这类镜(action_motion_class=state_change 却没写终态)的尾帧历史成功率 9.4%,有终态描述的是 40.2%;不补描述就重生,送厂商的提示词里根本没有终态段,画出来仍和首帧一样、还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。",
         "tags": [
           "storyboards"
         ],
@@ -9498,89 +9552,96 @@
                 "type": "object",
                 "properties": {
                   "product_text_contract": {
-                    "type": "object",
-                    "properties": {
-                      "version": {
-                        "type": "number",
-                        "const": 1
-                      },
-                      "strategy": {
-                        "type": "string",
-                        "enum": [
-                          "generate_with_review",
-                          "original_media",
-                          "postproduction"
-                        ]
-                      },
-                      "targets": {
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "asset_kind": {
-                              "type": "string",
-                              "enum": [
-                                "prop",
-                                "product"
-                              ]
-                            },
-                            "asset_id": {
-                              "type": "integer",
-                              "exclusiveMinimum": 0
-                            },
-                            "reference_url": {
-                              "type": "string",
-                              "format": "uri"
-                            },
-                            "region": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "version": {
+                            "type": "number",
+                            "const": 1
+                          },
+                          "strategy": {
+                            "type": "string",
+                            "enum": [
+                              "generate_with_review",
+                              "original_media",
+                              "postproduction"
+                            ]
+                          },
+                          "targets": {
+                            "type": "array",
+                            "items": {
                               "type": "object",
                               "properties": {
-                                "x": {
-                                  "type": "number"
+                                "asset_kind": {
+                                  "type": "string",
+                                  "enum": [
+                                    "prop",
+                                    "product"
+                                  ]
                                 },
-                                "y": {
-                                  "type": "number"
+                                "asset_id": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0
                                 },
-                                "width": {
-                                  "type": "number"
+                                "reference_url": {
+                                  "type": "string",
+                                  "format": "uri"
                                 },
-                                "height": {
-                                  "type": "number"
+                                "region": {
+                                  "type": "object",
+                                  "properties": {
+                                    "x": {
+                                      "type": "number"
+                                    },
+                                    "y": {
+                                      "type": "number"
+                                    },
+                                    "width": {
+                                      "type": "number"
+                                    },
+                                    "height": {
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "x",
+                                    "y",
+                                    "width",
+                                    "height"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "exact_text": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 256
                                 }
                               },
                               "required": [
-                                "x",
-                                "y",
-                                "width",
-                                "height"
+                                "asset_kind",
+                                "asset_id",
+                                "reference_url",
+                                "region",
+                                "exact_text"
                               ],
                               "additionalProperties": false
                             },
-                            "exact_text": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 256
-                            }
-                          },
-                          "required": [
-                            "asset_kind",
-                            "asset_id",
-                            "reference_url",
-                            "region",
-                            "exact_text"
-                          ],
-                          "additionalProperties": false
+                            "minItems": 1,
+                            "maxItems": 4
+                          }
                         },
-                        "minItems": 1,
-                        "maxItems": 4
+                        "required": [
+                          "version",
+                          "strategy",
+                          "targets"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "null"
                       }
-                    },
-                    "required": [
-                      "version",
-                      "strategy",
-                      "targets"
-                    ],
-                    "additionalProperties": false
+                    ]
                   },
                   "continuity_intent": {
                     "type": "string",
@@ -9663,8 +9724,15 @@
                     "exclusiveMinimum": 0
                   },
                   "speed_factor": {
-                    "type": "number",
-                    "exclusiveMinimum": 0
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "image_prompt": {
                     "type": "string"
@@ -9677,6 +9745,17 @@
                   },
                   "last_frame_prompt": {
                     "type": "string"
+                  },
+                  "expression_hint": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 120
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
@@ -10727,8 +10806,15 @@
                     ]
                   },
                   "generation_id": {
-                    "type": "integer",
-                    "exclusiveMinimum": 0
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   },
                   "media_version": {
                     "type": "string"
@@ -10797,7 +10883,7 @@
       "get": {
         "operationId": "get_shot_prompts",
         "summary": "读某一镜的四条提示词**正文**(image_prompt=首帧画面 / video_prompt=动态表演 / first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 u",
-        "description": "读某一镜的四条提示词**正文**(image_prompt=首帧画面 / video_prompt=动态表演 / first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 update_shot 写回。免费。★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。★逐镜按需:改哪镜读哪镜(整集列表 get_storyboards 不含提示词)。★返回的 asset_tokens 是正文里的补充参考标记(@char:N / @scene:M),改写时原样保留即可:本镜注入谁的定妆图由绑定决定(get_storyboards 的 character_ids / scene_id),删标记不会让已绑定的人消失;带 #变体 的标记是那张变体图的唯一来源;给未绑定的角色写标记会把他的图注入进来。★这是分镜表里的正文层;出图/出视频时平台还会在其上拼身份锚、一致性约束与参考图指令(不在此处,也无需你写)。改完提示词不会自动重出图/视频,要让画面跟上得再 regen 对应镜。",
+        "description": "读某一镜的四条提示词**正文**(image_prompt=首帧画面 / video_prompt=动态表演 / first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 update_shot 写回。免费。★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。★同时回 expression_hint(本镜作者指定的面部表情,null=未指定、由平台按台词反推),改它用 update_shot。expression_inferred 是拆镜 AI 在剧本没写神态时按本镜内容推断的表情(只读;null=没推断,或本镜台词/动作/氛围/描述/强度改过、推断已过期不再使用);它优先级低于 expression_hint——推断不合意就用 update_shot 写 expression_hint 覆盖它。★逐镜按需:改哪镜读哪镜(整集列表 get_storyboards 不含提示词)。★返回的 asset_tokens 是正文里的补充参考标记(@char:N / @scene:M),改写时原样保留即可:本镜注入谁的定妆图由绑定决定(get_storyboards 的 character_ids / scene_id),删标记不会让已绑定的人消失;带 #变体 的标记是那张变体图的唯一来源;给未绑定的角色写标记会把他的图注入进来。★这是分镜表里的正文层;出图/出视频时平台还会在其上拼身份锚、一致性约束与参考图指令(不在此处,也无需你写)。改完提示词不会自动重出图/视频,要让画面跟上得再 regen 对应镜。",
         "tags": [
           "storyboards"
         ],

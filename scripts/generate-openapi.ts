@@ -51,6 +51,20 @@ function unwrap(t: z.ZodTypeAny): z.ZodTypeAny {
   }
 }
 
+/**
+ * 请求体属性生成 schema 用：只剥 optional / default（「可省略」由 required 列表表达），**保留 nullable**。
+ * 用 unwrap（连 nullable 一起剥）会让 `null = 清空` 这类文档里写明的操作在 spec 里不合法——
+ * 按 spec 生成/校验的 REST 客户端发不出去（#635 Codex review：expression_hint / speed_factor 等全中）。
+ */
+function unwrapForSchema(t: z.ZodTypeAny): z.ZodTypeAny {
+  let cur: any = t
+  for (;;) {
+    const tn = cur?._def?.typeName
+    if (tn === 'ZodOptional' || tn === 'ZodDefault') cur = cur._def.innerType
+    else return cur
+  }
+}
+
 function sentinelFor(key: string, t: z.ZodTypeAny): unknown {
   const cur: any = unwrap(t)
   const tn = cur?._def?.typeName
@@ -200,7 +214,7 @@ for (const tool of tools) {
     const required: string[] = []
     for (const [k, v] of Object.entries(call.body as Record<string, unknown>)) {
       if (k in tool.shape) {
-        props[k] = propSchema(unwrap(tool.shape[k]))
+        props[k] = propSchema(unwrapForSchema(tool.shape[k]))
         if (!tool.shape[k].isOptional()) required.push(k)
       } else {
         const inferred = inferFromValue(v)
