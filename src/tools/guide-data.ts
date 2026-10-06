@@ -73,7 +73,7 @@ export const ENTRY_POINTS: EntryPoint[] = [
       'import_storyboard_table(不传 content 则读本集原始内容;本集已有分镜要 confirm_replace:true)',
     ],
     avoid: '绝不走 set_script→rewrite_script→generate_storyboards:改写会把秒数/景别/运镜/STYLE/字卡当非剧情内容剥掉(生产实测 8 镜 36 秒被拆成 20 镜 109 秒)。',
-    note: '导入默认带 auto_complete(后台 AI 填专业字段 + 把每镜基础描述扩写成出图/视频提示词,文本步后付、调用前告知客户;auto_complete:false 只导入)——回执 started 后用 `get_autofill_status` 轮询到 done 再 `review_storyboards`;`[字卡 9s] 行一 | 行二` 会建成卡镜(成片层直接渲,不出图不出视频)。',
+    note: '导入默认带 auto_complete(后台 AI 填专业字段 + 把每镜基础描述扩写成出图/视频提示词,文本步后付、调用前告知客户;auto_complete:false 只导入,但**不会生成构图契约**,回执 contract_coverage 会报缺几镜和可行补法,按它的 note 处理)——回执 started 后用 `get_autofill_status` 轮询到 done 再 `review_storyboards`;`[字卡 9s] 行一 | 行二` 会建成卡镜(成片层直接渲,不出图不出视频)。',
     free: false,
     flow: 'get_storyboard_table_spec → 外部工具按范本整理 → check_storyboard_table(errors 清零) → import_storyboard_table(默认 auto_complete) → get_autofill_status 到 done → review_storyboards',
   },

@@ -480,7 +480,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '秒数/景别缺失的镜照常导入但会在 issues 里列出——系统不替客户猜,猜错一个秒数就是成片时长错。' +
       '★导入后**默认自动补全**(auto_complete,跟随剧目「自动补齐辅助资产」开关、默认开):同一后台批次给全镜 AI 填空专业字段' +
       '(镜头意图/节拍/潜台词/J-L cut/声线等,只填空)并把每镜由平台拼的基础描述扩写成完整出图/视频提示词——客户导完即可出图。' +
-      '文本步按 token 后付,**调用前告知客户**;只想导入不补传 auto_complete:false。回执 auto_complete.started=true 后' +
+      '文本步按 token 后付,**调用前告知客户**;只想导入不补传 auto_complete:false(**代价:不会生成构图契约**——可见人数、主体是人物/局部/道具、景别都只能靠文字推断,手部插入镜和画外配音镜容易被当完整人物出图和审核;回执 contract_coverage 列出缺几镜**并给出当前可行的补法,以它的 note 为准**——契约自动补全开着时是调 autofill_storyboards)。回执 auto_complete.started=true 后' +
       '用 get_autofill_status 轮询到 done(每镜数十秒)**再** review_storyboards——补全会改镜,先审查的 token 会失效。',
     {
       episode_id: z.number().int().positive(),
@@ -553,7 +553,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★导入后:语速律会抬高装不下台词的镜(回执 speech_duration_raised / speech_duration_overflow)。' +
       '★导入后**默认自动补全**(auto_complete,跟随剧目「自动补齐辅助资产」开关、默认开):同一后台批次给全镜 AI 填空专业字段(只填空),' +
       '并只给**没填 image_prompt、由平台拼了基础描述**的镜扩写完整出图/视频提示词(客户自己写的绝不覆盖;回执 auto_complete.prompt_shots)。' +
-      '文本步按 token 后付,**调用前告知客户**;只想导入传 auto_complete:false。回执 started=true 后用 get_autofill_status 轮询到 done **再** review_storyboards。',
+      '文本步按 token 后付,**调用前告知客户**;只想导入传 auto_complete:false(**代价:不会生成构图契约**——可见人数、主体是人物/局部/道具、景别都只能靠文字推断,手部插入镜和画外配音镜容易被当完整人物出图和审核;回执 contract_coverage 列出缺几镜**并给出当前可行的补法,以它的 note 为准**——契约自动补全开着时是调 autofill_storyboards)。回执 started=true 后用 get_autofill_status 轮询到 done **再** review_storyboards。',
     {
       episode_id: z.number().int().positive(),
       payload: z.record(z.string(), z.unknown()).describe('通过 check_bulk_import 的载荷对象:{ mode, episode_meta?, characters?, scenes?, storyboards }'),
@@ -929,7 +929,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'autofill_storyboards',
-    '(推荐)AI 一键给全集分镜补全空缺字段,默认**只填空缺、不覆盖已有**(overwrite=true 才覆盖)。提升分镜完整性,出图前做。后台异步,文本步后付。',
+    '(推荐)AI 一键给全集分镜补全空缺字段,默认**只填空缺、不覆盖已有**(overwrite=true 才覆盖)。提升分镜完整性,出图前做。后台异步,文本步后付。' +
+      '★平台开启契约自动补全时,也会尝试给**没有构图契约**的镜补上契约(是否开启以导入回执 contract_coverage 的 note 为准;可见人数/主体范围/景别,出图与审核都按它判;默认 overwrite:false 时已有契约不动,**overwrite:true 会连已有契约一起重写**)——导入时关了 auto_complete、回执 contract_coverage 的 note 指向本工具的,出图前调一次。本集已有补全在跑时本次**不排队**(防重复点击重复扣费),新导入的镜要等 get_autofill_status 到 done 后再调。',
     { episode_id: z.number().int().positive(), overwrite: z.boolean().optional().describe('true=覆盖已有字段(默认 false 只填空缺)') },
     async ({ episode_id, overwrite }) => jsonResult(await client.producePost(`/episodes/${episode_id}/storyboards/autofill`, overwrite ? { overwrite } : {})),
   )
