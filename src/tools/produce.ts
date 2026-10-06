@@ -2975,6 +2975,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★台词栏为空也能用:以实际音频为准——平台用已标定的人声探测确认所选区间里有人声,并把转写文字当锚文本;' +
       '探测不到人声、或转写不出可用文字就拒(锚选错会污染此后所有镜的嗓音,宁拒不猜)。响应里 text_source 标明文本来自台词还是转写。' +
       '\n★先 preview:true 试听:只截取并返回 preview_url 与锚文本,**不写入角色**;听着对再去掉 preview、用同样的 start_s/dur_s 正式提交。' +
+      '\n★去环境音与验收(平台按剧开启时生效,响应里有 hygiene 字段):自动剔除两句之间的纯环境音停顿,并测样本底噪(noise_floor_before/after,阈值 threshold)。' +
+      'preview 时 preview_url 是**清理后**的样本、raw_preview_url 是原样本——**请让客户前后对比试听**。' +
+      'verdict=fail 表示人声下面垫着明显的环境声或音乐(剔停顿救不了,克隆和视频厂商会把它当音色学走),正式提交会被拒:' +
+      '换一镜念得更干净的、或调 start_s/dur_s 避开背景声;只有客户听过后明确坚持,才带 allow_issues:true 写入。' +
       '\n★有客户授权的外部音源时改用 clone_voice + set_character_voice;两者二选一,后设的覆盖先设的。',
     {
       character_id: z.number().int().positive(),
@@ -2982,6 +2986,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       start_s: z.number().min(0).optional().describe('可选:从该镜第几秒开始截'),
       dur_s: z.number().positive().optional().describe('可选:截多长(秒)'),
       preview: z.boolean().optional().describe('true=只截取试听、返回 preview_url 与锚文本,不写入角色。建议先试听再正式提交'),
+      allow_issues: z.boolean().optional().describe('声线样本验收未达标(hygiene.verdict=fail)时,客户听过试听后明确坚持使用才传 true;否则不要传'),
     },
     async ({ character_id, ...rest }) =>
       jsonResult(await client.producePost(`/characters/${character_id}/voice-anchor-from-shot`, rest)),

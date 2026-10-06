@@ -264,7 +264,15 @@ content that will be rejected.
    "transcript"`); no voice or no usable transcript is refused. Call it with
    `preview: true` first: you get `preview_url` and the anchor text without
    anything being written, then call again without `preview` (same
-   `start_s` / `dur_s`) to lock it.
+   `start_s` / `dur_s`) to lock it. Where the platform has sample hygiene
+   enabled the response carries `hygiene`: pauses holding only ambient sound
+   are cut out and the noise floor is measured before / after. `preview_url`
+   is then the cleaned sample and `raw_preview_url` the original — have the
+   customer compare both. `verdict: "fail"` means ambience or music sits under
+   the voice itself (cutting pauses cannot fix it; cloning and video vendors
+   would learn it as timbre), so the lock is refused: pick a cleaner shot or
+   window, and pass `allow_issues: true` only after the customer has listened
+   and insists.
 
    **No sample? Design one.** `design_voice` turns a one-sentence description
    (age, gender, timbre, pace, mood — say what you want, not what you don't)
