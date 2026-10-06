@@ -1166,7 +1166,9 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
 - **Edit**: `edit_video_shot`, `regenerate_shot_video`, `split_shot`,
   `trim_shot`, `rerender_episode`. One generation per shot at a time: a **409 with
   `in_flight_generation_id`** means that shot is still generating from *different*
-  input (another prompt, an edit, or a prompt you changed since) — nothing was
+  input (another prompt, an edit, a prompt or shot you changed since, a first/last frame
+  regenerated, uploaded or added since, or different frames / references / engine in this
+  request — so it can happen even when the prompt is unchanged) — nothing was
   submitted or charged and the quote is spent; wait for that generation, look at it,
   then quote and retry. A success carrying `reused_in_flight: true` means the same
   input was already generating — follow that generation, don't send it again.
