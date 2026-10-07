@@ -2548,9 +2548,21 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   // ========== 剧目级资产:道具库 CRUD + 色彩脚本/动作模板读取 ==========
   server.tool(
     'get_props',
-    '列剧目道具库(每个道具名称/类型/描述/设定图)。★道具库≠广告商品库(add_product/list_products 是带货商品);道具库是剧目道具。免费。',
+    '列剧目道具库(每个道具名称/类型/描述/设定图)。★道具库≠广告商品库(add_product/list_products 是带货商品);道具库是剧目道具。免费。' +
+      '★每个道具带 era_audit(道具图的时代/形制审核结论,图换过则为 null):form_consistent=false 表示道具图与它的 era_lock 不符,' +
+      'conflicting_scopes 列出它被绑定却时代不合的场景/分集(scope 形如 scene:12 / episode:3),violations 点名具体冲突特征。' +
+      '有冲突时:先 update_prop 改 era_lock(写清朝代与形制)再 generate_prop_sheet 重出道具图;或者给那些镜换用合适的道具。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/props`)),
+  )
+  server.tool(
+    'audit_prop_era',
+    '重审某个道具图的时代/形制(一次小额视觉审核,按用量后付)。依据该道具的 era_lock,以及它被绑定的各镜所在场景/分集的时代契约。' +
+      '跨时代剧(不同场景属于不同朝代/年代)出完或换完道具图后跑一次;结果同 get_props 里的 era_audit。' +
+      '道具还没有图、或既没写 era_lock 也没被绑到带时代契约的镜头上时返回 400(没有可比的依据)。' +
+      '只有点名了具体冲突特征才判冲突;笼统的「不像那个年代」不算。',
+    { prop_id: z.number().int().positive() },
+    async ({ prop_id }) => jsonResult(await client.producePost(`/props/${prop_id}/era-audit`, {})),
   )
   server.tool(
     'create_prop',
@@ -2575,7 +2587,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_prop',
-    '改道具(名称/类型/描述/prompt/尺寸/多视角参考图/时代锁)。跨时代剧务必填 era_lock，否则名字中性的道具年代随机。免费。',
+    '改道具(名称/类型/描述/prompt/尺寸/多视角参考图/时代锁)。跨时代剧务必填 era_lock，否则名字中性的道具年代随机。免费。' +
+      '★改了 era_lock 不会自动重出道具图——要 generate_prop_sheet 重出,重出后若 get_props 的 era_audit 为 null(还没审过新图),用 audit_prop_era 审一次。',
     {
       prop_id: z.number().int().positive(),
       name: z.string().optional(),
