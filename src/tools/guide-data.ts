@@ -93,7 +93,8 @@ export const ENTRY_POINTS: EntryPoint[] = [
     customer_has: '自有的定妆图 / 场景图 / 道具图 / 镜头图(客户真实素材)',
     use: [
       'upload_image',
-      'set_character_portrait(须单人·单张单角度·无文字;换图后按 next_step 重出设定图,stale_frames 是要逐镜重生的镜)',
+      'set_character_portrait(须单人·单张单角度·无文字;换图后按 next_step 重出设定图,stale_frames 是要逐镜重生的镜;旧图只是解除引用不删除,old_assets 逐项列出)',
+      'clear_shot_frame(清掉某镜旧尾帧再重生视频,免得旧人物被尾帧带回来;解除引用不删文件,still_referenced_by 列出仍用这张图的镜)',
       'upload_scene_image(须空景无人·无叠加文字)',
       'upload_prop_sheet',
       'upload_shot_frame(只用于客户自有真实素材)',

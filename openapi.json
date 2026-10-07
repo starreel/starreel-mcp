@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.118",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.118 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.119",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.119 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -373,7 +373,7 @@
       "post": {
         "operationId": "set_character_portrait",
         "summary": "用客户自有图片作为角色定妆图(身份锚,优先级高于 AI 生成;之后 AI 重生默认不覆盖)",
-        "description": "用客户自有图片作为角色定妆图(身份锚,优先级高于 AI 生成;之后 AI 重生默认不覆盖)。★★图片规范(登记前平台会自动检查,不合规返回 422 且不登记):**只有该角色一人**(不能有其他人/合影/背景路人);**单张单一角度**(不是拼图/九宫格/多视角设定图——设定图由平台据定妆图生成);正面或 3/4 侧、面部清晰无遮挡、干净背景;**图上无任何文字**(水印/字幕/名字标签/logo/衣服印字都不行,字样会被复刻进每一镜)。上传前先看一眼客户给的图,不合规就先请客户换图,别直接传。被拒时把 message 里的问题原样告诉客户;只有客户看过问题后明确坚持用这张图,才带 allow_issues:true 重传(自动检查可能误判)。★换图会失效原有派生资产(设定图/多角度头像/发型·身材参考)并重建人脸锁,但**设定图不会自动重出**——换完必须 generate_character_sheet(character_id) 据新定妆图重出设定图(响应里的 next_step 会提示),否则该角色只剩定妆图一个锚。★换图后响应含 stale_frames=[{storyboard_id,storyboard_number,frames}]——这些镜的首帧还是旧定妆图生成的、已被污染。要让新定妆图生效:对每个 stale_frame 用 quote_shot_frame+generate_shot_frame 重生该镜(平台会自动以新定妆图/设定图/人脸锁作锚,保全片一致)。不必逐镜自己指定模型/首尾帧。★千万别自制首尾帧再 upload_shot_frame——外部图没有角色身份锚/画风锚,人物·服装·画风必漂,那才是废片根源(不是\"杜绝废片\")。传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。",
+        "description": "用客户自有图片作为角色定妆图(身份锚,优先级高于 AI 生成;之后 AI 重生默认不覆盖)。★★图片规范(登记前平台会自动检查,不合规返回 422 且不登记):**只有该角色一人**(不能有其他人/合影/背景路人);**单张单一角度**(不是拼图/九宫格/多视角设定图——设定图由平台据定妆图生成);正面或 3/4 侧、面部清晰无遮挡、干净背景;**图上无任何文字**(水印/字幕/名字标签/logo/衣服印字都不行,字样会被复刻进每一镜)。上传前先看一眼客户给的图,不合规就先请客户换图,别直接传。被拒时把 message 里的问题原样告诉客户;只有客户看过问题后明确坚持用这张图,才带 allow_issues:true 重传(自动检查可能误判)。★换图会失效原有派生资产(设定图/多角度头像/发型·身材参考)并重建人脸锁,但**设定图不会自动重出**——换完必须 generate_character_sheet(character_id) 据新定妆图重出设定图(响应里的 next_step 会提示),否则该角色只剩定妆图一个锚。★换图后响应含 stale_frames=[{storyboard_id,storyboard_number,frames}]——这些镜的首帧还是旧定妆图生成的、已被污染。要让新定妆图生效:对每个 stale_frame 用 quote_shot_frame+generate_shot_frame 重生该镜(平台会自动以新定妆图/设定图/人脸锁作锚,保全片一致)。不必逐镜自己指定模型/首尾帧。★千万别自制首尾帧再 upload_shot_frame——外部图没有角色身份锚/画风锚,人物·服装·画风必漂,那才是废片根源(不是\"杜绝废片\")。★换图只是**解除引用**,旧定妆图/设定图的文件不会被删除。响应里的 old_assets 逐项列出被解除的旧资产:unlinked=[{kind,url,in_history}](in_history=false 表示平台没留记录——典型是客户上传的旧定妆图,要留就把 url 存下来),physically_deleted 恒为空。客户说「删掉旧图」时,如实告诉他只是不再使用、文件仍在,别说成已删除。传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。",
         "tags": [
           "characters"
         ],
@@ -10396,6 +10396,72 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/frame/clear": {
+      "post": {
+        "operationId": "clear_shot_frame",
+        "summary": "清除某镜的尾帧(解除引用,免费)",
+        "description": "清除某镜的尾帧(解除引用,免费)。用于换了定妆图/改了剧情后,旧尾帧会把旧人物/旧画面带进重生的视频时,先清掉它再 regenerate_shot_video。只能清尾帧:首帧是出视频的起点,要换首帧用 generate_shot_frame 重生或 upload_shot_frame 替换。★这是解除引用,不是删除:文件不会被删,响应里 unlinked[].in_history=true 的可在 get_asset_versions 找回,physically_deleted 恒为空——如实告诉客户。本镜已有视频会被标为过期(video_stale)。尾帧已定稿(pinned)会返回 409,客户确认后带 release_pin:true(会一并解除定稿);尾帧正在生成也会 409,等它结束再清。响应的 still_referenced_by 列出同剧仍在用这张图的其它镜(典型:下一镜首帧是它的裸拷贝)——这些不会被连带清掉,需要的话逐镜重生。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "frame_type": {
+                    "type": "string",
+                    "description": "(assembled by the client from tool args — see tool 'clear_shot_frame')"
+                  },
+                  "release_pin": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",

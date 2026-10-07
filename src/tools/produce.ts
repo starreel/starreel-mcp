@@ -1628,6 +1628,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★换图后响应含 stale_frames=[{storyboard_id,storyboard_number,frames}]——这些镜的首帧还是旧定妆图生成的、已被污染。' +
       '要让新定妆图生效:对每个 stale_frame 用 quote_shot_frame+generate_shot_frame 重生该镜(平台会自动以新定妆图/设定图/人脸锁作锚,保全片一致)。' +
       '不必逐镜自己指定模型/首尾帧。★千万别自制首尾帧再 upload_shot_frame——外部图没有角色身份锚/画风锚,人物·服装·画风必漂,那才是废片根源(不是"杜绝废片")。' +
+      '★换图只是**解除引用**,旧定妆图/设定图的文件不会被删除。响应里的 old_assets 逐项列出被解除的旧资产:' +
+      'unlinked=[{kind,url,in_history}](in_history=false 表示平台没留记录——典型是客户上传的旧定妆图,要留就把 url 存下来),' +
+      'physically_deleted 恒为空。客户说「删掉旧图」时,如实告诉他只是不再使用、文件仍在,别说成已删除。' +
       '传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。',
     {
       character_id: z.number().int().positive(),
@@ -1721,6 +1724,22 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       const video_url = await client.uploadLocalFile(file_path, 'footage')
       return jsonResult(await client.producePost(`/storyboards/${storyboard_id}/footage`, { video_url }))
     },
+  )
+  server.tool(
+    'clear_shot_frame',
+    '清除某镜的尾帧(解除引用,免费)。用于换了定妆图/改了剧情后,旧尾帧会把旧人物/旧画面带进重生的视频时,先清掉它再 regenerate_shot_video。' +
+      '只能清尾帧:首帧是出视频的起点,要换首帧用 generate_shot_frame 重生或 upload_shot_frame 替换。' +
+      '★这是解除引用,不是删除:文件不会被删,响应里 unlinked[].in_history=true 的可在 get_asset_versions 找回,physically_deleted 恒为空——如实告诉客户。' +
+      '本镜已有视频会被标为过期(video_stale)。尾帧已定稿(pinned)会返回 409,客户确认后带 release_pin:true(会一并解除定稿);尾帧正在生成也会 409,等它结束再清。' +
+      '响应的 still_referenced_by 列出同剧仍在用这张图的其它镜(典型:下一镜首帧是它的裸拷贝)——这些不会被连带清掉,需要的话逐镜重生。',
+    {
+      storyboard_id: z.number().int().positive(),
+      release_pin: z.boolean().optional().describe('尾帧已定稿时,客户确认后传 true:清除并解除定稿'),
+    },
+    async ({ storyboard_id, release_pin }) => jsonResult(await client.producePost(
+      `/storyboards/${storyboard_id}/frame/clear`,
+      { frame_type: 'last_frame', ...(release_pin ? { release_pin: true } : {}) },
+    )),
   )
   server.tool(
     'clear_shot_footage',
