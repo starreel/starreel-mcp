@@ -106,6 +106,7 @@ const record = (method: string) => (path: string, body?: unknown): never => { th
 const fakeClient: any = {
   produceGet: record('get'),
   producePost: record('post'),
+  producePostRaw: record('post'),   // 非 2xx 原样返回的变体，打的是同一个 REST 路径
   producePut: record('put'),
   produceDelete: record('delete'),
   // 走本地文件直传/本地化服务的 handler 无法映射为单一 REST 调用 → 记为 unmapped

@@ -118,6 +118,26 @@ export class StarReelClient {
     return (body?.data ?? body) as T  // StarReel 信封 {code,data,message}
   }
 
+  /**
+   * 非 2xx 也不抛错：把状态码和完整响应体原样返回。给那些失败响应本身带结构化回执的端点用
+   * （如真删除的部分失败 502 回执——produce() 抛错只留 message，回执会被丢掉）。
+   */
+  async producePostRaw(path: string, body?: unknown): Promise<{ http_status: number; ok: boolean; body: any }> {
+    let res: Response
+    try {
+      res = await this.authedFetch(`${AUTH_BASE}/v1/produce${path}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      })
+    } catch (e: any) {
+      throw new Error(`StarReel production pipeline unreachable (${AUTH_BASE}): ${e?.cause?.code ?? e?.message ?? e}. Retry later or check with StarReel.`)
+    }
+    const text = await res.text()
+    let parsed: any
+    try { parsed = JSON.parse(text) } catch { parsed = { raw: text.slice(0, 300) } }
+    return { http_status: res.status, ok: res.ok, body: parsed }
+  }
+
   produceGet<T>(path: string): Promise<T> {
     return this.produce<T>(path, { method: 'GET' })
   }

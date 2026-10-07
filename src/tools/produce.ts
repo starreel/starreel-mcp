@@ -1734,6 +1734,32 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/unlinked-assets`)),
   )
   server.tool(
+    'preview_delete_asset',
+    '预览「真删除」某个旧资产文件(免费、只读)。真删除会从存储里**永久删除**这张图的全部版本,不可撤销。' +
+      '返回 deletable(能不能删)、reasons(不能删的原因,如 still-referenced 仍被引用 / no-trusted-provenance 无法证明归属 / not-drama-owner 不是剧主)、' +
+      'blocking(还在引用它的位置)、history(会失效的历史记录条数)、copies(各存储桶里的版本数),能删时附 confirm_token(10 分钟内有效、只能用一次)。' +
+      '★必须把预览结果原样告诉客户,客户明确说「确认删除」后才能调 delete_asset;不要替客户做决定。' +
+      '只有剧主能删;只能删能证明归属的文件——平台为本剧生成的图,或客户通过平台上传(上传时有签发记录)的图;更早上传、没有签发记录的图删不了,只能解除引用。',
+    { drama_id: z.number().int().positive(), url: z.string().describe('要删除的图片地址(通常来自 list_unlinked_assets 或解除引用回执)') },
+    async ({ drama_id, url }) => jsonResult(await client.producePost(`/dramas/${drama_id}/asset-delete/preview`, { url })),
+  )
+  server.tool(
+    'delete_asset',
+    '★不可撤销:永久删除某个旧资产文件的全部版本(两个存储桶)。必须先 preview_delete_asset,把结果给客户看,客户明确确认后,' +
+      '带上同一个 url 与预览返回的 confirm_token 调用。执行前平台会重跑全部检查,影响范围和预览时不一致会拒绝(409),需要重新预览。' +
+      '部分副本删除失败会返回 502 与回执,文件可能还在,可重新预览后重试。不要自动重试、不要批量删除客户没逐个确认过的文件。',
+    {
+      drama_id: z.number().int().positive(),
+      url: z.string(),
+      confirm_token: z.string().describe('preview_delete_asset 返回的一次性确认凭证'),
+    },
+    // 失败响应自带结构化回执（哪个桶删了几个版本、哪些失败）——用不抛错的调用原样交给 agent（#684 review）
+    async ({ drama_id, url, confirm_token }) => {
+      const r = await client.producePostRaw(`/dramas/${drama_id}/asset-delete`, { url, confirm_token })
+      return jsonResult(r.ok ? (r.body?.data ?? r.body) : { http_status: r.http_status, ...r.body })
+    },
+  )
+  server.tool(
     'clear_shot_frame',
     '清除某镜的尾帧(解除引用,免费)。用于换了定妆图/改了剧情后,旧尾帧会把旧人物/旧画面带进重生的视频时,先清掉它再 regenerate_shot_video。' +
       '只能清尾帧:首帧是出视频的起点,要换首帧用 generate_shot_frame 重生或 upload_shot_frame 替换。' +

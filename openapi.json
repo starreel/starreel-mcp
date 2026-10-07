@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.121",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.121 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.122",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.122 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -1330,6 +1330,142 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/dramas/{drama_id}/asset-delete": {
+      "post": {
+        "operationId": "delete_asset",
+        "summary": "★不可撤销:永久删除某个旧资产文件的全部版本(两个存储桶)",
+        "description": "★不可撤销:永久删除某个旧资产文件的全部版本(两个存储桶)。必须先 preview_delete_asset,把结果给客户看,客户明确确认后,带上同一个 url 与预览返回的 confirm_token 调用。执行前平台会重跑全部检查,影响范围和预览时不一致会拒绝(409),需要重新预览。部分副本删除失败会返回 502 与回执,文件可能还在,可重新预览后重试。不要自动重试、不要批量删除客户没逐个确认过的文件。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "confirm_token": {
+                    "type": "string",
+                    "description": "preview_delete_asset 返回的一次性确认凭证"
+                  }
+                },
+                "required": [
+                  "url",
+                  "confirm_token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/dramas/{drama_id}/asset-delete/preview": {
+      "post": {
+        "operationId": "preview_delete_asset",
+        "summary": "预览「真删除」某个旧资产文件(免费、只读)",
+        "description": "预览「真删除」某个旧资产文件(免费、只读)。真删除会从存储里**永久删除**这张图的全部版本,不可撤销。返回 deletable(能不能删)、reasons(不能删的原因,如 still-referenced 仍被引用 / no-trusted-provenance 无法证明归属 / not-drama-owner 不是剧主)、blocking(还在引用它的位置)、history(会失效的历史记录条数)、copies(各存储桶里的版本数),能删时附 confirm_token(10 分钟内有效、只能用一次)。★必须把预览结果原样告诉客户,客户明确说「确认删除」后才能调 delete_asset;不要替客户做决定。只有剧主能删;只能删能证明归属的文件——平台为本剧生成的图,或客户通过平台上传(上传时有签发记录)的图;更早上传、没有签发记录的图删不了,只能解除引用。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "要删除的图片地址(通常来自 list_unlinked_assets 或解除引用回执)"
+                  }
+                },
+                "required": [
+                  "url"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
