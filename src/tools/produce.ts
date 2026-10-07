@@ -1726,6 +1726,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
   )
   server.tool(
+    'list_unlinked_assets',
+    '列出本剧「已解除引用」的旧资产(免费):清尾帧、换定妆图时被摘下来的旧尾帧/旧定妆图/旧设定图/发型·身体参考/视频锚,每个 URL 一条。' +
+      '这些文件仍然存在于存储里。清单会尽量排除已被重新用上的图,但不保证完全排除——某张图是否还在别处被引用,' +
+      '以平台的全库检查为准。客户问「旧图还在不在」时用它。',
+    { drama_id: z.number().int().positive() },
+    async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/unlinked-assets`)),
+  )
+  server.tool(
     'clear_shot_frame',
     '清除某镜的尾帧(解除引用,免费)。用于换了定妆图/改了剧情后,旧尾帧会把旧人物/旧画面带进重生的视频时,先清掉它再 regenerate_shot_video。' +
       '只能清尾帧:首帧是出视频的起点,要换首帧用 generate_shot_frame 重生或 upload_shot_frame 替换。' +
