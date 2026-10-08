@@ -2837,6 +2837,34 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/scene-group-plan`)),
   )
   server.tool(
+    'quote_regenerate_scene_group',
+    '报价:重出**一个场景组**(整组一次视频请求,组内连贯性保留)要多少点。返回 quote_id。零扣费。' +
+      'shot_numbers 必须正好等于 get_scene_group_plan 里某一组的镜号。' +
+      '\n★可选 video_engine:只为这一次整组重出换引擎(不改剧级 video_engine);报价按它计、quote_id 钉死,regenerate_scene_group 派发的就是它。' +
+      '整组仍一次成片,所以整组总时长必须在该引擎单段上限内(hailuo-3 15s;seedance-2.5/wan3.0 30s)且支持本剧分辨率,否则 400——' +
+      '那种情况改用 update_shot 给个别镜设 video_engine(设了的镜会单独出)。' +
+      '报价按逐镜计(整组失败会逐镜兜底,逐镜是上界),正常路径实扣通常更低。',
+    {
+      episode_id: z.number().int().positive(),
+      shot_numbers: z.array(z.number().int().positive()).min(1).describe('这一组的镜号(storyboard_number,见 get_scene_group_plan)'),
+      video_engine: z.enum(VIDEO_ENGINES).optional().describe('本次整组重出的引擎(缺省=跟随剧 video_engine)'),
+    },
+    async ({ episode_id, shot_numbers, video_engine }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/scene-groups/regenerate/quote`, { shot_numbers, ...(video_engine ? { video_engine } : {}) })),
+  )
+  server.tool(
+    'regenerate_scene_group',
+    '确认后重出一个场景组(整组一次视频请求,后台异步;用 get_storyboards 轮询各镜 video_url)。' +
+      '分组、引擎都由 quote_id 钉死,这里不能改;报价后组内任一镜被改、或分组变了,quote 作废(409),重新报价即可(免费)。' +
+      CONFIRM_HINT,
+    {
+      episode_id: z.number().int().positive(),
+      quote_id: z.string().describe('来自 quote_regenerate_scene_group'),
+    },
+    async ({ episode_id, quote_id }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/scene-groups/regenerate`, { quote_id })),
+  )
+  server.tool(
     'generate_scene_groups',
     '生成场景组(把连续镜头归组,连续长镜/批量出图的地基)。后台异步。',
     { episode_id: z.number().int().positive() },

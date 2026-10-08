@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.128",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.128 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.129",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.129 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -6757,6 +6757,152 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/scene-groups/regenerate": {
+      "post": {
+        "operationId": "regenerate_scene_group",
+        "summary": "确认后重出一个场景组(整组一次视频请求,后台异步;用 get_storyboards 轮询各镜 video_url)",
+        "description": "确认后重出一个场景组(整组一次视频请求,后台异步;用 get_storyboards 轮询各镜 video_url)。分组、引擎都由 quote_id 钉死,这里不能改;报价后组内任一镜被改、或分组变了,quote 作废(409),重新报价即可(免费)。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quote_id": {
+                    "type": "string",
+                    "description": "来自 quote_regenerate_scene_group"
+                  }
+                },
+                "required": [
+                  "quote_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/scene-groups/regenerate/quote": {
+      "post": {
+        "operationId": "quote_regenerate_scene_group",
+        "summary": "报价:重出**一个场景组**(整组一次视频请求,组内连贯性保留)要多少点",
+        "description": "报价:重出**一个场景组**(整组一次视频请求,组内连贯性保留)要多少点。返回 quote_id。零扣费。shot_numbers 必须正好等于 get_scene_group_plan 里某一组的镜号。\n★可选 video_engine:只为这一次整组重出换引擎(不改剧级 video_engine);报价按它计、quote_id 钉死,regenerate_scene_group 派发的就是它。整组仍一次成片,所以整组总时长必须在该引擎单段上限内(hailuo-3 15s;seedance-2.5/wan3.0 30s)且支持本剧分辨率,否则 400——那种情况改用 update_shot 给个别镜设 video_engine(设了的镜会单独出)。报价按逐镜计(整组失败会逐镜兜底,逐镜是上界),正常路径实扣通常更低。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "shot_numbers": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0
+                    },
+                    "minItems": 1,
+                    "description": "这一组的镜号(storyboard_number,见 get_scene_group_plan)"
+                  },
+                  "video_engine": {
+                    "type": "string",
+                    "enum": [
+                      "seedance-2.5",
+                      "hailuo-3",
+                      "wan3.0",
+                      "wan3.0-prime"
+                    ]
+                  }
+                },
+                "required": [
+                  "shot_numbers"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
