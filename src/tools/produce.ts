@@ -700,6 +700,16 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ image_id }) => jsonResult(await client.produceGet(`/images/${image_id}/dispatch`)),
   )
   server.tool(
+    'get_frame_candidates',
+    '免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）。每张候选给原图地址（被拒的也在，可直接打开看原尺寸）、状态、是否为当前在用（adopted）、' +
+      '拒因 reject（main 主码 / code 具体病因 / details 明细 / class 分流：needs_content_fix=要改内容、content_retryable=内容问题但重掷约 1/3 能成、transient=审核没审成或偶发——不是画面不合格）、' +
+      '审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、' +
+      '以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。' +
+      '★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/frame-workbench`)),
+  )
+  server.tool(
     'get_stale_portrait_frames',
     '免费只读查询一集里哪些镜头的在用首帧/尾帧，是拿角色已被换掉的旧资产（旧定妆图、旧设定图、旧身体/发型图）画的。换定妆图后用它确认影响范围，再由客户决定重出哪些镜（重出要付费，本工具不改任何数据）。verdict=stale 必附证据：ledger-old-asset（派发台账直接记录用了旧图）/ references-previous-asset（参考图里有该角色以前的旧资产）/ portrait-born-after-frame（当前定妆图晚于该帧诞生）；证不了的标 unknown 并给原因，不当作已过期。has_video=true 表示该镜视频也基于旧帧，重出帧后视频需重生。',
     { episode_id: z.number().int().positive() },
@@ -2082,6 +2092,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       shot_intent: z.string().optional().describe('这镜为什么存在(叙事意图)'),
       duration: z.number().positive().optional().describe('本镜时长(秒,可带小数如 2.5)。上限=本剧视频引擎的单镜上限,超出直接拒并告知上限(更长内容用 split_shot 拆镜)。有台词时平台按语速律只抬不降,抬了会在回执 speech_duration_note 里说。★改时长不会自动重出视频:已有视频仍是旧长度,要厂商按新时长出就 regenerate_shot_video(报价按新时长算)。★别拿加长治「动作太慢」——同样的动作摊到更长时间里只会更慢,见 qa_tools「动作太慢」'),
       speed_factor: z.number().positive().nullable().optional().describe('成片变速:<1 慢镜、>1 快放、null 清除(0.5–2.0,越界被钳到范围内)。只在终拼/剪映导出时变速播放(画面 setpts + 声音 atempo,音高不变),**不重出视频、不扣费**,但会改变本镜在成片里占的时长。适合做慢镜/升格氛围;治不了「动作没演出来」——那是视频内容本身,要改 video_prompt 重出;也治不了一镜塞太多动作(action_overload)——那要拆镜重出。有台词的镜慎用(人声也跟着变快变慢)'),
+      video_engine: z.enum(VIDEO_ENGINES).nullable().optional().describe('本镜视频引擎(**存为镜头设置**,之后这一镜的单镜出视频 / 整集批量 / 重生都按它;null 清除=跟随剧 video_engine)。' +
+        '与整剧的区别:只改这一镜。设了引擎的镜**不进场景组**(组的规划按剧引擎做),会单独出,失去与相邻镜一次成片的连贯性——别为个别镜随手设。' +
+        '须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p)且容得下本镜时长(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400。' +
+        '只想这一次换引擎、不留设置:用 quote_regenerate_shot_video 的 model 或 quote_videos 的 shot_engines(显式参数优先于镜头设置)。get_storyboards 回读 video_engine。'),
       image_prompt: z.string().optional().describe('首帧画面提示词**正文**(全量覆盖本镜现值)。★先 get_shot_prompts 读现值再改;★原样保留其中的 @char:N / @scene:M 补充参考标记(注入谁由 character_ids / scene_id 决定,删标记不会让已绑定的人消失)。出图时平台会在正文之上再拼身份锚与一致性约束,不必你写。★写法坑:别写「no X / without X / 不要 X / 没有 X」这类否定式约束——图像模型把名词当正向线索,反而把 X 画出来;要正向写出那块画面该有什么(材质/形状/颜色/远近)。保存响应带 image_prompt_negation_advisory 即命中,按其 note 改写'),
       video_prompt: z.string().optional().describe('视频(动态/运镜/表演)提示词**正文**(全量覆盖本镜现值)。★同 image_prompt:先读现值、保留 @char/@scene 标记'),
       first_frame_prompt: z.string().optional().describe('本镜**开始时**画面是什么样(首帧目标状态正文,全量覆盖现值)。送达提示词里作为 [START FRAME] 段排在最前,优先级高于 image_prompt——所以 image_prompt 改了不生效时,往往是这条在压着它。★同 image_prompt:先 get_shot_prompts 读现值、原样保留 @char/@scene 标记'),
