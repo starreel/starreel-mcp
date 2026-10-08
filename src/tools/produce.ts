@@ -251,13 +251,14 @@ const PROJECT_SETTINGS_FIELDS = {
     'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准·慢约5秒)/' +
     'gemini-3.1-flash-image(香蕉2·71点)/gemini-3-pro-image(香蕉Pro·精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·31点)/' +
     'doubao-seedream-5-0-260128(Seedream 5.0)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图。★各模型实测优劣(一次过率/手部结构/安全拒绝率/画风稳定度)与选型步骤见 get_capabilities_guide(section=model_guide)'),
-  // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它)
+  // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它;单镜例外入口:quote_regenerate_shot_video 的 model / edit_video_shot 的 model)
   video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→seedance-2.5 或降本 hailuo-3;风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒):' +
     'seedance-2.5(默认·全能力:帧链/场景组/就地编辑/延长/参考图锚·720p约212点/秒) / ' +
     'hailuo-3(MiniMax H3:约1/3成本 720p 70点/秒·原生对白与音效·支持2K·单镜约6分钟·支持就地编辑(强保真)与成片续写·关键帧组/时间戳区间暂不可用;编辑/续写输入视频另按秒计费) / ' +
     'wan3.0(WAN 3.0:约4折成本 720p 84点/秒·原生对白与音效·支持1080P·单次最长30秒·最短2秒计费·支持就地编辑(强语义)与成片续写·关键帧组/时间戳区间暂不可用;★写实真人720p+可能被厂商审核拒绝,风格化/动画剧适用;★★会在单个分镜片内自行换机位硬切(实测11/12镜)→叙事剧慎用,详见选型决策树④) / ' +
     'wan3.0-prime(WAN 3.0 高速版:能力同wan3.0·出片约2×·费率1.5×=720p 126点/秒;镜内自剪同 wan3.0)。' +
-    '★必须在出视频**前**设置——切换不回溯已生成的镜头,同剧混用引擎会有画风/身份漂移风险'),
+    '★必须在出视频**前**设置——切换不回溯已生成的镜头,同剧混用引擎会有画风/身份漂移风险。' +
+    '只想给个别镜换引擎别改这里:用 quote_regenerate_shot_video 的 model(只作用于那一镜那一次)'),
   // 整剧视觉一致性锚(注入所有出图/视频 prompt,决定跨镜一致)
   cinematography_prompt: z.string().optional().describe('摄影DNA:镜头/镜片/光圈/调色一揽子,注入所有出图/视频prompt,整剧镜头一致。' +
     '★★写**单镜**摄影规格,不要写整部剧的镜头序列:本字段会被原样注入**每一个分镜**,' +
@@ -1860,9 +1861,20 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'quote_regenerate_shot_video',
-    '报价:重生某镜视频要多少点。返回 quote_id。零扣费。',
-    { storyboard_id: z.number().int().positive() },
-    async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/regen/quote`)),
+    '报价:重生某镜视频要多少点。返回 quote_id。零扣费。' +
+      '\n★**按镜指定视频引擎**:传 model 即只为这一镜这一次重生换引擎(不改剧级 video_engine,其它镜照旧);' +
+      '报价按该引擎计价,quote_id 把引擎钉死,regenerate_shot_video 派发的就是它——要换引擎必须重新报价,生成时再传引擎无效。' +
+      '回执 video_engine = 实际派发的引擎,engine_overridden=true 表示盖过了剧引擎。' +
+      '★所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),不支持则 400 并列出可选引擎——不会悄悄换成别的引擎出片。' +
+      '适用:某镜在本剧引擎上反复失败/被厂商审核拒/镜内自剪,单独换一个引擎试。' +
+      '★同剧混用引擎有画风/身份漂移风险,换完先看这一镜再决定要不要推广;写实真人镜别换 wan3.0/wan3.0-prime(真人脸 720p+ 常被厂商拒)。',
+    {
+      storyboard_id: z.number().int().positive(),
+      model: z.enum(VIDEO_ENGINES).optional().describe(
+        '本镜本次重生的视频引擎(缺省=跟随剧 video_engine)。seedance-2.5 / hailuo-3 / wan3.0 / wan3.0-prime,能力与单价见 update_project_settings 的 video_engine'),
+    },
+    async ({ storyboard_id, model }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/regen/quote`, model ? { model } : {})),
   )
   server.tool(
     'regenerate_shot_video',
