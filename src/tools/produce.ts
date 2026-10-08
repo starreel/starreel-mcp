@@ -1071,8 +1071,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   // ---------- 出视频(videos,大额) ----------
   server.tool(
     'quote_videos',
-    '报价:给某一集所有分镜批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。' +
+    '报价:给某一集批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。' +
       '⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。' +
+      '\n★**只计这次真会派发的镜**:已出视频的镜整集续跑时跳过,不重出不计价——shots_total = 这次计价的镜数(不是集内总镜数),' +
+      'shots_already_done = 已出视频、这次跳过的镜数。例外:场景组只要有一镜没出视频就**整组重出**,组内已出的镜同样计价。' +
+      '全部已出视频 ⇒ 400(没有可派发的镜,要重出某镜用 regenerate_shot_video)。' +
+      '报价之后若有镜的视频被清空(变成待出视频),generate_videos 会 409 要求重新报价,不按报价外的镜扣费。' +
       '\n★**按镜指定视频引擎**:传 shot_engines={分镜id: 引擎} 即只为这些镜、这一次整集生成换引擎(不改剧级 video_engine,其余镜照旧)。' +
       '报价按它逐镜计价,quote_id 把引擎钉死,generate_videos 派发的就是它——要改引擎必须重新报价。' +
       '回执 shot_engines = 实际生效的映射;shot_engines_ungrouped = 因含指定镜而**拆成逐镜出**的场景组' +
@@ -1080,6 +1084,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '失去组内一次成片的连贯性,所以别为一镜去拆一个好好的组——先看 get_scene_group_plan)。' +
       '所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),' +
       '且镜头时长不超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400(超长会被厂商截断,要么换引擎要么 split_shot)。' +
+      '指定引擎的镜必须这次会出视频:已出视频的镜整集生成不会重出,给它指定引擎 ⇒ 400;' +
+      '拆成逐镜的场景组只计没出视频的组员。' +
       '只想重出个别已出过视频的镜,用 quote_regenerate_shot_video 的 model 更省。',
     {
       episode_id: z.number().int().positive(),
