@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.123",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.123 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.124",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.124 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -7925,7 +7925,7 @@
       "post": {
         "operationId": "quote_videos",
         "summary": "报价:给某一集所有分镜批量出视频要多少点(与实际扣费同函数,较准)",
-        "description": "报价:给某一集所有分镜批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。",
+        "description": "报价:给某一集所有分镜批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。\n★**按镜指定视频引擎**:传 shot_engines={分镜id: 引擎} 即只为这些镜、这一次整集生成换引擎(不改剧级 video_engine,其余镜照旧)。报价按它逐镜计价,quote_id 把引擎钉死,generate_videos 派发的就是它——要改引擎必须重新报价。回执 shot_engines = 实际生效的映射;shot_engines_ungrouped = 因含指定镜而**拆成逐镜出**的场景组(场景组的时长与多关键帧是按剧引擎规划的,换引擎整组出会丢镜/丢关键帧;拆组后组内其余镜仍按剧引擎逐镜出,失去组内一次成片的连贯性,所以别为一镜去拆一个好好的组——先看 get_scene_group_plan)。所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),且镜头时长不超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400(超长会被厂商截断,要么换引擎要么 split_shot)。只想重出个别已出过视频的镜,用 quote_regenerate_shot_video 的 model 更省。",
         "tags": [
           "episodes"
         ],
@@ -7940,6 +7940,33 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "shot_engines": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "seedance-2.5",
+                        "hailuo-3",
+                        "wan3.0",
+                        "wan3.0-prime"
+                      ]
+                    },
+                    "propertyNames": {
+                      "pattern": "^\\d+$"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -11312,7 +11339,7 @@
       "post": {
         "operationId": "quote_regenerate_shot_video",
         "summary": "报价:重生某镜视频要多少点",
-        "description": "报价:重生某镜视频要多少点。返回 quote_id。零扣费。\n★**按镜指定视频引擎**:传 model 即只为这一镜这一次重生换引擎(不改剧级 video_engine,其它镜照旧);报价按该引擎计价,quote_id 把引擎钉死,regenerate_shot_video 派发的就是它——要换引擎必须重新报价,生成时再传引擎无效。回执 video_engine = 实际派发的引擎,engine_overridden=true 表示盖过了剧引擎。★所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),不支持则 400 并列出可选引擎——不会悄悄换成别的引擎出片。适用:某镜在本剧引擎上反复失败/被厂商审核拒/镜内自剪,单独换一个引擎试。★同剧混用引擎有画风/身份漂移风险,换完先看这一镜再决定要不要推广;写实真人镜别换 wan3.0/wan3.0-prime(真人脸 720p+ 常被厂商拒)。",
+        "description": "报价:重生某镜视频要多少点。返回 quote_id。零扣费。\n★**按镜指定视频引擎**:传 model 即只为这一镜这一次重生换引擎(不改剧级 video_engine,其它镜照旧);报价按该引擎计价,quote_id 把引擎钉死,regenerate_shot_video 派发的就是它——要换引擎必须重新报价,生成时再传引擎无效。回执 video_engine = 实际派发的引擎,engine_overridden=true 表示盖过了剧引擎。★所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),不支持则 400 并列出可选引擎——不会悄悄换成别的引擎出片;本镜时长也不能超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),超了 400(厂商会截断)。适用:某镜在本剧引擎上反复失败/被厂商审核拒/镜内自剪,单独换一个引擎试。★同剧混用引擎有画风/身份漂移风险,换完先看这一镜再决定要不要推广;写实真人镜别换 wan3.0/wan3.0-prime(真人脸 720p+ 常被厂商拒)。",
         "tags": [
           "storyboards"
         ],

@@ -251,14 +251,14 @@ const PROJECT_SETTINGS_FIELDS = {
     'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准·慢约5秒)/' +
     'gemini-3.1-flash-image(香蕉2·71点)/gemini-3-pro-image(香蕉Pro·精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·31点)/' +
     'doubao-seedream-5-0-260128(Seedream 5.0)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图。★各模型实测优劣(一次过率/手部结构/安全拒绝率/画风稳定度)与选型步骤见 get_capabilities_guide(section=model_guide)'),
-  // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它;单镜例外入口:quote_regenerate_shot_video 的 model / edit_video_shot 的 model)
+  // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它;按镜例外入口:quote_videos 的 shot_engines / quote_regenerate_shot_video 的 model / edit_video_shot 的 model)
   video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→seedance-2.5 或降本 hailuo-3;风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒):' +
     'seedance-2.5(默认·全能力:帧链/场景组/就地编辑/延长/参考图锚·720p约212点/秒) / ' +
     'hailuo-3(MiniMax H3:约1/3成本 720p 70点/秒·原生对白与音效·支持2K·单镜约6分钟·支持就地编辑(强保真)与成片续写·关键帧组/时间戳区间暂不可用;编辑/续写输入视频另按秒计费) / ' +
     'wan3.0(WAN 3.0:约4折成本 720p 84点/秒·原生对白与音效·支持1080P·单次最长30秒·最短2秒计费·支持就地编辑(强语义)与成片续写·关键帧组/时间戳区间暂不可用;★写实真人720p+可能被厂商审核拒绝,风格化/动画剧适用;★★会在单个分镜片内自行换机位硬切(实测11/12镜)→叙事剧慎用,详见选型决策树④) / ' +
     'wan3.0-prime(WAN 3.0 高速版:能力同wan3.0·出片约2×·费率1.5×=720p 126点/秒;镜内自剪同 wan3.0)。' +
     '★必须在出视频**前**设置——切换不回溯已生成的镜头,同剧混用引擎会有画风/身份漂移风险。' +
-    '只想给个别镜换引擎别改这里:用 quote_regenerate_shot_video 的 model(只作用于那一镜那一次)'),
+    '只想给个别镜换引擎别改这里:批量出视频用 quote_videos 的 shot_engines,重出单镜用 quote_regenerate_shot_video 的 model(都只作用于那一次)'),
   // 整剧视觉一致性锚(注入所有出图/视频 prompt,决定跨镜一致)
   cinematography_prompt: z.string().optional().describe('摄影DNA:镜头/镜片/光圈/调色一揽子,注入所有出图/视频prompt,整剧镜头一致。' +
     '★★写**单镜**摄影规格,不要写整部剧的镜头序列:本字段会被原样注入**每一个分镜**,' +
@@ -1072,10 +1072,22 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'quote_videos',
     '报价:给某一集所有分镜批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。' +
-      '⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。',
-    { episode_id: z.number().int().positive() },
-    async ({ episode_id }) =>
-      jsonResult(await client.producePost(`/episodes/${episode_id}/videos/quote`)),
+      '⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。' +
+      '\n★**按镜指定视频引擎**:传 shot_engines={分镜id: 引擎} 即只为这些镜、这一次整集生成换引擎(不改剧级 video_engine,其余镜照旧)。' +
+      '报价按它逐镜计价,quote_id 把引擎钉死,generate_videos 派发的就是它——要改引擎必须重新报价。' +
+      '回执 shot_engines = 实际生效的映射;shot_engines_ungrouped = 因含指定镜而**拆成逐镜出**的场景组' +
+      '(场景组的时长与多关键帧是按剧引擎规划的,换引擎整组出会丢镜/丢关键帧;拆组后组内其余镜仍按剧引擎逐镜出,' +
+      '失去组内一次成片的连贯性,所以别为一镜去拆一个好好的组——先看 get_scene_group_plan)。' +
+      '所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),' +
+      '且镜头时长不超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400(超长会被厂商截断,要么换引擎要么 split_shot)。' +
+      '只想重出个别已出过视频的镜,用 quote_regenerate_shot_video 的 model 更省。',
+    {
+      episode_id: z.number().int().positive(),
+      shot_engines: z.record(z.string().regex(/^\d+$/), z.enum(VIDEO_ENGINES)).optional().describe(
+        '可选:按镜指定引擎 {分镜id: 引擎}(分镜 id 见 get_storyboards)。缺省=全部跟随剧 video_engine'),
+    },
+    async ({ episode_id, shot_engines }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/videos/quote`, shot_engines ? { shot_engines } : {})),
   )
   server.tool(
     'generate_videos',
@@ -1865,7 +1877,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★**按镜指定视频引擎**:传 model 即只为这一镜这一次重生换引擎(不改剧级 video_engine,其它镜照旧);' +
       '报价按该引擎计价,quote_id 把引擎钉死,regenerate_shot_video 派发的就是它——要换引擎必须重新报价,生成时再传引擎无效。' +
       '回执 video_engine = 实际派发的引擎,engine_overridden=true 表示盖过了剧引擎。' +
-      '★所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),不支持则 400 并列出可选引擎——不会悄悄换成别的引擎出片。' +
+      '★所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),不支持则 400 并列出可选引擎——不会悄悄换成别的引擎出片;' +
+      '本镜时长也不能超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),超了 400(厂商会截断)。' +
       '适用:某镜在本剧引擎上反复失败/被厂商审核拒/镜内自剪,单独换一个引擎试。' +
       '★同剧混用引擎有画风/身份漂移风险,换完先看这一镜再决定要不要推广;写实真人镜别换 wan3.0/wan3.0-prime(真人脸 720p+ 常被厂商拒)。',
     {
