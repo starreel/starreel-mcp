@@ -1818,7 +1818,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '单一完整画面(不是拼图/多格);无叠加文字/水印/logo(画面里本来就有的招牌门牌可以)。' +
       '客户的实拍图里有人:请客户换无人版本,或改用 regenerate_scene_image 让平台出空景。' +
       '被拒时把 message 里的问题原样告诉客户;只有客户看过问题后明确坚持,才带 allow_issues:true 重传(自动检查可能误判)。' +
-      '登记免费;内容检查是一次小额视觉审核,按用量后付。',
+      '登记免费;内容检查是一次小额视觉审核,按用量后付。' +
+      '★换了场景图后旧的打光参考图作废,平台**不会**自动补(那要另扣一张图的点数):' +
+      '回执 lighting_ref.needed=true 时把 estimated_points 告诉客户,客户同意再调 quote_scene_lighting_ref → generate_scene_lighting_ref。' +
+      '上传时该场景还没有分镜(needed=false 且分镜还没建)的,等分镜建好后再调 quote_scene_lighting_ref 看要不要补——平台不会自动补上传图的打光参考图。',
     {
       scene_id: z.number().int().positive(),
       file_path: z.string().describe('本地场景图路径'),
@@ -2583,8 +2586,35 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ scene_id }) => jsonResult(await client.produceGet(`/scenes/${scene_id}/prompt`)),
   )
   server.tool(
+    'quote_scene_lighting_ref',
+    '给某个场景补一张打光参考图的报价(免费,不出图)。打光参考图=只复现该场景光线的中性人脸特写,' +
+      '近景/特写镜看不到场景图时靠它统一光线。场景缺它时(例如上传了新场景图后)才需要补;' +
+      '有宽景镜但还没出首帧的场景不必补(宽景镜出帧时平台自动派生)。不够格时返回 400 并说明原因。' + CONFIRM_HINT,
+    { scene_id: z.number().int().positive() },
+    async ({ scene_id }) => jsonResult(await client.producePost(`/scenes/${scene_id}/lighting-ref/quote`)),
+  )
+
+  server.tool(
+    'generate_scene_lighting_ref',
+    '按报价补这一场的打光参考图(后台出图,按用量扣点)。完成后 get_scenes 里该场景的打光参考图字段会有值。',
+    { scene_id: z.number().int().positive(), quote_id: z.string().describe('来自 quote_scene_lighting_ref') },
+    async ({ scene_id, quote_id }) => jsonResult(await client.producePost(`/scenes/${scene_id}/lighting-ref/generate`, { quote_id })),
+  )
+
+  server.tool(
+    'quote_regenerate_scene_image',
+    '单场景图重出的报价(免费,不出图)。返回 estimated_points(上界)/typical_points,含场景图一张,' +
+      '以及换图后平台会不会自动派生一张打光参考图(lighting_ref.will_generate,给近景镜统一光线,同样扣点)。' +
+      '拿到 quote_id 后传给 regenerate_scene_image。' + CONFIRM_HINT,
+    { scene_id: z.number().int().positive() },
+    async ({ scene_id }) => jsonResult(await client.producePost(`/scenes/${scene_id}/image/regenerate/quote`)),
+  )
+
+  server.tool(
     'regenerate_scene_image',
     '按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)。图片步,按用量后付不欠费。' +
+      '★先调 quote_regenerate_scene_image 拿报价、把点数告诉客户,再带 quote_id 调本工具:' +
+      '换了场景图后,没有可用宽景镜首帧的场景平台会自动再出一张打光参考图(另扣一张图的点数),报价里已含。' +
       '★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。' +
       '★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。' +
       '★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;' +
@@ -2594,13 +2624,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。',
     {
       scene_id: z.number().int().positive(),
+      quote_id: z.string().optional().describe('来自 quote_regenerate_scene_image(建议必带)'),
       episode_id: z.number().int().positive().optional()
         .describe('按哪一集的时代/世界观 brief 出图。通常不必传;跨集共用的场景被要求时才传'),
     },
-    async ({ scene_id, episode_id }) =>
+    async ({ scene_id, quote_id, episode_id }) =>
       jsonResult(await client.producePost(
         `/scenes/${scene_id}/image/regenerate`,
-        episode_id ? { episode_id } : {},
+        { ...(quote_id ? { quote_id } : {}), ...(episode_id ? { episode_id } : {}) },
       )),
   )
   server.tool(

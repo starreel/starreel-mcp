@@ -231,7 +231,7 @@ export const PIPELINE: PipelineStep[] = [
       'generate_world_concept(默认必做,仍走报价)', 'generate_color_script',
       'generate_art_bible', 'extract_visual_lock', 'extract_setting_brief', 'generate_video_style',
       'quote_scene_images', 'generate_scene_images', 'generate_prop_sheet',
-      'get_scene_prompt(读某场空景图的提示词正文,免费)', 'update_scene(image_prompt 改正文)', 'regenerate_scene_image(单场重出)',
+      'get_scene_prompt(读某场空景图的提示词正文,免费)', 'update_scene(image_prompt 改正文)', 'quote_regenerate_scene_image(单场重出报价,含可能派生的打光参考图)', 'regenerate_scene_image(单场重出,带 quote_id)',
     ],
     billing: '报价确认后扣点',
     note: '分镜后建只给出场角色出图更省。' +
@@ -307,7 +307,7 @@ export const QA_TOOLS: QaTool[] = [
   { symptom: '画面多出一个人 / 多出一件道具', run: 'get_storyboards(先看该镜实际用的首帧)', then: ['generate_shot_frame(首帧本身就有→重生首帧再重生视频)', 'split_shot(帧干净、片中长出来→拆成 3~5 秒短镜)'] },
   { symptom: '出图 / 出视频前想知道哪些镜会被厂商拒', run: 'run_precheck', then: ['update_shot', 'generate_shot_frame'] },
   { symptom: '要跑全集 / 想知道整部剧有多少问题、该先修哪几集', run: 'run_drama_precheck', then: ['run_precheck(对 attention 里那几集拿逐条明细)', 'plan_precheck_fix', 'update_shot'] },
-  { symptom: '场景图(空景基板)不对 / 重出还是同一类图', run: 'get_scene_prompt', then: ['update_scene(改 image_prompt 正文——只改地点/时段是让平台重拼,拧不过来)', 'regenerate_scene_image(单场重出,覆盖旧图)', 'upload_scene_image(客户自有实拍/外部精修图)', 'generate_shot_frame(下游镜头帧不会自动跟着重出)'] },
+  { symptom: '场景图(空景基板)不对 / 重出还是同一类图', run: 'get_scene_prompt', then: ['update_scene(改 image_prompt 正文——只改地点/时段是让平台重拼,拧不过来)', 'quote_regenerate_scene_image(先报价)', 'regenerate_scene_image(单场重出,覆盖旧图)', 'upload_scene_image(客户自有实拍/外部精修图)', 'quote_scene_lighting_ref → generate_scene_lighting_ref(换图后补打光参考图,先报价)', 'generate_shot_frame(下游镜头帧不会自动跟着重出)'] },
   { symptom: '整集健康度 / 缺镜 / 进度', run: 'get_pipeline_status', then: ['get_health_report', 'review_all', 'get_storyboards', 'get_jobs', 'get_run_status', 'get_autofill_status(导入/一键填空的后台补全进度)'] },
   { symptom: '拆完分镜想核对台词有没有丢 / 谁说的 / 哪几镜是关键镜 / 情绪曲线', run: 'get_storyboards(每镜 dialogue_lines/is_key_moment/emotion_intensity,整集一次拿)', then: ['review_storyboards', 'update_shot(补漏句/改台词,改完回 get_storyboards 核对)', 'get_shot_prompts(看某镜画面与首尾帧提示词)'] },
   { symptom: '预算 / 余额', run: 'get_budget_status', then: ['get_cost_estimate'] },

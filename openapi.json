@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.129",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.129 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.130",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.130 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -9534,7 +9534,7 @@
       "post": {
         "operationId": "regenerate_scene_image",
         "summary": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)",
-        "description": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)。图片步,按用量后付不欠费。★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。★episode_id 通常不必传(平台按场景归属、再按引用它的分镜自动推导)。只有回执报「本场景被多集分镜共用」时才需要点名:那说明同一地点跨集复用,平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。",
+        "description": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)。图片步,按用量后付不欠费。★先调 quote_regenerate_scene_image 拿报价、把点数告诉客户,再带 quote_id 调本工具:换了场景图后,没有可用宽景镜首帧的场景平台会自动再出一张打光参考图(另扣一张图的点数),报价里已含。★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。★episode_id 通常不必传(平台按场景归属、再按引用它的分镜自动推导)。只有回执报「本场景被多集分镜共用」时才需要点名:那说明同一地点跨集复用,平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。",
         "tags": [
           "scenes"
         ],
@@ -9556,6 +9556,9 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "quote_id": {
+                    "type": "string"
+                  },
                   "episode_id": {
                     "type": "integer",
                     "exclusiveMinimum": 0
@@ -9565,6 +9568,166 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/scenes/{scene_id}/image/regenerate/quote": {
+      "post": {
+        "operationId": "quote_regenerate_scene_image",
+        "summary": "单场景图重出的报价(免费,不出图)",
+        "description": "单场景图重出的报价(免费,不出图)。返回 estimated_points(上界)/typical_points,含场景图一张,以及换图后平台会不会自动派生一张打光参考图(lighting_ref.will_generate,给近景镜统一光线,同样扣点)。拿到 quote_id 后传给 regenerate_scene_image。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "tags": [
+          "scenes"
+        ],
+        "parameters": [
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/scenes/{scene_id}/lighting-ref/generate": {
+      "post": {
+        "operationId": "generate_scene_lighting_ref",
+        "summary": "按报价补这一场的打光参考图(后台出图,按用量扣点)",
+        "description": "按报价补这一场的打光参考图(后台出图,按用量扣点)。完成后 get_scenes 里该场景的打光参考图字段会有值。",
+        "tags": [
+          "scenes"
+        ],
+        "parameters": [
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quote_id": {
+                    "type": "string",
+                    "description": "来自 quote_scene_lighting_ref"
+                  }
+                },
+                "required": [
+                  "quote_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/scenes/{scene_id}/lighting-ref/quote": {
+      "post": {
+        "operationId": "quote_scene_lighting_ref",
+        "summary": "给某个场景补一张打光参考图的报价(免费,不出图)",
+        "description": "给某个场景补一张打光参考图的报价(免费,不出图)。打光参考图=只复现该场景光线的中性人脸特写,近景/特写镜看不到场景图时靠它统一光线。场景缺它时(例如上传了新场景图后)才需要补;有宽景镜但还没出首帧的场景不必补(宽景镜出帧时平台自动派生)。不够格时返回 400 并说明原因。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "tags": [
+          "scenes"
+        ],
+        "parameters": [
+          {
+            "name": "scene_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "StarReel envelope",
