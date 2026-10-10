@@ -229,6 +229,13 @@ const ETHNICITY_CODES = [
 // 与后端发现接口 produce-options.ts 的 ASPECT_RATIO_OPTIONS / VIDEO_RESOLUTION_OPTIONS 键集一致
 // (video_resolution 与后端 VIDEO_RES_WHITELIST 钉死;aspect_ratio 后端柔性,这里给同一策展集)。
 // 帧类型(与后端 produce-facade.parseFrameParam 同一枚举):整集/单镜出帧共用。
+/** generate_bgm 的结构化锁定字段（整集与按幕共用；校验与上限以后端为准）。 */
+const BGM_LOCK_FIELDS = {
+  mood: z.array(z.string()).max(3).optional().describe('情绪词,最多 3 个,每个 ≤12 字(如 压抑、苍凉)'),
+  instruments: z.array(z.string()).max(3).optional().describe('主奏乐器,最多 3 件,每件 ≤16 字(如 古筝、大提琴);人声/环境声会被丢掉'),
+  bpm: z.number().min(40).max(160).optional().describe('速度 40~160'),
+  tonality: z.enum(['major', 'minor', 'modal']).optional().describe('major 大调明亮 / minor 小调暗色 / modal 调式色彩'),
+}
 const FRAME_TYPE_ARG = z.enum(['first_frame', 'last_frame', 'both'])
 
 const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '4:3', '21:9'] as const
@@ -2228,7 +2235,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '只出纯器乐:要人声/歌词/拟音当乐器都不会生效,会在 prompt_warnings 里点名但**不拦生成**。\n' +
       '★prompt_mode: guide(默认)=你的要求与平台专业护栏(时代与题材匹配/配器节制/高潮保规模/段间差异)一起生效;' +
       'override=直通,跳过护栏,只保留技术底线(纯器乐/时长/可循环)。override 效果自负,' +
-      '**先用 guide 试**,确实拧不过来再换。不传 prompt 时沿用该集上次填的(get_bgm_status 可查)。',
+      '**先用 guide 试**,确实拧不过来再换。不传 prompt 时沿用该集上次填的(get_bgm_status 可查)。\n' +
+      '★director 可选=结构化锁定(硬约束):逐项指定 mood 情绪 / instruments 主奏配器 / bpm / tonality 大小调,' +
+      '生成时**强制覆盖**配乐总监的判断(不像 prompt 只是方向,可能被护栏或 AI 取舍改写);没锁的项仍自动判断。' +
+      '整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。' +
+      '幕是按情绪弧线自动分的:按幕锁之前先调一次 plan_only=true(免费,不生成)看本集分几幕、每幕覆盖哪些镜。' +
+      '参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。' +
+      '客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。',
     {
       episode_id: z.number().int().positive(),
       prompt: z.string().optional().describe(
@@ -2238,11 +2251,22 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       prompt_mode: z.enum(['guide', 'override']).optional().describe(
         'guide(默认)=提示词与平台护栏一起生效;override=直通跳过审美护栏(技术底线仍在)。',
       ),
+      director: z.object({
+        ...BGM_LOCK_FIELDS,
+        acts: z.array(z.object({
+          act: z.number().int().positive().describe('幕序号,从 1 开始(plan_only=true 可查)'),
+          ...BGM_LOCK_FIELDS,
+        }).strict()).optional().describe('按幕锁定;同名字段覆盖整集的,没写的继承整集'),
+        // strict:拼错的字段(如 tempo)要报校验错误;zod 默认会静默剥掉它,转发出去的就是空锁 ⇒ 一次不受控的扣费生成
+      }).strict().optional().describe('结构化锁定(硬约束)。顶层字段整集生效;不传=全由配乐总监判断'),
+      plan_only: z.boolean().optional().describe('true=只返回本集分幕(幕号/镜号范围/时长),不生成、不扣费'),
     },
-    async ({ episode_id, prompt, prompt_mode }) =>
+    async ({ episode_id, prompt, prompt_mode, director, plan_only }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/bgm`, {
         ...(prompt === undefined ? {} : { prompt }),
         ...(prompt_mode ? { prompt_mode } : {}),
+        ...(director ? { director } : {}),
+        ...(plan_only ? { plan_only: true } : {}),
       })),
   )
   server.tool(

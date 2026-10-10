@@ -1103,7 +1103,7 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
 - **Audio**: `generate_tts` (required before final cut), `clone_voice`,
   `design_voice` → `get_voice_design` → `save_designed_voice` (no sample needed),
   `speak_with_voice`, `set_character_voice`, `list_voices`, `delete_voice`,
-  `generate_bgm` (optional `prompt` steers the music; read `get_bgm_prompt_guide` first),
+  `generate_bgm` (optional `prompt` steers the music; read `get_bgm_prompt_guide` first; optional `director` hard-locks mood / instruments / bpm / tonality for the whole episode or per act — call with `plan_only=true` first to see the acts),
   `get_bgm_prompt_guide`, `replace_shot_dialogue`, `revoice_narration`
 - **Mix** (free; settings only — `compose_episode` again to hear them, `rerender_episode`
   reuses the old timeline): whole drama via `update_project_settings`

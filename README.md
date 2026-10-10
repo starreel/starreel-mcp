@@ -129,7 +129,7 @@ See the [API docs](https://api.shortreelai.com/docs/mcp).
 | Identity anchors | `generate_portraits_and_sheets` (portraits + character sheets = the consistency anchor) |
 | Storyboards | `quote_storyboards` → `generate_storyboards` → `get_storyboards` |
 | Frames & video | `quote_frames` → `generate_frames` · `quote_videos` → `generate_videos` |
-| Audio | `generate_tts` · `generate_bgm` (steerable via `prompt`) · `get_bgm_prompt_guide` · `generate_sfx` · voice cloning · `design_voice` (a new voice from one sentence) |
+| Audio | `generate_tts` · `generate_bgm` (steerable via `prompt`; lock mood / instruments / BPM / key per act via `director`) · `get_bgm_prompt_guide` · `generate_sfx` · voice cloning · `design_voice` (a new voice from one sentence) |
 | Finishing | `compose_episode` (free) · `get_final_cut` · `render_multi_aspect` · posters & covers |
 | Localization | `translate_subtitles` · localization jobs |
 | Ads / MV modes | product library & product sheets · MV lyrics → story → script |
