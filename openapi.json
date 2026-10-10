@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.132",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.132 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.133",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.133 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -3669,7 +3669,7 @@
       "post": {
         "operationId": "generate_bgm",
         "summary": "给整集生成/更换 AI 配乐(按情绪弧线)",
-        "description": "给整集生成/更换 AI 配乐(按情绪弧线)。后台异步,按用量后付不欠费。返回情绪弧线段数与预估耗时;用 get_bgm_status 轮询生成进度。★配乐生成/改动**不会自动进已有成片**——完成后必须重新 compose_episode(免费)才能听到;get_final_cut 的 bgm_stale=true 就是在提示这一步。别用 re-render(吃旧时间线,不含新配乐)。\n★prompt 可选:不传=全自动(和以前一样)。传了就是在自动结果上再加方向,整集一条,系统仍按情绪弧线分幕。怎么写见 get_bgm_prompt_guide(免费);要点=只写音乐维度(情绪气质/主奏配器/速度动态/厚薄空间/风格参照),别写剧情(「主角发现真相时要紧张」→写「紧张,节奏推进感强」)。只出纯器乐:要人声/歌词/拟音当乐器都不会生效,会在 prompt_warnings 里点名但**不拦生成**。\n★prompt_mode: guide(默认)=你的要求与平台专业护栏(时代与题材匹配/配器节制/高潮保规模/段间差异)一起生效;override=直通,跳过护栏,只保留技术底线(纯器乐/时长/可循环)。override 效果自负,**先用 guide 试**,确实拧不过来再换。不传 prompt 时沿用该集上次填的(get_bgm_status 可查)。\n★director 可选=结构化锁定(硬约束):逐项指定 mood 情绪 / instruments 主奏配器 / bpm / tonality 大小调,生成时**强制覆盖**配乐总监的判断(不像 prompt 只是方向,可能被护栏或 AI 取舍改写);没锁的项仍自动判断。整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。幕是按情绪弧线自动分的:按幕锁之前先调一次 plan_only=true(免费,不生成)看本集分几幕、每幕覆盖哪些镜。参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。",
+        "description": "给整集生成/更换 AI 配乐(按情绪弧线)。后台异步,按用量后付不欠费。返回情绪弧线段数与预估耗时;用 get_bgm_status 轮询生成进度。★配乐生成/改动**不会自动进已有成片**——完成后必须重新 compose_episode(免费)才能听到;get_final_cut 的 bgm_stale=true 就是在提示这一步。别用 re-render(吃旧时间线,不含新配乐)。\n★prompt 可选:不传=全自动(和以前一样)。传了就是在自动结果上再加方向,整集一条,系统仍按情绪弧线分幕。怎么写见 get_bgm_prompt_guide(免费);要点=只写音乐维度(情绪气质/主奏配器/速度动态/厚薄空间/风格参照),别写剧情(「主角发现真相时要紧张」→写「紧张,节奏推进感强」)。只出纯器乐:要人声/歌词/拟音当乐器都不会生效,会在 prompt_warnings 里点名但**不拦生成**。\n★prompt_mode: guide(默认)=你的要求与平台专业护栏(时代与题材匹配/配器节制/高潮保规模/段间差异)一起生效;override=直通,跳过护栏,只保留技术底线(纯器乐/时长/可循环)。override 效果自负,**先用 guide 试**,确实拧不过来再换。不传 prompt 时沿用该集上次填的(get_bgm_status 可查)。\n★director 可选=结构化锁定(硬约束):逐项指定 mood 情绪 / instruments 主奏配器 / bpm / tonality 大小调,生成时**强制覆盖**配乐总监的判断(不像 prompt 只是方向,可能被护栏或 AI 取舍改写);没锁的项仍自动判断。整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。幕是按情绪弧线自动分的:按幕锁之前先调 get_bgm_plan(免费,只读)看本集分几幕、每幕覆盖哪些镜。参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。",
         "tags": [
           "episodes"
         ],
@@ -3743,7 +3743,7 @@
                             "act": {
                               "type": "integer",
                               "exclusiveMinimum": 0,
-                              "description": "幕序号,从 1 开始(plan_only=true 可查)"
+                              "description": "幕序号,从 1 开始(get_bgm_plan 可查)"
                             },
                             "mood": {
                               "type": "array",
@@ -3786,9 +3786,6 @@
                       }
                     },
                     "additionalProperties": false
-                  },
-                  "plan_only": {
-                    "type": "boolean"
                   }
                 }
               }
@@ -3933,6 +3930,53 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/bgm-plan": {
+      "get": {
+        "operationId": "get_bgm_plan",
+        "summary": "查本集配乐会分成几幕(免费、只读、不生成):每幕的幕号 act、覆盖镜号 sb_from~sb_to、时长、平均情绪强度",
+        "description": "查本集配乐会分成几幕(免费、只读、不生成):每幕的幕号 act、覆盖镜号 sb_from~sb_to、时长、平均情绪强度。要用 generate_bgm 的 director.acts 按幕锁定参数时,先调这个拿幕号。★这是独立的只读工具:看分幕**不要**去调 generate_bgm——那个一调就是扣费生成。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "StarReel envelope",

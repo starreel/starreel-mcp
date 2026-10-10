@@ -2239,7 +2239,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★director 可选=结构化锁定(硬约束):逐项指定 mood 情绪 / instruments 主奏配器 / bpm / tonality 大小调,' +
       '生成时**强制覆盖**配乐总监的判断(不像 prompt 只是方向,可能被护栏或 AI 取舍改写);没锁的项仍自动判断。' +
       '整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。' +
-      '幕是按情绪弧线自动分的:按幕锁之前先调一次 plan_only=true(免费,不生成)看本集分几幕、每幕覆盖哪些镜。' +
+      '幕是按情绪弧线自动分的:按幕锁之前先调 get_bgm_plan(免费,只读)看本集分几幕、每幕覆盖哪些镜。' +
       '参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。' +
       '客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。',
     {
@@ -2254,20 +2254,26 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       director: z.object({
         ...BGM_LOCK_FIELDS,
         acts: z.array(z.object({
-          act: z.number().int().positive().describe('幕序号,从 1 开始(plan_only=true 可查)'),
+          act: z.number().int().positive().describe('幕序号,从 1 开始(get_bgm_plan 可查)'),
           ...BGM_LOCK_FIELDS,
         }).strict()).optional().describe('按幕锁定;同名字段覆盖整集的,没写的继承整集'),
         // strict:拼错的字段(如 tempo)要报校验错误;zod 默认会静默剥掉它,转发出去的就是空锁 ⇒ 一次不受控的扣费生成
       }).strict().optional().describe('结构化锁定(硬约束)。顶层字段整集生效;不传=全由配乐总监判断'),
-      plan_only: z.boolean().optional().describe('true=只返回本集分幕(幕号/镜号范围/时长),不生成、不扣费'),
     },
-    async ({ episode_id, prompt, prompt_mode, director, plan_only }) =>
+    async ({ episode_id, prompt, prompt_mode, director }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/bgm`, {
         ...(prompt === undefined ? {} : { prompt }),
         ...(prompt_mode ? { prompt_mode } : {}),
         ...(director ? { director } : {}),
-        ...(plan_only ? { plan_only: true } : {}),
       })),
+  )
+  server.tool(
+    'get_bgm_plan',
+    '查本集配乐会分成几幕(免费、只读、不生成):每幕的幕号 act、覆盖镜号 sb_from~sb_to、时长、平均情绪强度。' +
+      '要用 generate_bgm 的 director.acts 按幕锁定参数时,先调这个拿幕号。' +
+      '★这是独立的只读工具:看分幕**不要**去调 generate_bgm——那个一调就是扣费生成。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/bgm-plan`)),
   )
   server.tool(
     'set_episode_audio',
