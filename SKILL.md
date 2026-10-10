@@ -1108,8 +1108,10 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
 - **Mix** (free; settings only — `compose_episode` again to hear them, `rerender_episode`
   reuses the old timeline): whole drama via `update_project_settings`
   (`bgm_volume_preset` / `bgm_volume_db` / `lufs_target`); one episode via
-  `set_episode_audio`; one music section's level and fades via `list_bgm_cues` →
-  `update_bgm_cue`. Don't download the cut to re-mix it locally.
+  `set_episode_audio` (music level, plus `clip_audio_gain_db` for the clips' own sound and
+  `voice_gain_db` for the TTS dialogue + narration track); one music section's level, fades,
+  where in the track it starts (`track_offset_ms`) and how late after its first shot it comes in
+  (`start_shift_ms`) via `list_bgm_cues` → `update_bgm_cue`. Don't download the cut to re-mix it locally.
 - **Finish**: `compose_episode`, `get_final_cut`, `get_export`,
   `generate_episode_poster`, `generate_cover`
 - **What did this drama cost?** `get_drama_bill` — per kind `charged` / `refunded`

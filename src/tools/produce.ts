@@ -2277,36 +2277,47 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'set_episode_audio',
-    '设置**本集**配乐音量(覆盖整剧设定,免费)。整剧统一的用 update_project_settings。' +
+    '设置**本集**成片混音(免费):配乐音量(覆盖整剧设定)、片段原声增益、配音轨增益。整剧统一的配乐音量用 update_project_settings。' +
       '★只改设置:成片要 compose_episode 重新合成才变(rerender_episode 用旧时间线,不带上)。' +
-      '★想调某一段配乐的音量或淡入淡出,用 list_bgm_cues + update_bgm_cue。',
+      '★想调某一段配乐的音量、淡入淡出或起点,用 list_bgm_cues + update_bgm_cue。' +
+      '★原声=视频片段自带的声音(原声剧里就是角色台词);配音轨=TTS 生成的对白与旁白(两者在同一轨里预混,只能整轨调,分不开)。' +
+      '★本集若走逐镜合成片终拼(每镜都有合成片),配音已烤进每镜、与原声是同一条音频,这两个增益不生效——响应里会有 warning,照实转告客户。',
     {
       episode_id: z.number().int().positive(),
       bgm_volume_preset: z.enum(['off', 'low', 'auto', 'high', 'inherit']).optional()
         .describe('本集配乐音量档:off静音/low轻(-28dB)/auto自适应/high强(-16dB)/inherit跟随整剧'),
       bgm_volume_db: z.number().min(-60).max(0).nullable().optional()
         .describe('本集自定义配乐音量(dB,-60~0),覆盖档位并关自适应;null=清除、跟随整剧'),
+      clip_audio_gain_db: z.number().min(-30).max(6).nullable().optional()
+        .describe('片段原声比系统默认响/轻多少(dB,-30~+6;0=默认);原声剧台词听不清→调高,环境噪音太吵→调低;null=清回默认'),
+      voice_gain_db: z.number().min(-24).max(6).nullable().optional()
+        .describe('配音轨(TTS 对白与旁白)比系统默认响/轻多少(dB,-24~+6;0=默认);null=清回默认'),
     },
     async ({ episode_id, ...rest }) =>
       jsonResult(await client.producePut(`/episodes/${episode_id}/audio`, rest)),
   )
   server.tool(
     'list_bgm_cues',
-    '列出本集的配乐段(AI 配乐按情绪分幕,每段覆盖一段镜号 sb_from~sb_to):id、覆盖范围、gain_db(null=跟随音量档)、fade_in_ms / fade_out_ms。' +
+    '列出本集的配乐段(AI 配乐按情绪分幕,每段覆盖一段镜号 sb_from~sb_to):id、覆盖范围、gain_db(null=跟随音量档)、fade_in_ms / fade_out_ms、track_offset_ms / start_shift_ms(null=系统决定)。' +
       'episode_id 为 null 的是**整剧共用段**,改它会影响所有集。免费。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/bgm-cues`)),
   )
   server.tool(
     'update_bgm_cue',
-    '调某一段配乐的音量与淡入淡出(免费)。只改这三项;换曲目或改覆盖范围用 generate_bgm 重新生成。' +
-      '★例:配乐进得太突兀→加大 fade_in_ms;某段压对白→降 gain_db。改完 compose_episode 重新合成才生效。',
+    '调某一段配乐的音量、淡入淡出与起点(免费)。换曲目或改覆盖镜号范围用 generate_bgm 重新生成。' +
+      '★例:配乐进得太突兀→加大 fade_in_ms;某段压对白→降 gain_db;想从曲子的高潮部分开始→设 track_offset_ms;' +
+      '想等这段第一镜开口之后再进→设 start_shift_ms。改完 compose_episode 重新合成才生效。',
     {
       episode_id: z.number().int().positive(),
       cue_id: z.number().int().positive().describe('来自 list_bgm_cues'),
       gain_db: z.number().min(-60).max(0).nullable().optional().describe('这段配乐的音量(dB,-60~0),设了就覆盖音量档;null=恢复跟随本集/整剧音量档'),
       fade_in_ms: z.number().int().min(0).max(15000).optional().describe('淡入毫秒(整数,0~15000)'),
       fade_out_ms: z.number().int().min(0).max(15000).optional().describe('淡出毫秒(整数,0~15000)'),
+      track_offset_ms: z.number().int().min(0).max(600000).nullable().optional()
+        .describe('从配乐文件第几毫秒开始播(0~600000),覆盖系统自动挑的切入点;超过曲长会钳到曲尾前 1 秒;null=交回系统自动挑'),
+      start_shift_ms: z.number().int().min(0).max(60000).nullable().optional()
+        .describe('这段配乐在它第一镜开始后再晚多少毫秒进(0~60000);默认卡在第一镜起点。段尾不变,至少留 1 秒;null=不平移'),
     },
     async ({ episode_id, cue_id, ...rest }) =>
       jsonResult(await client.producePut(`/episodes/${episode_id}/bgm-cues/${cue_id}`, rest)),

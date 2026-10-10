@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.133",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.133 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.134",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.134 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -3475,8 +3475,8 @@
     "/episodes/{episode_id}/audio": {
       "put": {
         "operationId": "set_episode_audio",
-        "summary": "设置**本集**配乐音量(覆盖整剧设定,免费)",
-        "description": "设置**本集**配乐音量(覆盖整剧设定,免费)。整剧统一的用 update_project_settings。★只改设置:成片要 compose_episode 重新合成才变(rerender_episode 用旧时间线,不带上)。★想调某一段配乐的音量或淡入淡出,用 list_bgm_cues + update_bgm_cue。",
+        "summary": "设置**本集**成片混音(免费):配乐音量(覆盖整剧设定)、片段原声增益、配音轨增益",
+        "description": "设置**本集**成片混音(免费):配乐音量(覆盖整剧设定)、片段原声增益、配音轨增益。整剧统一的配乐音量用 update_project_settings。★只改设置:成片要 compose_episode 重新合成才变(rerender_episode 用旧时间线,不带上)。★想调某一段配乐的音量、淡入淡出或起点,用 list_bgm_cues + update_bgm_cue。★原声=视频片段自带的声音(原声剧里就是角色台词);配音轨=TTS 生成的对白与旁白(两者在同一轨里预混,只能整轨调,分不开)。★本集若走逐镜合成片终拼(每镜都有合成片),配音已烤进每镜、与原声是同一条音频,这两个增益不生效——响应里会有 warning,照实转告客户。",
         "tags": [
           "episodes"
         ],
@@ -3514,6 +3514,30 @@
                         "type": "number",
                         "minimum": -60,
                         "maximum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "clip_audio_gain_db": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": -30,
+                        "maximum": 6
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "voice_gain_db": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "minimum": -24,
+                        "maximum": 6
                       },
                       {
                         "type": "null"
@@ -3823,8 +3847,8 @@
     "/episodes/{episode_id}/bgm-cues": {
       "get": {
         "operationId": "list_bgm_cues",
-        "summary": "列出本集的配乐段(AI 配乐按情绪分幕,每段覆盖一段镜号 sb_from~sb_to):id、覆盖范围、gain_db(null=跟随音量档)、fade_in_ms / fade_out_ms",
-        "description": "列出本集的配乐段(AI 配乐按情绪分幕,每段覆盖一段镜号 sb_from~sb_to):id、覆盖范围、gain_db(null=跟随音量档)、fade_in_ms / fade_out_ms。episode_id 为 null 的是**整剧共用段**,改它会影响所有集。免费。",
+        "summary": "列出本集的配乐段(AI 配乐按情绪分幕,每段覆盖一段镜号 sb_from~sb_to):id、覆盖范围、gain_db(null=跟随音量档)、fade_in_ms / fade_out_ms、track_offset_ms / start",
+        "description": "列出本集的配乐段(AI 配乐按情绪分幕,每段覆盖一段镜号 sb_from~sb_to):id、覆盖范围、gain_db(null=跟随音量档)、fade_in_ms / fade_out_ms、track_offset_ms / start_shift_ms(null=系统决定)。episode_id 为 null 的是**整剧共用段**,改它会影响所有集。免费。",
         "tags": [
           "episodes"
         ],
@@ -3870,8 +3894,8 @@
     "/episodes/{episode_id}/bgm-cues/{cue_id}": {
       "put": {
         "operationId": "update_bgm_cue",
-        "summary": "调某一段配乐的音量与淡入淡出(免费)",
-        "description": "调某一段配乐的音量与淡入淡出(免费)。只改这三项;换曲目或改覆盖范围用 generate_bgm 重新生成。★例:配乐进得太突兀→加大 fade_in_ms;某段压对白→降 gain_db。改完 compose_episode 重新合成才生效。",
+        "summary": "调某一段配乐的音量、淡入淡出与起点(免费)",
+        "description": "调某一段配乐的音量、淡入淡出与起点(免费)。换曲目或改覆盖镜号范围用 generate_bgm 重新生成。★例:配乐进得太突兀→加大 fade_in_ms;某段压对白→降 gain_db;想从曲子的高潮部分开始→设 track_offset_ms;想等这段第一镜开口之后再进→设 start_shift_ms。改完 compose_episode 重新合成才生效。",
         "tags": [
           "episodes"
         ],
@@ -3924,6 +3948,30 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 15000
+                  },
+                  "track_offset_ms": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 600000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "start_shift_ms": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 60000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 }
               }
