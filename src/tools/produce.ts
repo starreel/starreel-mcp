@@ -2239,6 +2239,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★director 可选=结构化锁定(硬约束):逐项指定 mood 情绪 / instruments 主奏配器 / bpm / tonality 大小调,' +
       '生成时**强制覆盖**配乐总监的判断(不像 prompt 只是方向,可能被护栏或 AI 取舍改写);没锁的项仍自动判断。' +
       '整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。' +
+      '★director 按集保存(同 prompt):这次传了就记下,下次不传沿用上次的(get_bgm_status 的 director 可查);传 null 清除。' +
+      '分镜改动后已存的幕号不存在了,那一条会被忽略并在 director_warnings 里说明,不拦生成。' +
       '幕是按情绪弧线自动分的:按幕锁之前先调 get_bgm_plan(免费,只读)看本集分几幕、每幕覆盖哪些镜。' +
       '参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。' +
       '客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。\n' +
@@ -2264,13 +2266,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
           ...BGM_LOCK_FIELDS,
         }).strict()).optional().describe('按幕锁定;同名字段覆盖整集的,没写的继承整集'),
         // strict:拼错的字段(如 tempo)要报校验错误;zod 默认会静默剥掉它,转发出去的就是空锁 ⇒ 一次不受控的扣费生成
-      }).strict().optional().describe('结构化锁定(硬约束)。顶层字段整集生效;不传=全由配乐总监判断'),
+      }).strict().nullable().optional().describe('结构化锁定(硬约束),按集保存:传了就记下,下次不传沿用上次的;传 null 清除。顶层字段整集生效'),
     },
     async ({ episode_id, prompt, prompt_mode, director, candidates, quote_id }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/bgm`, {
         ...(prompt === undefined ? {} : { prompt }),
         ...(prompt_mode ? { prompt_mode } : {}),
-        ...(director ? { director } : {}),
+        ...(director === undefined ? {} : { director }),
         ...(candidates === undefined ? {} : { candidates }),
         ...(quote_id ? { quote_id } : {}),
       })),
