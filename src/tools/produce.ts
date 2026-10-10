@@ -2241,7 +2241,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。' +
       '幕是按情绪弧线自动分的:按幕锁之前先调 get_bgm_plan(免费,只读)看本集分几幕、每幕覆盖哪些镜。' +
       '参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。' +
-      '客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。',
+      '客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。\n' +
+      '★candidates 可选=候选整版对比:每幕出 2~3 首**完整**候选让客户挑(挑中的直接用,听到什么成片里就是什么)。' +
+      '每首单独按首计费 ⇒ 费用是单首的 N 倍,**必须先 quote_bgm_candidates 报价、把点数告诉客户、客户同意后**带 quote_id 调本工具。' +
+      '不传或传 1=原行为(每幕一首,无需报价)。生成后 get_bgm_status 的 candidate_groups 给每首的试听地址,select_bgm_candidate 挑选(免费),不挑默认第 1 首。',
     {
       episode_id: z.number().int().positive(),
       prompt: z.string().optional().describe(
@@ -2251,6 +2254,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       prompt_mode: z.enum(['guide', 'override']).optional().describe(
         'guide(默认)=提示词与平台护栏一起生效;override=直通跳过审美护栏(技术底线仍在)。',
       ),
+      candidates: z.number().int().min(1).max(3).optional()
+        .describe('每幕出几首完整候选(1~3,默认 1)。≥2 时每首单独计费,必须带 quote_bgm_candidates 拿到的 quote_id'),
+      quote_id: z.string().optional().describe('candidates≥2 时必填:quote_bgm_candidates 返回的报价凭证(一次性,15 分钟有效)'),
       director: z.object({
         ...BGM_LOCK_FIELDS,
         acts: z.array(z.object({
@@ -2260,12 +2266,38 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         // strict:拼错的字段(如 tempo)要报校验错误;zod 默认会静默剥掉它,转发出去的就是空锁 ⇒ 一次不受控的扣费生成
       }).strict().optional().describe('结构化锁定(硬约束)。顶层字段整集生效;不传=全由配乐总监判断'),
     },
-    async ({ episode_id, prompt, prompt_mode, director }) =>
+    async ({ episode_id, prompt, prompt_mode, director, candidates, quote_id }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/bgm`, {
         ...(prompt === undefined ? {} : { prompt }),
         ...(prompt_mode ? { prompt_mode } : {}),
         ...(director ? { director } : {}),
+        ...(candidates === undefined ? {} : { candidates }),
+        ...(quote_id ? { quote_id } : {}),
       })),
+  )
+  server.tool(
+    'quote_bgm_candidates',
+    '给「配乐候选整版对比」报价(免费):每幕出 candidates 首完整候选的总点数 = 有配乐的幕数 × 候选数 × 单首价。' +
+      '返回 quote_id(15 分钟有效、一次性)。⚠️ 把 estimated_points 原样告诉用户,用户明确同意后才拿 quote_id 调 generate_bgm(candidates 必须与这里一致),不要擅自确认。' +
+      '另有少量配乐总监 LLM 文本费(每幕一次),不在报价内。',
+    {
+      episode_id: z.number().int().positive(),
+      candidates: z.number().int().min(2).max(3).describe('每幕几首候选(2~3)'),
+    },
+    async ({ episode_id, candidates }) =>
+      jsonResult(await client.produceGet(`/episodes/${episode_id}/bgm/quote?candidates=${candidates}`)),
+  )
+  server.tool(
+    'select_bgm_candidate',
+    '在候选整版对比里给某一幕挑一首(免费)。cue_id 与 track_id 取自 get_bgm_status 的 candidate_groups;' +
+      '同一幕的所有配乐段一起换。改完 compose_episode 重新合成才进成片。',
+    {
+      episode_id: z.number().int().positive(),
+      cue_id: z.number().int().positive().describe('candidate_groups[].cue_ids 里任一个'),
+      track_id: z.number().int().positive().describe('candidate_groups[].candidates[].track_id'),
+    },
+    async ({ episode_id, cue_id, track_id }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/bgm-cues/${cue_id}/select`, { track_id })),
   )
   server.tool(
     'get_bgm_plan',

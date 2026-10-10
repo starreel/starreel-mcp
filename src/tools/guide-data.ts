@@ -265,7 +265,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '9 音频',
-    tools: ['assign_voices', 'generate_tts(仅 use_clip_audio=false)', 'clone_voice', 'generate_bgm', 'get_bgm_plan', 'get_bgm_status', 'generate_sfx', 'lipsync_shot', 'lipsync_episode', 'get_lipsync_status', 'set_shot_name_card'],
+    tools: ['assign_voices', 'generate_tts(仅 use_clip_audio=false)', 'clone_voice', 'generate_bgm', 'get_bgm_plan', 'quote_bgm_candidates', 'select_bgm_candidate', 'get_bgm_status', 'generate_sfx', 'lipsync_shot', 'lipsync_episode', 'get_lipsync_status', 'set_shot_name_card'],
     billing: '混合',
     note: '默认视频原声跳过 TTS 三步(pipeline-status 里显示 not_required,不是没做完)。',
   },
@@ -321,7 +321,7 @@ export const OPTIONAL_BOOSTS = [
   { what: '口型同步', tool: 'lipsync_episode', when: 'TTS 配音项目需要对口型时' },
   { what: '海报 / 封面', tool: 'generate_episode_poster', when: '成片后;`generate_drama_poster` / `generate_cover` 同族' },
   { what: '音效 / 特效 / 转场(本地库匹配)', tool: 'generate_sfx', when: '免费;`generate_effects` / `generate_transitions` 同族' },
-  { what: '配乐', tool: 'generate_bgm', when: '按整集情绪弧线生成;终拼自动接管。客户想指定音乐方向就带 prompt(整集一条),写法先读 `get_bgm_prompt_guide`(免费);不带 prompt 就是全自动。客户给了明确参数(情绪/主奏配器/BPM/大小调)用 director 锁定(硬约束,可按幕;按幕前先 get_bgm_plan 免费看分幕)' },
+  { what: '配乐', tool: 'generate_bgm', when: '按整集情绪弧线生成;终拼自动接管。客户想指定音乐方向就带 prompt(整集一条),写法先读 `get_bgm_prompt_guide`(免费);不带 prompt 就是全自动。客户给了明确参数(情绪/主奏配器/BPM/大小调)用 director 锁定(硬约束,可按幕;按幕前先 get_bgm_plan 免费看分幕)。客户想先听几版再定:candidates=2~3 出完整候选(每首单独计费,先 quote_bgm_candidates 报价),select_bgm_candidate 挑' },
   { what: '字幕翻译', tool: 'translate_subtitles', when: '出海;双语烧录在项目设定里开' },
 ]
 
