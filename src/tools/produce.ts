@@ -155,7 +155,7 @@ const WORKFLOW_HINT =
   '进度自检看 get_pipeline_status 的 generate_character_sheets 步(completed/total,portrait_only=只有定妆图的角色数)。' +
   '★客户自带图:定妆图须单人、单张单角度、无文字;场景图须空景无人、无叠加文字——set_character_portrait/upload_scene_image 会自动检查、不合规 422 拒收。' +
   '★别先建角色形象/道具设定图/动作模板再分镜——分镜是纯文本步、不依赖任何图;资产在分镜后建更省更准(动作模板本就必须分镜后)。收费步照现有 quote 报价确认流程。' +
-  '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script。' +
+  '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script(没有现成歌曲:set_mv_lyrics 后先 suggest_mv_song_styles→quote_mv_song→generate_mv_song→get_mv_song→select_mv_song)。' +
   '★★【原声剧先锁声线,再批量出视频】use_clip_audio=true(默认)时每镜嗓音由视频厂商各自采样,不锁必漂,事后统一要逐镜重出。' +
   '有客户授权音源→clone_voice+set_character_voice,在 generate_videos 之前;没有→每个说话角色先出一镜台词较长的,' +
   '用 set_voice_anchor_from_shot 从那一镜选定声线,再出其余镜。get_pipeline_status 的 native_voice_anchor 会列出还没锁的' +
@@ -2562,6 +2562,68 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'MV 项目:读歌词/故事/剧本当前状态。免费。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/mv`)),
+  )
+  // ---- MV AI 作曲:客户没有现成歌曲时,用本剧歌词生成带人声的整曲 ----
+  server.tool(
+    'suggest_mv_song_styles',
+    'MV 项目·AI 作曲第 1 步:读本剧已存的歌词(先 set_mv_lyrics),给 3 套曲风方案(name/why/bpm/vocal/prompt)。' +
+      '不出歌,只花一次少量文本 LLM 费。把方案讲给用户挑,用户可以改 prompt;挑定后 quote_mv_song 报价。' +
+      '仅在客户**没有**现成歌曲时用;有歌就让客户上传整曲。灰度中:未开放的剧返回 403 feature_disabled。',
+    {
+      drama_id: z.number().int().positive(),
+      hint: z.string().max(300).optional().describe('用户对曲风的偏好(可选),如「想要男女对唱」'),
+    },
+    async ({ drama_id, hint }) =>
+      jsonResult(await client.producePost(`/dramas/${drama_id}/mv/song/styles`, hint ? { hint } : {})),
+  )
+  server.tool(
+    'quote_mv_song',
+    'MV 项目·AI 作曲第 2 步:报价(免费)。总点数 = candidates × 单首价;返回 quote_id(15 分钟有效、一次性)。' +
+      '⚠️ 把 points 原样告诉用户,用户明确同意后才拿 quote_id 调 generate_mv_song(candidates 必须一致),不要擅自确认。',
+    {
+      drama_id: z.number().int().positive(),
+      candidates: z.number().int().min(1).max(3).describe('出几首候选对比(1~3),每首单独计费'),
+    },
+    async ({ drama_id, candidates }) =>
+      jsonResult(await client.produceGet(`/dramas/${drama_id}/mv/song/quote?candidates=${candidates}`)),
+  )
+  server.tool(
+    'generate_mv_song',
+    'MV 项目·AI 作曲第 3 步(扣费):用本剧歌词 + 选定的曲风描述生成 candidates 首带人声的整曲候选,后台跑约 1~2 分钟。' +
+      '必须带 quote_mv_song 拿到的 quote_id。lyrics_rights_confirmed 必须是 true,且**只能在用户明确表示拥有这份歌词的使用权利后**才传 true' +
+      '(拿别人已发表歌曲的歌词生成属于未经授权的翻唱),不要替用户确认。生成的歌末尾带约 1 秒的 AI 生成标识音。' +
+      '完成后 get_mv_song 看候选与唱词质检,再 select_mv_song 选定。',
+    {
+      drama_id: z.number().int().positive(),
+      style_prompt: z.string().min(1).max(2000).describe('曲风描述:suggest_mv_song_styles 返回的某套 prompt(可改)'),
+      style_name: z.string().max(60).optional().describe('方案名,用于区分候选'),
+      candidates: z.number().int().min(1).max(3),
+      quote_id: z.string().describe('quote_mv_song 返回的 quote_id'),
+      lyrics_rights_confirmed: z.boolean().describe('用户确认拥有歌词使用权利后才传 true'),
+    },
+    async ({ drama_id, style_prompt, style_name, candidates, quote_id, lyrics_rights_confirmed }) =>
+      jsonResult(await client.producePost(`/dramas/${drama_id}/mv/song`, {
+        style_prompt, candidates, quote_id, lyrics_rights_confirmed,
+        ...(style_name ? { style_name } : {}),
+      })),
+  )
+  server.tool(
+    'get_mv_song',
+    'MV 项目·AI 作曲:查进度与本剧已生成的候选(免费)。candidates[].qc 是唱词质检摘要(字错率 / 疑似没唱的段落),' +
+      '只是提示——转写对歌声有误差,请让用户试听 file_url 后再选;bound=true 是当前绑定的整曲;' +
+      'lyrics_match=false 表示这首是按修改前的歌词生成的,不能再选(select_mv_song 会拒),要用当前歌词重新生成。',
+    { drama_id: z.number().int().positive() },
+    async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/mv/song`)),
+  )
+  server.tool(
+    'select_mv_song',
+    'MV 项目·AI 作曲第 4 步(免费):把某首候选设为本 MV 的整曲,并按本剧歌词自动对轴(之后 generate_mv_story / generate_mv_script 照常走)。',
+    {
+      drama_id: z.number().int().positive(),
+      track_id: z.number().int().positive().describe('get_mv_song 返回的 candidates[].track_id'),
+    },
+    async ({ drama_id, track_id }) =>
+      jsonResult(await client.producePost(`/dramas/${drama_id}/mv/song/select`, { track_id })),
   )
 
   // ========== P1 · 资产精修(提取后改设定再出图)==========

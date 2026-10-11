@@ -141,6 +141,21 @@ export const ENTRY_POINTS: EntryPoint[] = [
     note: 'MV 不走标准 `rewrite_script`(会被拦),之后回到 extract_assets → 分镜 → 出图的标准链。',
   },
   {
+    customer_has: '只有歌词、没有歌曲(想做 MV)',
+    use: [
+      'create_drama(project_type=mv)',
+      'set_mv_lyrics',
+      'suggest_mv_song_styles',
+      'quote_mv_song',
+      'generate_mv_song',
+      'get_mv_song',
+      'select_mv_song',
+    ],
+    note: 'AI 作曲:用歌词生成带人声的整曲(每首按首计费,末尾带约 1 秒 AI 生成标识音)。' +
+      '生成前必须问用户是否拥有歌词的使用权利,不能替用户确认;质检只是提示,让用户试听后再选。灰度中,未开放的剧返回 403。',
+    flow: 'set_mv_lyrics → suggest_mv_song_styles → quote_mv_song(用户同意) → generate_mv_song → get_mv_song(试听) → select_mv_song → generate_mv_story → generate_mv_script',
+  },
+  {
     customer_has: '产品 / 品牌(广告、品牌微电影)',
     use: [
       'create_drama(project_type=ad 或 brand_film)',
