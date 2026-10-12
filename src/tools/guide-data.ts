@@ -180,10 +180,24 @@ export const ENTRY_POINTS: EntryPoint[] = [
       'recommend_trim_window',
       'regenerate_shot_video',
       'edit_video_shot(就地编辑;get_edit_capabilities 先看当前引擎支持什么)',
+      'repaint_shot_video / reskin_shot_video(保留原片动作、整体换人换装;get_repaint_capabilities 先看本剧开没开)',
       'rerender_episode(改完后免费重拼)',
     ],
     note: '改了台词而视频已存在 → 视频仍念旧词,必须 `regenerate_shot_video`,重拼救不了。',
     flow: 'scan_dialogue_coverage / scan_intra_shot_cuts 先定病因 → update_shot / replace_shot_dialogue / repair_episode_dialogue / split_shot / trim_shot / regenerate_shot_video / edit_video_shot → rerender_episode',
+  },
+  {
+    customer_has: '一段现成视频(自有素材或已出的镜头),想保留动作、把人物 / 服装整体换掉(视频转绘)',
+    use: [
+      'get_repaint_capabilities(看本剧开没开、长镜头接力最多几段)',
+      'upload_shot_footage(自有视频先登记成某镜实拍素材;已是本剧镜头则跳过)',
+      'quote_repaint_shot_video → repaint_shot_video(按描述 + 参考图重画)',
+      'quote_reskin_shot_video → reskin_shot_video(给一张换好装、与原片首帧构图对齐的首帧)',
+      'get_repaint_status(按返回 id 查到完成)',
+      'restore_repaint_original(不满意切回原片,免费)',
+    ],
+    avoid: '别拿 edit_video_shot 做整体换人换装(那是按指令局部改);超过约 14 秒先 split_shot。',
+    flow: 'get_repaint_capabilities → upload_shot_footage(自有视频) → quote_repaint_shot_video / quote_reskin_shot_video → repaint_shot_video / reskin_shot_video → get_repaint_status',
   },
   {
     customer_has: '想自己剪:要逐镜素材包(裸片 / 对白轨 / 音效 / 配乐 / 字幕)',
@@ -274,7 +288,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '8 出视频',
-    tools: ['quote_videos', 'generate_videos', 'get_scene_group_plan', 'generate_scene_groups', 'quote_regenerate_shot_video', 'regenerate_shot_video', 'quote_edit_video_shot', 'edit_video_shot', 'upload_shot_footage(实拍素材镜:客户录屏/产品实拍直接当该镜视频,不出视频不扣费)', 'get_edit_capabilities'],
+    tools: ['quote_videos', 'generate_videos', 'get_scene_group_plan', 'generate_scene_groups', 'quote_regenerate_shot_video', 'regenerate_shot_video', 'quote_edit_video_shot', 'edit_video_shot', 'upload_shot_footage(实拍素材镜:客户录屏/产品实拍直接当该镜视频,不出视频不扣费)', 'get_edit_capabilities', 'get_repaint_capabilities', 'quote_repaint_shot_video', 'repaint_shot_video', 'quote_reskin_shot_video', 'reskin_shot_video', 'get_repaint_status', 'restore_repaint_original'],
     billing: '报价确认后扣点',
     note: 'video_engine 必须在出视频前定(seedance-2.5 默认 / hailuo-3 降本 / wan3.0 风格化·绝不用于写实真人);切换不回溯已生成镜头。',
   },

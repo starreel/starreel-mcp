@@ -1897,6 +1897,103 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ storyboard_id, ...rest }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/edit/generate`, rest)),
   )
+  // ========== B2 · VACE 视频重绘 / 换装重绘(保留原片动作,重画人物与服装) ==========
+  const VACE_COMMON =
+    '\n★与 edit_video_shot 的分工:edit 是按指令改画面(换背景/调色/局部改动);重绘/换装重绘是**以本镜现有视频为动作骨架,把人物与服装整体重画**,' +
+    '动作、口型时机、镜头运动跟原片走,音轨贴回原片。' +
+    '\n★**客户自己的视频也能转绘**:先 upload_shot_footage 把它登记成某镜的实拍素材(会抽出首尾帧、回写时长),再对该镜报价/发起即可;' +
+    '转绘结果写回后该镜不再是实拍素材镜。' +
+    '\n★时长:≤5 秒一单(按 5 秒计费);本剧开了长镜头接力(get_repaint_capabilities 的 relayMaxSegments>0)时 5~约14 秒自动切 ≤3 段接力,' +
+    '每段一单、报价是合计;再长先 split_shot。' +
+    '\n★异步:发起返回一条生成记录(接力时是段 1),用 get_repaint_status(storyboard_id, generation_id) 查到 completed/failed;' +
+    '接力进行中会带 relay.segments_done/segments。完成后本镜视频即换成转绘结果;不满意用 restore_repaint_original 切回原片(免费)。'
+  server.tool(
+    'get_repaint_capabilities',
+    '查本剧能用哪些视频转绘:repaint(视频重绘)/ reskin(换装重绘)是否开放、单段源片上限 maxSourceSec、' +
+      '长镜头接力最多段数 relayMaxSegments(0=没开,>5 秒的镜不能转绘)。免费。',
+    { drama_id: z.number().int().positive() },
+    async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/vace-capabilities`)),
+  )
+  server.tool(
+    'quote_repaint_shot_video',
+    '报价:对某镜做**视频重绘**(按描述 + 参考图重画人物与服装,保留原片动作)要多少点。返回 quote_id。零扣费。本镜须已有视频。' +
+      '报价只认本镜当前这段视频——之后视频被换(重生/上传/编辑完成),发起会 409,重新报价即可。' + VACE_COMMON,
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/repaint/quote`)),
+  )
+  server.tool(
+    'repaint_shot_video',
+    '确认后对某镜做视频重绘。扣费上限 = 报价的 estimated_points(接力时为整条合计)。' +
+      '\n★参考图:不传 reference_image_url 时自动取本镜角色的(换装)定妆图——**不带参考图人也会被换掉**;' +
+      'auto_reference=false 表示明确不要参考图(只按描述画)。' +
+      '\n★keep_scene 缺省 true:把本镜场景/道具/动作补进描述,只换人与衣服;传 false = 连场景一起重画。' +
+      '\n★control:posebodyface(缺省,保口型,说话镜用它)/ posebody(不带脸,嘴不动)/ depth(按景深,纯色背景易出竖条纹)/ scribble(线稿)。' +
+      'strength 只收 0 或 1。' +
+      '\n★本镜绑了产品文字(需保留商品原文)时会被拒(重绘会重画画面里的字)。' + VACE_COMMON + CONFIRM_HINT,
+    {
+      storyboard_id: z.number().int().positive(),
+      quote_id: z.string().describe('来自 quote_repaint_shot_video'),
+      prompt: z.string().describe('要画成什么样(人物外貌、服装、风格)。正向描述,别写「不要 X」'),
+      control: z.enum(['posebodyface', 'posebody', 'depth', 'scribble']).optional().describe('动作控制方式,缺省 posebodyface'),
+      strength: z.union([z.literal(0), z.literal(1)]).optional().describe('0 或 1,缺省 1'),
+      reference_image_url: z.string().optional().describe('主体参考图 URL(先 upload_image 拿);缺省自动取本镜角色定妆图'),
+      auto_reference: z.boolean().optional().describe('false = 明确不带参考图(人会按描述重画)'),
+      keep_scene: z.boolean().optional().describe('缺省 true:保留原片场景与道具,只换人和衣服'),
+    },
+    async ({ storyboard_id, ...rest }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/repaint/generate`, rest)),
+  )
+  server.tool(
+    'quote_reskin_shot_video',
+    '报价:对某镜做**换装重绘**(给一张已换好装的首帧,按原片动作把整段视频续成这身打扮)要多少点。返回 quote_id。零扣费。' +
+      '本镜须已有视频;该功能按剧开放,先看 get_repaint_capabilities 的 reskin。' + VACE_COMMON,
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/reskin/quote`)),
+  )
+  server.tool(
+    'reskin_shot_video',
+    '确认后对某镜做换装重绘。扣费上限 = 报价的 estimated_points。' +
+      '\n★first_frame_url 是**换好装的首帧**:必须与原片首帧**构图、人物姿势、道具位置逐一对齐**(只换衣服),' +
+      '否则整段会跑偏——实测失败都出在首帧。完成后它会成为本镜正式首帧。只收公网 https 图片(先 upload_image 拿)。' +
+      '\n★prompt 可留空(系统看首帧自动写);写的话别用「制服/军装」这类服装类别词,模型会自行加肩章条纹,直接描述颜色款式。' +
+      '\n★control:posebodyface(缺省,保口型)/ depth。本镜绑了产品文字时会被拒。' + VACE_COMMON + CONFIRM_HINT,
+    {
+      storyboard_id: z.number().int().positive(),
+      quote_id: z.string().describe('来自 quote_reskin_shot_video'),
+      first_frame_url: z.string().describe('换好装的首帧 https URL,须与原片首帧构图对齐'),
+      prompt: z.string().optional().describe('可留空:系统看首帧自动写'),
+      control: z.enum(['posebodyface', 'depth']).optional().describe('缺省 posebodyface'),
+    },
+    async ({ storyboard_id, ...rest }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/reskin/generate`, rest)),
+  )
+  server.tool(
+    'get_repaint_status',
+    '查一次视频重绘/换装重绘的进度。generation_id 用发起时返回的 id(接力时就是段 1 的 id,返回的是整条链的状态)。免费。' +
+      '\n· status=processing:进行中;接力时带 relay.segments_done/segments。' +
+      '\n· status=completed:本镜视频已换成转绘结果(video_url / local_path);接力完成时带 relay.final_generation_id——' +
+      '**切回原片要用这个 final_generation_id**,不是段 1 的 id。' +
+      '\n· status=completed 但 errorMsg 含「未写回」:任务期间本镜视频被换掉,结果存档在这条记录里、没覆盖本镜。' +
+      '\n· status=failed:errorMsg 是中文原因(接力会说明第几段失败),镜头未改动,已扣的按规则退。',
+    {
+      storyboard_id: z.number().int().positive(),
+      generation_id: z.number().int().positive().describe('repaint_shot_video / reskin_shot_video 返回的 id'),
+    },
+    async ({ storyboard_id, generation_id }) =>
+      jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/vace/${generation_id}`)),
+  )
+  server.tool(
+    'restore_repaint_original',
+    '把某镜从转绘结果切回转绘前的原片(换装重绘连首帧一起恢复)。免费。' +
+      'generation_id = 本镜当前视频对应的那次转绘(接力取 get_repaint_status 的 relay.final_generation_id)。' +
+      '\n★409 = 之后本镜又出过别的视频,不覆盖(保护后来的结果);有视频任务在跑时也别切回,在跑那单会因源片不符被存档(白花钱)。',
+    {
+      storyboard_id: z.number().int().positive(),
+      generation_id: z.number().int().positive(),
+    },
+    async ({ storyboard_id, generation_id }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/vace-restore`, { generation_id })),
+  )
   server.tool(
     'quote_regenerate_shot_video',
     '报价:重生某镜视频要多少点。返回 quote_id。零扣费。' +
