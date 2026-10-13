@@ -720,6 +720,7 @@ Map the reason to an action:
 | `copyright` | false | Copyright / trademark / real-person likeness | Switch to generic original imagery |
 | `face_mismatch` | false | Portrait ≠ the authorized person | Swap the portrait / confirm same person |
 | `account_overdue` | false | Upstream vendor account overdue (platform-level) | Not self-healable — tell the user; do **not** touch the prompt |
+| `model_unavailable` | false | The chosen image/video model's vendor is paused or temporarily unavailable. `fail_hint` lists the models that are available right now. Whether anything was charged is stated only in the error text — do not promise the user a refund | Ask the user, then switch: `update_project_settings` (`video_engine` / `image_model`) for the whole drama, or `regenerate_shot_video` `model` / `generate_shot_frame` `image_model` for one shot. Retrying unchanged fails again |
 | `quota_full` | false | Platform vendor-asset quota exhausted | Retry won't help — contact ops |
 | `insufficient_credits` | false | Balance too low for this call | Stop, prompt to recharge (402) |
 | `authorizing` | true | Face frame queuing for KYC (not a rejection) | Wait ~1 min, retry |
@@ -851,9 +852,13 @@ the shot is a close-up, or when the picture itself is also wrong.
 `repair_episode_dialogue` runs in the background — poll it with
 `get_dialogue_repair_status`. If the status carries `aborted`, the batch stopped
 early on an account-level failure (`credits` = out of points; `account_overdue` =
-the platform's upstream vendor account, not yours) and the `remaining` shots never
-ran. Resubmitting unchanged will fail the same way — top up for `credits`; for
-`account_overdue`, tell the user and retry later instead of looping.
+the platform's upstream vendor account, not yours; `model_unavailable` = the chosen
+video model's vendor is paused or temporarily unavailable) and the `remaining` shots
+never ran. Resubmitting unchanged will fail the same way — top up for `credits`; for
+`account_overdue`, tell the user and retry later instead of looping; for
+`model_unavailable`, the error lists the models available right now — ask the user,
+switch the model, then resubmit. Full-episode video runs (`generate_videos`) stop at
+the first shot for the same reason, so only that one shot shows the failure.
 Every replaced shot is re-checked before it is written back (same test as
 `scan_dialogue_coverage`): if the new audio is still cut off, repeats or adds
 words, or isn't the line, the product is **not** written back and the charge is

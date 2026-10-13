@@ -749,7 +749,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '两者均暂停本次自动尾帧回写与续接，先复核视频；字段缺席不代表做过检测，也不要直接重试收费生成。' +
       '★not_required=旁白/片尾卡镜:帧与视频由成片层渲染,本镜不需要生成——数补齐进度时把它当已完成,别重试。' +
       'fail_reason(sensitive/text_sensitive/copyright/face_mismatch/account_overdue/quota_full/authorizing/' +
-      'insufficient_credits/transient/repeat_rejected/diagnosis_required/pair_collateral)、retryable(true=可重试;false=先按fail_hint处理,勿原样重试)、fail_hint(人读文案)。' +
+      'insufficient_credits/transient/repeat_rejected/diagnosis_required/pair_collateral/model_unavailable)、retryable(true=可重试;false=先按fail_hint处理,勿原样重试)、fail_hint(人读文案)。' +
+      '★model_unavailable=所选图片/视频模型的厂商已暂停或暂不可用:fail_hint 里列了当前可用的替代模型(扣没扣费以错误文案为准,别替平台向用户承诺已退款),' +
+      '问用户后用 update_project_settings 改 video_engine/image_model(或只对本镜用 regenerate_shot_video 的 model / generate_shot_frame 的 image_model)再生成,原样重试只会再失败。' +
       '★diagnosis_required=同输入同细因连败或已有候选等待判决:先查看已有候选及审计依据。审计故障先重审同一候选,原因未知先复核,不得直接改剧本或重复生成。' +
       '照 retryable 判该重试还是该改内容,别解析中文。' +
       '★pair_collateral=同镜另一帧未通过、本帧随批结束——**本帧自身没被判不合格,别去改它**:有 reopen_pair_id 就用它只重掷有过错的一侧,否则直接重生本镜。' +
@@ -2307,7 +2309,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + 'dialogue-repair-status 查」——第三方照着找会扑空(2026-09-21 由 MCP 覆盖闸抓出)。'
       + '\n★返回里带 **aborted** = 上一批因整账户级失败被提前中止(kind=account_overdue 平台上游账户欠费 / '
       + 'credits 点数不足),remaining 镜未执行。此时**原样重提必然同因失败**:credits 先充值;'
-      + 'account_overdue 不是你的点数问题,停下告知用户稍后再试,别反复重提。'
+      + 'account_overdue 不是你的点数问题,停下告知用户稍后再试,别反复重提;'
+      + 'model_unavailable=所选视频模型的厂商已暂停或暂不可用,error 里列了可用的替代模型,问用户后换模型再提。'
       + '\n★带 **verify_rejected** = 这些镜换完复核没通过(断音/重复念/念错),产物没写回、费用已退——换音修不好,改 regenerate_shot_video。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
