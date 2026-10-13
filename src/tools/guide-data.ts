@@ -14,7 +14,7 @@
  * ★列表字段(use / tools / run / fix)里每一项以**工具名开头**,括号里写关键参数;
  *   散文字段里的工具名用反引号包住——referencedTools() 靠这两条约定抽名字。
  */
-export const GUIDE_VERSION = '2026-09-25'
+export const GUIDE_VERSION = '2026-10-13'
 
 export interface EntryPoint {
   /** 客户手上有什么(判别条件) */
@@ -389,6 +389,7 @@ export const COMMON_REQUESTS: CommonRequest[] = [
   { customer_says: '成片里话没说完 / 切太快', do: '先 `scan_dialogue_coverage` / `scan_intra_shot_cuts` 定病因,再按 qa_tools 的 then 修;别默认去加长镜头。' },
   { customer_says: '下载原图或视频到本地调色、用第三方 AI 后期', do: '`export_handoff_pack` purpose=local_color；只有图片传 media_type=images；按 local_postproduction.color_handoff 执行。' },
   { customer_says: '我想自己剪', do: '`export_handoff_pack` + `get_handoff_toolchain`,不走 `compose_episode`。' },
+  { customer_says: '做动作片 / 打斗 / 技能展示 / 这条参考动作片我们能不能做', do: '先 `get_capabilities_guide` section=action_film:资产照常走 `rewrite_script` → `review_script` → `extract_assets`,分镜改用自己写的表(`import_storyboard_table`)而不是 AI 拆镜,首帧停在起势,拖沓尾段用 `trim_shot` 剪;平台不支持镜内分段变速。' },
   { customer_says: '要配音 / 不要视频原声', do: '`update_project_settings` use_clip_audio=false → `assign_voices` → `generate_tts` → `compose_episode`。' },
 ]
 
@@ -665,6 +666,60 @@ export const MODEL_GUIDE = {
   ] as ModelCombo[],
 }
 
+/**
+ * 动作片 / 打斗 / 技能展示片的制作引导。
+ * 出处:2026-10-13 内部测试剧实测(单角色、3 镜 18 秒、无对白的高速动作展示,MiniMax 出视频)。
+ * 叙事剧那条路(改写 → AI 拆镜)会把动作镜拆碎;下面每一条都是那次实测踩出来的。
+ * ★只写通用方法,不写任何具体角色/招式/剧名(通用 SaaS:钉死的内容会以 few-shot 污染所有租户)。
+ */
+export const ACTION_FILM = {
+  when:
+    '客户要做动作 / 打斗 / 技能展示 / 特效爆发类短片(无对白或极少对白,看点是动作与特效),或拿来一条参考动作片问「能不能做出来」时走这条。' +
+    '有对白、讲连贯故事的剧仍按 pipeline 正常走,只把其中的打斗镜按下面 shot_design 写。',
+  setup: [
+    '建剧:`create_drama` 一次设好——画幅照参考片(横屏动作片 16:9);art_bible / video_style_prompt 写画风与特效质感(如「2D 动画质感、速度线、动态模糊、能量辉光」);video_negative_prompt 写要压掉的(「画面静止、动作缓慢」);**完全无人声**的片才设 creative_contract speech=forbidden(防厂商自己加台词)——有哪怕一句对白/旁白就别设,否则含台词的镜被预检拦下、视频被强制静音、TTS 也被拒;无配乐需求关 bgm_enabled,无台词再关 show_subtitles。',
+    '画风:动画/风格化动作片记得 `update_project_settings` 把 style 从默认 realistic 改成**平台认识的档位键**——日式 2D 动画 anime、国漫 guoman、3D 卡通 c3d(实测 anime 出图即为 2D 动画质感)。别填「2D 动画质感」这类自由描述:认不出的值会退回 realistic,出图提示词仍带着「写实照片」与画风圣经打架。奇幻/仙侠题材先 `set_era_contract` era=fantasy(发光能量、悬浮碎石不会被判「不合时代」)。',
+    '入口:资产照常走剧本主干,**只把分镜换成自己写的表**。① `set_script` 写一段动作梗概(人物外观 + 动作经过)→ `rewrite_script` → `review_script` → `extract_assets`(带 review_token;新剧不经改写稿提取会被 400 拒,这一段不能省)——这样才有角色与场景供导入按名字绑定;② 分镜**不调 `generate_storyboards`**(AI 拆镜会把一个连贯动作拆成多个碎镜),改走 `get_storyboard_table_spec` → `check_storyboard_table`(errors 清零)→ `import_storyboard_table`,镜数、秒数、景别、运镜由你定;场景头地点名要与提取出的场景名一致才绑得上。③ 导入默认后台自动补全:`get_autofill_status` 轮询到 done → 再按 shot_design 用 `update_shot` 改首帧/尾帧提示词 → **最后**才 `review_storyboards` 拿 review_token 去出帧(补全或改镜都会让先拿的 token 失效,出帧被 400 拒;改完再审一次即可,免费)。',
+    '资产照常齐备:定妆图 + 设定图(`generate_portraits_and_sheets`)、空景基板(`quote_scene_images` → `generate_scene_images`)、`generate_color_script`。提取后先 `get_scenes` 核对:改写可能给一段**连续**动作自行编出时间推进(如同一地点拆出两个时段),这种多出来的场景用 `delete_scene` 删掉、分镜表场景头统一用留下的那个(每个场景都要单独付费出一张基板);剧情里**真有**不同时段(昼夜变化)就保留各自的场景与基板,分镜表场景头的地点和时段要与之对应,否则绑不上或套错光照。',
+  ],
+  /** 从头到尾的完整调用顺序——三道审查闸与每次改镜后的复审都在里面;各条细节见下面几段。 */
+  sequence:
+    '★通则:下面每个 rewrite / extract / generate_* 都是**异步**的,调完立即返回;一律轮询到完成再走下一步——文本 agent 看 `get_run_status`,图看 `get_characters` / `get_storyboards`,基板看 `get_pipeline_status`,视频看 `get_storyboards` 的 video_status。' +
+    '`create_drama`(+ `update_project_settings` style / `set_era_contract`)→ `set_script`(动作梗概)→ `rewrite_script` → `get_run_status` 到结束 → `review_script` → `extract_assets`(带 token)→ `get_run_status` 到结束 → `get_scenes` 核对场景 → ' +
+    '`check_storyboard_table` → `import_storyboard_table` → `get_autofill_status` 到 done → `update_shot`(首帧起势等)→ `review_storyboards` → ' +
+    '`generate_portraits_and_sheets`(第一次只派定妆图)→ `get_characters` 轮询到定妆图 ready → 再调一次 `generate_portraits_and_sheets` 出设定图 → 轮询到 sheet ready;基板 `quote_scene_images` → `generate_scene_images`;`generate_color_script` → `quote_frames` → `generate_frames`(首帧,带分镜 token)→ `get_storyboards` 轮询到首帧全部 ready(出图是异步的)→ ' +
+    '`get_scene_group_plan` × `tail_frame_plan` 取交集(只留单独生成、又需要尾帧的镜)→ `update_shot`(last_frame_prompt)→ `review_storyboards`(复审拿新 token)→ 逐镜 `quote_shot_frame` → `generate_shot_frame`(frame_type=last_frame;别用批量 `generate_frames` 出尾帧,它不看分组,会连组内镜一起出、白扣费)→ `get_storyboards` 轮询到尾帧全部落地(还在生成时审查,拿到的 token 会在图落地后失效)→ ' +
+    '`review_frames`(★出视频前必过,拿帧层 token)→ `quote_videos` → `generate_videos`(带帧层 token)→ `get_storyboards` 轮询到全部 video_status=ready → `scan_intra_shot_cuts` → `trim_shot` 剪拖沓尾段 → `compose_episode` → `get_final_cut`。' +
+    '任何一步之后改了镜,下一个收费步之前都要把对应的 review_* 再跑一次。',
+  shot_design: [
+    '一镜一个「大招」:5~7 秒写一个主动作 + 它的特效(冲刺/出拳碎物/坠击冲击波各一镜),比一镜塞三个招式稳得多。特效约束写进分镜表的 [VFX: …] 行(一条一行),会硬注入出图。',
+    '★首帧停在**起势**,别停在**命中**瞬间:实测「出拳击碎岩壁」一镜的首帧被画成了拳已命中,视频只能从命中往后演,蓄力和出拳过程消失。出帧前用 `update_shot` 写 first_frame_prompt(「拳收在腰侧蓄力、身体前压」这类起势姿态),命中与碎裂留给视频去演。',
+    '夸张造型(能量包覆的肢体、巨大化的拳头等)只靠首帧维持不住——实测首帧画出来了,视频里退回成普通手臂缠着能量。要它贯穿全镜,首帧与尾帧都要画出该造型,并在 video_prompt 里写明全程保持。',
+    '瞬移 / 闪现类效果模型能做(实测:近景 → 能量闪光 → 人消失 → 远处出现 → 冲回近景,4 秒内循环 3~4 次),在画面叙述里写清「消失—出现—留下光迹」三段即可。',
+    '大场面(坠击、冲击波、能量柱)用远景 + 拉远:实测能量柱、强闪白、环形冲击波、碎石与镜头后撤都做出来了;人物在画面里会很小,身份一致性靠定妆图与设定图兜住。',
+  ],
+  continuity: [
+    '相邻的连续动作镜会被自动并成**一组**一次生成(场景组),组内时长会按内容重分:实测 6 秒 + 5 秒两镜生成后变成约 8 秒 + 3.7 秒。这是好事——组内动作衔接最顺——但别拿报价时的秒数去卡剪辑点;出视频前用 `get_scene_group_plan` 看分组。',
+    '★尾帧只对**单独生成**的镜有用:先看 `get_scene_group_plan`——被并进组的镜,组视频只送组首镜首帧(唯一例外是 seedance-2.5 的关键帧组),给它出的尾帧根本不会送到视频模型,出了白扣费(实测那次就有一张尾帧落在组内、没被用上)。某镜确实需要终态锚,就让它单独出:`update_shot` 给该镜设 video_engine(设了引擎的镜不进场景组,代价是失去与相邻镜一次成片的连贯),否则接受组内由模型自由衔接、不出尾帧。' +
+      '单独生成的镜:首帧出完必调 `tail_frame_plan`:冲刺类「从 A 点到 B 点」的镜会被判为状态改变、需要独立尾帧。出尾帧前先看 `get_storyboards` 的 terminal_desc_missing,为 true 的镜用 `update_shot` 写 last_frame_prompt(结束时人在哪、什么姿态、身后留下什么痕迹),否则尾帧大概率被终态闸拒且照常扣费。写完**再跑一次 `review_storyboards`**,用新 token 逐镜 `quote_shot_frame` → `generate_shot_frame`(frame_type=last_frame)出尾帧——改镜会让出首帧时那个 token 失效;批量 `generate_frames` 出尾帧不看分组,剧里有组内状态改变镜时会一并出、白扣费。报价一次只能用一次,出首帧用掉的 quote_id 不能再拿来出尾帧。首尾帧都出齐后跑 `review_frames`,用它的 token 才能 `generate_videos`(分镜层 token 只放行出帧)。',
+    '出完视频用 `scan_intra_shot_cuts` 查镜内乱切;瞬移类的闪切是有意的,别当成故障去重生。',
+  ],
+  engines:
+    '实测样本(单次,3 镜):hailuo-3 720p,3 镜 18 秒视频 1501 点,无镜内乱切,瞬移 / 碎物 / 冲击波都做出;短板是每镜结尾有 2~3 秒「余韵」(蓄力、烟尘扩散)偏慢,夸张造型不保持。' +
+    'seedance-2.5 同题报价约为 hailuo-3 的 3 倍,动作片未单独实测;wan3.0 最省且动作措辞容易过审,但会在镜内自行换机位(叙事剧实测 11/12 镜)——动作片里这有时反而像剪辑,有时是乱切,先出 1 镜看。' +
+    '只出 1 次样本不足以下定论,给客户推荐时说明这是单次实测;要比较引擎就同镜各出一版(`quote_regenerate_shot_video` 传 model)。',
+  pacing: [
+    '动作片的命门是节奏:参考片几乎每一秒都有动作,生成镜头的结尾常拖 2~3 秒。先抽帧看清楚哪一段在拖,再处理。',
+    '★拖沓的**尾段用 `trim_shot` 剪掉**(免费,in_ms/out_ms,之后 `compose_episode` 重拼):把镜头在动作结束、余韵刚起时收住。剪之前先确认保留窗口覆盖全部动作:独立生成的镜用 `recommend_trim_window` 看片内活动点(返回 applicable=true 时);**组内镜它返回 applicable=false**,改为下载该镜视频按 0.25~0.5 秒抽帧人工看动作在哪结束再定 out_ms;终拼预检报 trim_truncation_risk 只是提醒,活动点都在窗口内就可以照拼。',
+    'speed_factor(`update_shot`,0.5~2.0,免费不重生)只能**整镜**统一变速:会把大招本身一起加快,冲击感变飘。只在整镜都偏慢时用。',
+    '★平台**不支持镜内分段变速**(同一镜里大招原速、余韵快放)。客户要那种效果:要么接受 `trim_shot` 剪掉余韵(时长相近,只是剪掉而不是快放),要么 `export_handoff_pack` 把镜头交给客户在本地剪辑软件里做分段变速。`split_shot` 不是解法——拆出来的新镜要重出视频、要花钱。',
+    '0.1~0.3 秒级的快切蒙太奇平台不会自动做,走 `export_handoff_pack` 交本地后期。',
+  ],
+  cost_reference:
+    '同一次实测的总花费约 3360 点:视频 1501(hailuo-3,与报价一致)、图片约 1050(定妆 + 设定 + 场景基板 + 3 首帧 + 1 尾帧,落在报价区间内;其中那张尾帧所在镜被并进了组,事后看是白花的)、文本约 810(改写 + 提取 + 导入补全 + 色彩脚本,调用约 60 次)。' +
+    '文本步按 token 后付、没有报价,但在这种短片里占比不小,事先要告诉客户。',
+}
+
 export const HOW_TO_READ =
   '先按 entry_points 判客户手上的材料该走哪条通道(这是最常被跳过的一步),再按 pipeline 顺序推进、每道 review_gates 必过;' +
   '收费步按 billing.quote_flow 报价确认;遇到质量投诉按 qa_tools 的 symptom 选检测工具先定病因。'
@@ -682,10 +737,11 @@ export function buildGuide() {
     common_requests: COMMON_REQUESTS,
     local_postproduction: LOCAL_POSTPRODUCTION,
     model_guide: MODEL_GUIDE,
+    action_film: ACTION_FILM,
   }
 }
 export type GuideSection = Exclude<keyof ReturnType<typeof buildGuide>, 'version' | 'how_to_read'>
-export const GUIDE_SECTIONS = ['entry_points', 'pipeline', 'review_gates', 'qa_tools', 'optional_boosts', 'billing', 'common_requests', 'local_postproduction', 'model_guide'] as const
+export const GUIDE_SECTIONS = ['entry_points', 'pipeline', 'review_gates', 'qa_tools', 'optional_boosts', 'billing', 'common_requests', 'local_postproduction', 'model_guide', 'action_film'] as const
 
 const head = (s: string) => /^[a-z][a-z0-9_]*/.exec(s.trim())?.[0] ?? null
 const inProse = (s: string | undefined) => [...(s ?? '').matchAll(/`([a-z][a-z0-9_]*)`/g)].map((m) => m[1])
@@ -712,6 +768,9 @@ export function referencedTools(): string[] {
   for (const m of [...MODEL_GUIDE.image_models, ...MODEL_GUIDE.video_engines]) {
     [...m.strengths, ...m.weaknesses, m.best_for, m.avoid_for].forEach((s) => inProse(s).forEach(add))
   }
+  // 动作片段:全是散文,工具名都用反引号包住
+  ;[ACTION_FILM.when, ACTION_FILM.sequence, ...ACTION_FILM.setup, ...ACTION_FILM.shot_design, ...ACTION_FILM.continuity, ACTION_FILM.engines, ...ACTION_FILM.pacing, ACTION_FILM.cost_reference]
+    .forEach((s) => inProse(s).forEach(add))
   return [...out].sort()
 }
 
@@ -735,6 +794,7 @@ export function buildInstructions(): string {
     '长任务异步:generate_* 立即返回,用 get_pipeline_status / get_storyboards / get_run_status 轮询;图片 pending = 还在生成,别重复调(重复扣费)。',
     '改写成功后只 edit_rewritten_script 点改,别重跑 rewrite_script;角色外观唯一真相源是人物档案(update_character),别写进 visual_lock/art_bible。',
     '选图片模型/视频引擎、客户问「哪个模型好 / 怎么更省」→ get_capabilities_guide(section=model_guide):各模型实测优劣、价格、决策步骤与推荐组合;建剧时就主动讲给客户定。',
+    '做动作 / 打斗 / 技能展示片 → get_capabilities_guide(section=action_film):分镜表直通道、首帧停在起势、并组与节奏剪裁。',
     '不确定该用哪个工具、客户问「你们能做什么」→ 先调 get_capabilities_guide(免费、本地、不联网)。',
   ].join('\n')
 }

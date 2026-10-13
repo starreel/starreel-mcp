@@ -964,6 +964,65 @@ The platform's default shot breakdown still asks for one continuous action per
 shot. Apply the beat approach shot by shot on complaints; don't rewrite a whole
 episode this way unprompted.
 
+### Action / fight / skill-showcase films (动作片 / 打斗 / 技能展示)
+
+When the customer wants a short whose point is the action and the effects (little
+or no dialogue), or brings a reference action clip and asks "can we make this",
+call `get_capabilities_guide` with `section=action_film` first. The short version,
+from an internal measured run (one character, 3 shots, 18 s, `hailuo-3`):
+
+- **Assets go through the normal trunk; only the storyboard is yours.** Put a
+  one-paragraph action synopsis in `set_script`, then `rewrite_script` →
+  `review_script` → `extract_assets` (with the review token — extraction on a
+  new drama is rejected without a rewritten script). Then skip
+  `generate_storyboards` (AI breakdown splits one continuous move into
+  fragments) and write the table yourself: `get_storyboard_table_spec` →
+  `check_storyboard_table` → `import_storyboard_table`. Scene headers must use
+  the extracted scene names to bind. The import auto-completes in the
+  background: poll `get_autofill_status` until done, make your `update_shot`
+  prompt edits, and only then run `review_storyboards` for the token that
+  `generate_frames` needs (completion or edits invalidate an earlier token).
+- **One big move per 5–7 s shot**, effects in `[VFX: …]` lines.
+- **First frame = wind-up, not impact.** In the measured run the "punch shatters
+  the wall" frame was drawn at the moment of impact, so the video could only
+  play the aftermath. Set `first_frame_prompt` to the wind-up pose before
+  generating frames.
+- **Adjacent continuous-action shots are generated as one group**, and their
+  durations get re-split by content (6 s + 5 s came back as ~8 s + 3.7 s). Check
+  `get_scene_group_plan` before generating videos.
+- **Tail frames only help shots generated on their own.** Check
+  `get_scene_group_plan` first: a grouped shot's tail frame is never sent to
+  the video model (only the group head's first frame is, except Seedance 2.5
+  keyframe groups), so generating it is wasted spend. If a shot truly needs an
+  end-state anchor, give it its own `video_engine` via `update_shot` (that
+  takes it out of the group). For standalone shots: after first frames, call
+  `tail_frame_plan`; for shots with
+  `terminal_desc_missing`, write `last_frame_prompt` via `update_shot`, then
+  run `review_storyboards` **again**, then per shot `quote_shot_frame` →
+  `generate_shot_frame(frame_type=last_frame)` — the edit invalidated the old
+  token. Don't batch tails with `generate_frames`: it ignores grouping and
+  bills grouped shots' tails too. Quotes are single-use; quote scene plates
+  with `quote_scene_images` before `generate_scene_images`.
+- **Wait between async steps:** `generate_portraits_and_sheets` needs two calls
+  (portraits, poll `get_characters` until ready, then sheets); poll
+  `get_storyboards` until first frames are ready before tail frames, and until
+  tail frames land before reviewing.
+- **Before videos, run `review_frames`** once all first and tail frames have
+  settled, and pass its token to `generate_videos` (the storyboard token only
+  authorizes frame generation). The guide's `sequence` field lists the whole
+  call order with every gate.
+- **Pacing:** generated shots tend to end with 2–3 s of lingering (charging,
+  dust settling). Cut it with `trim_shot` (free). Confirm all activity stays
+  inside the window: `recommend_trim_window` for independently generated
+  shots; it returns `applicable=false` for grouped shots — sample frames every
+  0.25–0.5 s instead and pick `out_ms` by eye.
+  `speed_factor` only speeds up the **whole** shot, including the hit itself.
+  **Per-segment speed ramps inside one shot are not supported**. Offer
+  trimming, or hand off with `export_handoff_pack` for local editing.
+- Cost reference for that run: about 3,360 points total (video 1,501, images
+  ~1,050, text ~810). Text steps are billed after use and add up. Tell the
+  customer in advance.
+
 ### Writing shots yourself — one main action per shot (动作过载 / "像快进")
 
 When you write storyboards yourself (`bulk_import_storyboards`, `update_shot`,
