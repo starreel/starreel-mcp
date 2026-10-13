@@ -25,7 +25,9 @@ const MIME_BY_EXT: Record<string, string> = {
 }
 
 const AUTH_BASE = process.env.STARREEL_AUTH_BASE ?? 'https://api.shortreelai.com'
-const LOC_BASE = process.env.STARREEL_LOC_BASE ?? 'https://translator.starreel.ai'
+// 本地化服务没有默认地址(2026-10-13)：原域名 translator.starreel.ai 的 DNS 曾悬空指向他人主机,
+// 而 loc() 会带 Bearer token 发请求——默认值指向不受控主机 = 把客户令牌送出去。必须显式配置。
+const LOC_BASE = process.env.STARREEL_LOC_BASE?.trim() || ''
 
 export class StarReelClient {
   private token: string | null = null
@@ -72,8 +74,14 @@ export class StarReelClient {
     return res
   }
 
-  /** 本地化服务(translator.starreel.ai)的 JSON 调用。 */
+  /** 本地化服务(STARREEL_LOC_BASE)的 JSON 调用。未配置则直接拒绝,不发任何请求。 */
   async loc<T>(path: string, init: RequestInit = {}): Promise<T> {
+    if (!LOC_BASE) {
+      throw new Error(
+        'StarReel localization service is not configured (STARREEL_LOC_BASE is unset). ' +
+          'This service is currently offline — check with StarReel before using localization tools.',
+      )
+    }
     // 网络层失败(DNS/TLS/超时)与业务 4xx/5xx 分开报——agent 拿到 "fetch failed"
     // 无从行动;点名服务与建议,它才能正确转述/重试/放弃。
     let res: Response
