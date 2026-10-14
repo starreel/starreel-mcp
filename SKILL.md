@@ -2,8 +2,9 @@
 name: starreel-drama-production
 description: >-
   Operating skill for any AI agent driving the StarReel short-drama production
-  pipeline (script → rewrite → extract → portraits + sheets → storyboards → frames →
-  video → voiceover → final cut) over MCP or REST. Covers the ordered workflow,
+  pipeline (script → rewrite → extract → storyboards → portraits + sheets → color
+  script → scene images → frames → video → voiceover → final cut) over MCP or REST.
+  Covers the ordered workflow,
   the entry-point decision table (which channel each kind of customer material
   takes), the eleven operating disciplines (prepaid billing, quote-before-spend, retryable
   failure handling, content compliance, tenancy), and a failure playbook.
@@ -176,8 +177,23 @@ Don't ask the user at every step. Sort work into three tiers:
    contradict: portraits follow the profile, sheets follow the lock, and the
    consistency gate then rejects the sheet against the portrait **every single
    retry** — a structural dead loop that only burns money.
-2. **Pipeline backbone — metered; in order; quote-then-confirm.** portraits →
-   **character sheets** → scene images → frames → videos → TTS → compose.
+2. **Pipeline backbone — metered; in order; quote-then-confirm.** storyboards
+   (text-only, needs no image) → portraits → **character sheets** → color script
+   → scene images → frames → videos → TTS → compose. Build portraits and sheets
+   **after** storyboards, never before: storyboards need no image, and once they
+   exist you can see which visual characters never appear and `delete_character`
+   them first. `generate_portraits_and_sheets` renders **every undeleted visual
+   character** that still lacks an image / sheet — it does not consult shot
+   bindings — so an unused visual character left in the cast is billed like any
+   other. Pruning is **drama-wide, not per episode**: characters belong to the
+   drama, and `delete_character` removes the role from every episode's frame
+   assembly, so delete only a character that appears in no shot of **any**
+   episode and is not planned for a later one (confirm with the customer); when
+   in doubt keep it — one portrait costs far less than a missing identity anchor
+   in a later episode. Voice-only roles (`char_type` `voiceover`: narrator, phone
+   voice) are skipped by the portrait step and have no shot binding by design —
+   **keep them**, they still carry the dubbing. This is also the order
+   `get_pipeline_status` reports.
    Spending stages follow the normal quote → show the user → confirm flow
    (discipline 2). `quote_character_portraits` quotes **portraits only**; the
    sheets that must follow have no quote tool (billed by usage) — tell the user
@@ -259,7 +275,9 @@ content that will be rejected.
    speaks alone, at length, without music, and locks that as the character's
    voice — no customer recording needed. It locks only videos generated
    *afterwards*, so the cheapest order is: generate one shot per speaking
-   character, pick the voice, then generate the rest. `get_pipeline_status` →
+   character with `quote_regenerate_shot_video` → `regenerate_shot_video`
+   (`generate_videos` has no shot filter), pick the voice, then `generate_videos`
+   the rest. `get_pipeline_status` →
    `native_voice_anchor` lists `unanchored_speakers` (not locked yet) and
    `stale_shots` (made before the lock — `regenerate_shot_video` them). Decide
    the voice reference early; picking it after the whole episode is rendered
@@ -290,7 +308,18 @@ content that will be rejected.
    like `clone_voice`; the same candidate saved twice is charged once.
 
 6. **Follow the pipeline order — do not skip.** `set_script` → `rewrite_script`
-   → `extract_assets` → portraits **+ sheets** → storyboards → frames → videos.
+   → `extract_assets` → storyboards → portraits **+ sheets** → color script →
+   scene images → frames → videos. Storyboards are a text-only step that needs
+   no image, so build portraits / sheets / scene plates **after** them, once the
+   cast is settled: prune **visual** characters that appear in no shot of **any
+   episode** (and are not planned for a later one — characters are drama-wide,
+   `delete_character` removes them from every episode; confirm with the
+   customer, keep when in doubt) with `delete_character` before spending — the
+   portrait step renders **every undeleted visual character** without an image,
+   not just the ones bound to shots. Never prune voice-only roles (`char_type` `voiceover`: narrator, phone
+   voice): they are skipped by the portrait step, have no shot binding by design,
+   and the dubbing still needs them (motion templates must follow storyboards
+   anyway).
    **The rewrite step is mandatory and server-enforced**: put your raw material
    (outline, synopsis, or even a finished script you wrote) into `set_script`,
    then run `rewrite_script` — the platform rewrite produces a shootable draft
@@ -308,6 +337,12 @@ content that will be rejected.
    are the shot consistency anchor every frame references** — portraits alone
    leave characters drifting across angle / lighting / wardrobe.
    `generate_portraits_and_sheets` does both (portraits first, then sheets).
+   **`generate_videos` has no per-shot parameter** — it renders every shot of
+   the episode that still lacks a video, in one run. When a native-audio project
+   needs one seed shot per speaking character before locking voices, render those
+   seeds with the single-shot tools `quote_regenerate_shot_video` →
+   `regenerate_shot_video` (they work on a shot that has no video yet), lock the
+   voice with `set_voice_anchor_from_shot`, then `generate_videos` for the rest.
    **Frames take two passes.** `generate_frames` makes **first frames only** by
    default — never first + last in one call. Once the first frames have landed,
    **always call the free `tail_frame_plan`**: it names the shots that need their
@@ -502,8 +537,19 @@ content that will be rejected.
     | After you produce | Run | Before you call |
     |---|---|---|
     | the rewritten draft | `review_script` | `extract_assets`, `generate_storyboards` |
-    | storyboards | `review_storyboards` | `generate_frames` |
-    | shot frames | `review_frames` | `generate_videos` |
+    | storyboards | `review_storyboards` | `generate_frames`, `generate_shot_frame` |
+    | shot frames | `review_frames` | `generate_videos`, `regenerate_shot_video` |
+
+    The per-shot tools are gated too (since 2026-10-14). A whole episode driven
+    shot by shot through `generate_shot_frame` / `regenerate_shot_video` used to
+    touch none of the gates; now each takes the same `review_token` as its batch
+    counterpart. A finished frame does **not** invalidate the storyboard token
+    (that fingerprint covers storyboard content only — prompts, dialogue, shot
+    size, bindings; not generated images). Only editing storyboards
+    (`update_shot`, imports, adding/removing shots, character bindings) requires
+    a fresh `review_storyboards`. A finished frame does change the *frames*
+    fingerprint, so run `review_frames` again before the next
+    `regenerate_shot_video`.
 
     Each review returns `{ pass, error_count, warning_count, findings[],
     review_token }`. Every finding carries `code` (problem type), `shots`

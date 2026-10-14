@@ -787,7 +787,7 @@ export function buildInstructions(): string {
     entry,
     '',
     '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 世界观图 / 动作模板 / 色彩脚本 → run_precheck → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费·哪几镜要独立尾帧) → quote/generate_frames(frame_type=last_frame) → ★review_frames → quote/generate_videos → 音频 → compose_episode → get_final_cut。用 get_pipeline_status 查进度。',
-    '三道免费硬闸(跳过 → 400):review_script(extract_assets/分镜前)· review_storyboards(出图前)· review_frames(出视频前);review_token 随下游收费工具传,findings 逐条原样告诉客户。',
+    '三道免费硬闸(跳过 → 400):review_script(extract_assets/分镜前)· review_storyboards(出图前,含单镜 generate_shot_frame)· review_frames(出视频前,含单镜 regenerate_shot_video);review_token 随下游收费工具传(批量与单镜工具都要),findings 逐条原样告诉客户。',
     '计费纪律:预付费不透支;大额步 quote_* → 把 estimated_points 原样告诉客户 → 客户同意后 generate_*(quote_id),绝不擅自确认;' +
     '出图类报价给 estimated_points(上界,按它准备余额)与 typical_points(通常花费),两个都说;' +
     '文本步按 token 后付;402 就停下让客户充值,别重试。',

@@ -86,12 +86,12 @@ const REVIEW_ARGS = {
 // 完整工作流顺序(照 get_pipeline_status 的 10 步真相走,不要跳步):
 //   create_drama → set_script(原始) → rewrite_script(AI改写) → [get_script/edit_rewritten_script 审改]
 //   → extract_assets(角色/场景/道具) → quote/generate_storyboards(先分镜·纯文本拆镜)
-//   → generate_portraits_and_sheets(定妆图+设定图·一致性关键·分镜后建只给出场角色更省;设定图不能省)
+//   → generate_portraits_and_sheets(定妆图+设定图·一致性关键·分镜后建:先 delete_character 删**全剧**都不出场的出镜角色再出图——角色是剧级的,删了别的集也没了,拿不准就留着;它对所有未删的出镜角色出图、不看分镜绑定;画外音 voiceover 角色不出图也别删,配音还靠它;设定图不能省)
 //   → generate_color_script(剧目级资产·分镜后出图前·文本步无报价)
 //   → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费) → generate_frames(frame_type=last_frame) → quote/generate_videos
 //   → compose_episode → get_final_cut / get_export
 // 项目设定随时可 update_project_settings;色彩脚本保留主干，动作模板仅可选实验。
-const WORKFLOW_HINT =
+export const WORKFLOW_HINT =
   '★三档执行策略(别把三档混着问客户):' +
   '①【基础项目设定·免费·必做地基·建剧即设好,别建空壳】project_type/setting_brief(世界观·ERA LOCK)/' +
   'ethnicity(族裔)/画幅分辨率,以及一致性锚 cinematography_prompt(摄影DNA)·art_bible(美术圣经)·visual_lock(视觉锁定)——' +
@@ -131,7 +131,8 @@ const WORKFLOW_HINT =
   '且新版不保证保留旧版已改好的地方(三版实测会来回摆)。要修就 edit_rewritten_script 点改' +
   '(get_script 取全文 → 只改那几场、其余逐字照抄 → 提交整篇),免费秒级、结果确定;' +
   '误重跑用 get_script(include_previous=1) 回捞上一版。' +
-  'generate_portraits_and_sheets(定妆图+设定图·分镜后建只给出场角色出图更省)→' +
+  'generate_portraits_and_sheets(定妆图+设定图·分镜后建:先用 delete_character 删掉**全剧任何一集都不出场、后续集也不打算用**的出镜角色再出图——角色是剧级的,删了每一集的出帧装配都不再带它,只看本集分镜判不出来、拿不准就留着(一张定妆图的钱远小于后面某集丢身份锚);定妆图步对**所有未删的出镜角色**出图、不看分镜绑定,留着的都照常扣费;' +
+  '画外音角色(char_type=voiceover 的旁白/电话音)本就不出图、也没有分镜绑定,**别删**,配音还靠它)→' +
   '★generate_color_script(色彩脚本·统一调色)→assign_voices(分配音色;旁白/角色库里没合适的→design_voice 按描述造一个,定样后 set_character_voice)→' +
   '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames(默认只出首帧)→★tail_frame_plan(免费·哪几镜要独立尾帧)→frames(frame_type=last_frame)→★review_frames→videos→generate_tts→compose;' +
   '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
@@ -154,10 +155,15 @@ const WORKFLOW_HINT =
   '用 generate_portraits_and_sheets 一键两步(每调一次推进一步,定妆图齐了再调一次才出设定图),或定妆图后接 generate_character_sheets。' +
   '进度自检看 get_pipeline_status 的 generate_character_sheets 步(completed/total,portrait_only=只有定妆图的角色数)。' +
   '★客户自带图:定妆图须单人、单张单角度、无文字;场景图须空景无人、无叠加文字——set_character_portrait/upload_scene_image 会自动检查、不合规 422 拒收。' +
-  '★别先建角色形象/道具设定图/动作模板再分镜——分镜是纯文本步、不依赖任何图;资产在分镜后建更省更准(动作模板本就必须分镜后)。收费步照现有 quote 报价确认流程。' +
+  '★别先建角色形象/道具设定图/动作模板再分镜——分镜是纯文本步、不依赖任何图;分镜后阵容才定,先删不出场角色再出图才省(动作模板本就必须分镜后)。收费步照现有 quote 报价确认流程。' +
   '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script(没有现成歌曲:set_mv_lyrics 后先 suggest_mv_song_styles→quote_mv_song→generate_mv_song→get_mv_song→select_mv_song)。' +
+  '★★【单镜路径同样受审查闸】:generate_shot_frame 同样要带分镜层 review_token,regenerate_shot_video 同样要带镜头图片层 review_token——' +
+  '别指望用逐镜工具绕开审查(实测有整集 25 镜全靠单镜出帧、一道闸都没碰到的做法,成片返工全是真扣费)。' +
+  '出完帧**不会**让分镜层 token 失效(指纹只看分镜内容);只有改了分镜内容——update_shot / 导入 / 增删镜 / 改角色绑定——才要复审一次(免费、秒级)。' +
+  '出完一镜的帧会让**镜头图片层** token 失效,下一镜 regenerate_shot_video 前 review_frames 一次即可。' +
   '★★【原声剧先锁声线,再批量出视频】use_clip_audio=true(默认)时每镜嗓音由视频厂商各自采样,不锁必漂,事后统一要逐镜重出。' +
-  '有客户授权音源→clone_voice+set_character_voice,在 generate_videos 之前;没有→每个说话角色先出一镜台词较长的,' +
+  '有客户授权音源→clone_voice+set_character_voice,在 generate_videos 之前;没有→每个说话角色先用单镜工具 quote_regenerate_shot_video→regenerate_shot_video 出一镜台词较长的' +
+  '(generate_videos 没有按镜参数、只批量补缺视频的镜;单镜重生对还没有视频的镜同样可用),' +
   '用 set_voice_anchor_from_shot 从那一镜选定声线,再出其余镜。get_pipeline_status 的 native_voice_anchor 会列出还没锁的' +
   ' unanchored_speakers 和锁之前出的、需要重出的 stale_shots。' +
   '★世界观概念图=默认必做(提升整剧一致性、很多第三方平台漏做这步):分镜后默认调 generate_world_concept,' +
@@ -1077,10 +1083,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★★出尾帧若被拦下并提示「此镜标为状态改变,但没有任何地方说明结束时是什么样子」:' +
       '正解是用 update_shot 把结束状态写进 last_frame_prompt 再出,**别直接加 allow_missing_terminal 硬上**——' +
       '这类镜照现状出尾帧的历史成功率只有 9.4%(有终态描述的 40.2%),硬上多半是白扣一次钱。' +
-      '只有确认这一镜就是要「几乎不变」的画面时才带那个参数。' + CONFIRM_HINT,
+      '只有确认这一镜就是要「几乎不变」的画面时才带那个参数。' + REVIEW_GATE_HINT('review_storyboards', '分镜') + CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_shot_frame'),
+      ...REVIEW_ARGS,
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame,须与报价时一致;传了 reopen_pair_id 时会被忽略'),
       replace_user_frame: z.boolean().optional().describe('默认 true(显式重生允许覆盖已上传帧);传 false 则保护已上传帧'),
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
@@ -1088,8 +1095,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true:这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
     },
-    async ({ storyboard_id, quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict })),
+    async ({ storyboard_id, quote_id, review_token, acknowledge_review, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, acknowledge_review, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict })),
   )
 
   // ---------- 出视频(videos,大额) ----------
@@ -2031,17 +2038,20 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '先等在途那条完成、看过结果,再重新 quote 并重生——否则拿到的视频是旧内容(旧提示词或旧首尾帧)出的,会误以为改动没效果。' +
       '\n★成功但返回里带 **`reused_in_flight: true`** = 同样的内容已经在生成(重发/双击/批量出视频已派发),' +
       '这次没有新建、没有新扣费,返回的就是在途那一条,看它的进度即可,不必再发。' +
-      CONFIRM_HINT,
+      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_regenerate_shot_video'),
+      ...REVIEW_ARGS,
       prompt: z.string().optional().describe('可选:覆盖该镜视频 prompt'),
       replace_user_footage: z.boolean().optional().describe(
         '本镜是实拍素材镜时,显式允许用 AI 重生的视频覆盖它(不传则被守卫拒 409)。'),
     },
-    async ({ storyboard_id, quote_id, prompt, replace_user_footage }) =>
+    async ({ storyboard_id, quote_id, review_token, acknowledge_review, prompt, replace_user_footage }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/regen/generate`, {
         quote_id,
+        review_token,
+        acknowledge_review,
         ...(prompt ? { prompt } : {}),
         ...(replace_user_footage !== undefined ? { replace_user_footage } : {}),
       })),
