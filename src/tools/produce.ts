@@ -247,6 +247,11 @@ const VIDEO_ENGINES = ['seedance-2.5', 'hailuo-3', 'wan3.0', 'wan3.0-prime'] as 
 // 后端内部 PUT /dramas 已接受写库,facade 白名单 Wave3 已放行(produce-create-fields.ts)。
 // 不含内部产线/成本开关(strict_mode/best_of_n/shoppable/budget_points 等,需产品决策)。
 const PROJECT_SETTINGS_FIELDS = {
+  // 剧级输出语言：改写 / 分镜 / 审计理由 / 摘要等面向观众与创作者的文本，以及 Whisper 转写语言都按它走。
+  // 不设 = 按剧本文字自动推断（汉字 → zh-CN、假名 → ja、谚文 → ko、拉丁字母 → en；西/葡/法靠字母分不出，要显式设）。
+  output_language: z.enum(['zh-CN', 'zh-TW', 'en', 'ja', 'ko', 'es', 'pt-BR', 'fr']).nullable().optional()
+    .describe('剧级输出语言(对白/旁白/描述/审计文案/转写语言)。不传=保持现状;null=清除、回到按剧本文字自动推断;' +
+      '非中文剧、尤其西/葡/法语剧务必显式设(字母分不出语种)'),
   creative_contract: z.object({
     version: z.literal(1),
     speech: z.enum(['unspecified', 'forbidden', 'required']).optional(),
