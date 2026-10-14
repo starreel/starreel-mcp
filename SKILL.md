@@ -565,6 +565,27 @@ content that will be rejected.
     lets it through). Relay your QC findings to the user verbatim. Listing a
     `ref` you never opened is signing off on the user's money.
 
+    **Script QC is an assessment with suggestions the user decides on.** At the
+    script layer the materials include the user's own draft (`script:original`)
+    as well as the rewrite (`script`). Assess the user's draft itself first —
+    clarity of the main line, character motivation, conflict and reversals,
+    pacing, plot holes, whether it can actually be shot — then check the
+    rewrite. Every problem goes into `submit_qc_report.suggestions` with a
+    `problem` and a concrete `proposal` (plus `before` / `after` when the fix is
+    a text change); this is required at the script layer whenever you report
+    issues (`agent_qc.suggestions_required`). The response numbers them
+    (`s1`, `s2`, …). Present the assessment and each suggestion to the user and
+    let them choose: adopt some, apply all directly, or change nothing and move
+    on (`acknowledge_review: true` if the verdict was `issues`). Never choose
+    for them and never edit without asking. Edits change the script, so run
+    `review_script` and QC again afterwards.
+
+    At the asset layer, besides "is it the same person", check the character
+    sheet itself (all angles present, consistent proportions and outfit, sound
+    anatomy, single figure, no text) and whether each prop and scene plate makes
+    sense in the story — the materials carry `used_in_shots`; read those shots
+    (`get_storyboards`) and the era contract (`get_era_contract`).
+
     The per-shot tools are gated too (since 2026-10-14). A whole episode driven
     shot by shot through `generate_shot_frame` / `regenerate_shot_video` used to
     touch none of the gates; now each takes the same `review_token` as its batch

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.149",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.149 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.150",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.150 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -373,7 +373,7 @@
       "post": {
         "operationId": "set_character_portrait",
         "summary": "用客户自有图片作为角色定妆图(身份锚,优先级高于 AI 生成;之后 AI 重生默认不覆盖)",
-        "description": "用客户自有图片作为角色定妆图(身份锚,优先级高于 AI 生成;之后 AI 重生默认不覆盖)。★★图片规范(登记前平台会自动检查,不合规返回 422 且不登记):**只有该角色一人**(不能有其他人/合影/背景路人);**单张单一角度**(不是拼图/九宫格/多视角设定图——设定图由平台据定妆图生成);正面或 3/4 侧、面部清晰无遮挡、干净背景;**图上无任何文字**(水印/字幕/名字标签/logo/衣服印字都不行,字样会被复刻进每一镜)。上传前先看一眼客户给的图,不合规就先请客户换图,别直接传。被拒时把 message 里的问题原样告诉客户;只有客户看过问题后明确坚持用这张图,才带 allow_issues:true 重传(自动检查可能误判)。★换图会失效原有派生资产(设定图/多角度头像/发型·身材参考)并重建人脸锁,但**设定图不会自动重出**——换完必须 generate_character_sheet(character_id) 据新定妆图重出设定图(响应里的 next_step 会提示),否则该角色只剩定妆图一个锚。★换图后响应含 stale_frames=[{storyboard_id,storyboard_number,frames}]——这些镜的首帧还是旧定妆图生成的、已被污染。要让新定妆图生效:对每个 stale_frame 用 quote_shot_frame+generate_shot_frame 重生该镜(平台会自动以新定妆图/设定图/人脸锁作锚,保全片一致)。不必逐镜自己指定模型/首尾帧。★千万别自制首尾帧再 upload_shot_frame——外部图没有角色身份锚/画风锚,人物·服装·画风必漂,那才是废片根源(不是\"杜绝废片\")。★换图只是**解除引用**,旧定妆图/设定图的文件不会被删除。响应里的 old_assets 逐项列出被解除的旧资产:unlinked=[{kind,url,in_history}](in_history=false 表示平台没留记录——典型是客户上传的旧定妆图,要留就把 url 存下来),physically_deleted 恒为空。客户说「删掉旧图」时,如实告诉他只是不再使用、文件仍在,别说成已删除。传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "用客户自有图片作为角色定妆图(身份锚,优先级高于 AI 生成;之后 AI 重生默认不覆盖)。★★图片规范(登记前平台会自动检查,不合规返回 422 且不登记):**只有该角色一人**(不能有其他人/合影/背景路人);**单张单一角度**(不是拼图/九宫格/多视角设定图——设定图由平台据定妆图生成);正面或 3/4 侧、面部清晰无遮挡、干净背景;**图上无任何文字**(水印/字幕/名字标签/logo/衣服印字都不行,字样会被复刻进每一镜)。上传前先看一眼客户给的图,不合规就先请客户换图,别直接传。被拒时把 message 里的问题原样告诉客户;只有客户看过问题后明确坚持用这张图,才带 allow_issues:true 重传(自动检查可能误判)。★换图会失效原有派生资产(设定图/多角度头像/发型·身材参考)并重建人脸锁,但**设定图不会自动重出**——换完必须 generate_character_sheet(character_id) 据新定妆图重出设定图(响应里的 next_step 会提示),否则该角色只剩定妆图一个锚。★换图后响应含 stale_frames=[{storyboard_id,storyboard_number,frames}]——这些镜的首帧还是旧定妆图生成的、已被污染。要让新定妆图生效:对每个 stale_frame 用 quote_shot_frame+generate_shot_frame 重生该镜(平台会自动以新定妆图/设定图/人脸锁作锚,保全片一致)。不必逐镜自己指定模型/首尾帧。★千万别自制首尾帧再 upload_shot_frame——外部图没有角色身份锚/画风锚,人物·服装·画风必漂,那才是废片根源(不是\"杜绝废片\")。★换图只是**解除引用**,旧定妆图/设定图的文件不会被删除。响应里的 old_assets 逐项列出被解除的旧资产:unlinked=[{kind,url,in_history}](in_history=false 表示平台没留记录——典型是客户上传的旧定妆图,要留就把 url 存下来),physically_deleted 恒为空。客户说「删掉旧图」时,如实告诉他只是不再使用、文件仍在,别说成已删除。传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "characters"
         ],
@@ -438,7 +438,7 @@
       "post": {
         "operationId": "generate_character_sheet",
         "summary": "给**单个**角色出三视图设定图(镜头一致性根锚,所有镜头帧都会引用;比定妆图更完整)",
-        "description": "给**单个**角色出三视图设定图(镜头一致性根锚,所有镜头帧都会引用;比定妆图更完整)。整集批量用 generate_character_sheets。前置:该角色已有定妆图。图片步,按用量后付不欠费。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "给**单个**角色出三视图设定图(镜头一致性根锚,所有镜头帧都会引用;比定妆图更完整)。整集批量用 generate_character_sheets。前置:该角色已有定妆图。图片步,按用量后付不欠费。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "characters"
         ],
@@ -3120,7 +3120,7 @@
       "post": {
         "operationId": "generate_scene_images",
         "summary": "确认后批量出**空景基板**(每场一张无人物的场景底图):后台异步,只补「还没有图」的场景",
-        "description": "确认后批量出**空景基板**(每场一张无人物的场景底图):后台异步,只补「还没有图」的场景。★**出镜头图前做这一步**。跳过不会报错、不会被拦,但代价是实打实的:平台的兜底是「出帧时发现该场景缺图 → 后台补一张」,补的那张只惠及同场景的**后续**镜,触发它的那一镜等不到,于是**每个场景的第一镜没有背景锚**——而首镜往往正是定调的那一镜;后续镜之间背景也会一路漂。它与定妆图是一对:定妆图锚人、场景图锚景。★出得不对不要重调本工具(它只补缺图的场景、已有图的一律跳过):`get_scene_prompt` 读正文 → `update_scene` 改 image_prompt → `regenerate_scene_image` 单场重出。★非现代题材先设 `set_era_contract`,否则基板会画成别的时代,下游整场的镜头帧跟着错。★进度看 `get_pipeline_status` 的 generate_scene_images 步。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "确认后批量出**空景基板**(每场一张无人物的场景底图):后台异步,只补「还没有图」的场景。★**出镜头图前做这一步**。跳过不会报错、不会被拦,但代价是实打实的:平台的兜底是「出帧时发现该场景缺图 → 后台补一张」,补的那张只惠及同场景的**后续**镜,触发它的那一镜等不到,于是**每个场景的第一镜没有背景锚**——而首镜往往正是定调的那一镜;后续镜之间背景也会一路漂。它与定妆图是一对:定妆图锚人、场景图锚景。★出得不对不要重调本工具(它只补缺图的场景、已有图的一律跳过):`get_scene_prompt` 读正文 → `update_scene` 改 image_prompt → `regenerate_scene_image` 单场重出。★非现代题材先设 `set_era_contract`,否则基板会画成别的时代,下游整场的镜头帧跟着错。★进度看 `get_pipeline_status` 的 generate_scene_images 步。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "dramas"
         ],
@@ -4724,7 +4724,7 @@
       "post": {
         "operationId": "generate_character_sheets",
         "summary": "★批量给全剧角色出设定图(多视角 turnaround)",
-        "description": "★批量给全剧角色出设定图(多视角 turnaround)。设定图是镜头帧/视频引用的**一致性根锚**——只出定妆图不出设定图,镜头人物换角度/换光/服装会漂移(2.5 更直接用设定图切片做骨相锚)。只对缺设定图的角色出(不重复扣费)。前置:角色须已有定妆图(缺则拦并提示先出定妆图)。图片步,按用量后付不欠费。轮询 get_characters 看 sheet_status:pending=生成/审计中(设定图约 2~4 分钟,别重复点);ready=入库;**rejected=图已出但被一致性闸拒收**,读 sheet_fail_hint 拒收判词——可重掷一次,连拒理由相同则是锚字段与人物档案冲突,先 run_precheck 再重掷。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "★批量给全剧角色出设定图(多视角 turnaround)。设定图是镜头帧/视频引用的**一致性根锚**——只出定妆图不出设定图,镜头人物换角度/换光/服装会漂移(2.5 更直接用设定图切片做骨相锚)。只对缺设定图的角色出(不重复扣费)。前置:角色须已有定妆图(缺则拦并提示先出定妆图)。图片步,按用量后付不欠费。轮询 get_characters 看 sheet_status:pending=生成/审计中(设定图约 2~4 分钟,别重复点);ready=入库;**rejected=图已出但被一致性闸拒收**,读 sheet_fail_hint 拒收判词——可重掷一次,连拒理由相同则是锚字段与人物档案冲突,先 run_precheck 再重掷。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "episodes"
         ],
@@ -6505,7 +6505,7 @@
       "post": {
         "operationId": "generate_portraits_and_sheets",
         "summary": "★一键:定妆图 + 设定图(推荐,产线标配)",
-        "description": "★一键:定妆图 + 设定图(推荐,产线标配)。设定图强依赖定妆图,故智能两阶段——有角色缺定妆图就先派定妆图并提示,定妆图齐了再调一次即批量出设定图。避免只出定妆图导致镜头漂移。图片步,按用量后付不欠费。轮询 get_characters 看 image/sheet_url 就绪;每调一次推进一步。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "★一键:定妆图 + 设定图(推荐,产线标配)。设定图强依赖定妆图,故智能两阶段——有角色缺定妆图就先派定妆图并提示,定妆图齐了再调一次即批量出设定图。避免只出定妆图导致镜头漂移。图片步,按用量后付不欠费。轮询 get_characters 看 image/sheet_url 就绪;每调一次推进一步。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "episodes"
         ],
@@ -6552,7 +6552,7 @@
       "post": {
         "operationId": "generate_character_portraits",
         "summary": "确认后批量出角色定妆图(★仅定妆图):后台异步",
-        "description": "确认后批量出角色定妆图(★仅定妆图):后台异步。定妆图只是单张身份锚——镜头一致性(尤其服装)还需**设定图**,出完定妆图强烈建议 generate_character_sheets;或直接用 generate_portraits_and_sheets 一步到位。用 get_pipeline_status/get_storyboards 查进度。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "确认后批量出角色定妆图(★仅定妆图):后台异步。定妆图只是单张身份锚——镜头一致性(尤其服装)还需**设定图**,出完定妆图强烈建议 generate_character_sheets;或直接用 generate_portraits_and_sheets 一步到位。用 get_pipeline_status/get_storyboards 查进度。⚠️ 批量报价确认流程:先调对应的 quote_* 工具,把返回的 estimated_points 原样告诉用户,用户明确同意后,才用返回的 quote_id 调本工具。不要擅自确认。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "episodes"
         ],
@@ -7239,7 +7239,7 @@
       "post": {
         "operationId": "submit_qc_report",
         "summary": "提交你(agent)亲自看素材做的质检报告",
-        "description": "提交你(agent)亲自看素材做的质检报告。免费。先调对应层的 review_*(script / storyboards / assets / frames / videos),按返回的 agent_qc 逐件打开 materials 看、逐条回答 checklist,再调本工具。★平台只校验报告**是否完整**,不评判你的结论:checklist 每个 id 都要答(ok / issue / na,issue 必须写 note 说清哪件什么问题);materials 里的每个 ref 都要列进 inspected(漏一件就拒收并点名漏了哪些);有问题就 verdict=issues 并在 issues 里逐条写,有问题却报 pass 会被拒。★别走过场:没打开看就列进 inspected,等于替客户签了字——出了废片照常扣费。★verdict=issues 时这张 token 默认进不了下一步:把问题讲给客户,修完重新 review + 质检;客户明确知情并坚持照现状继续,下一步才带 acknowledge_review:true。审查之后内容又变了,报告会被拒,重新 review 后按新的 agent_qc 再质检。",
+        "description": "提交你(agent)亲自看素材做的质检报告。免费。先调对应层的 review_*(script / storyboards / assets / frames / videos),按返回的 agent_qc 逐件打开 materials 看、逐条回答 checklist,再调本工具。★平台只校验报告**是否完整**,不评判你的结论:checklist 每个 id 都要答(ok / issue / na,issue 必须写 note 说清哪件什么问题);materials 里的每个 ref 都要列进 inspected(漏一件就拒收并点名漏了哪些);有问题就 verdict=issues 并在 issues 里逐条写,有问题却报 pass 会被拒。★别走过场:没打开看就列进 inspected,等于替客户签了字——出了废片照常扣费。★verdict=issues 时这张 token 默认进不了下一步:把问题讲给客户,修完重新 review + 质检;客户明确知情并坚持照现状继续,下一步才带 acknowledge_review:true。★suggestions(修改建议):剧本层(agent_qc.suggestions_required=true)报了问题就必须给,其它层可选。每条写 problem + proposal,能直接改字的再给 before/after;返回会给每条编号(s1…)。把建议讲给客户,客户选采纳几条 / 全部直接执行 / 不改直接往下做,照客户的选择办。审查之后内容又变了,报告会被拒,重新 review 后按新的 agent_qc 再质检。",
         "tags": [
           "episodes"
         ],
@@ -7336,6 +7336,49 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "suggestions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ref": {
+                          "type": "string",
+                          "description": "针对哪一件(materials 的 ref,如 script:original / script / prop:12)"
+                        },
+                        "problem": {
+                          "type": "string",
+                          "description": "什么问题"
+                        },
+                        "proposal": {
+                          "type": "string",
+                          "description": "具体怎么改(给客户看、也是你执行修改的依据)"
+                        },
+                        "before": {
+                          "type": "string",
+                          "description": "能直接改字时:原文片段(逐字,便于定位替换)"
+                        },
+                        "after": {
+                          "type": "string",
+                          "description": "能直接改字时:改成什么"
+                        },
+                        "priority": {
+                          "type": "string",
+                          "enum": [
+                            "must",
+                            "should",
+                            "could"
+                          ],
+                          "description": "must 不改会出问题 / should 建议改 / could 可改可不改;默认 should"
+                        }
+                      },
+                      "required": [
+                        "problem",
+                        "proposal"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 50
                   }
                 },
                 "required": [
@@ -7380,7 +7423,7 @@
       "post": {
         "operationId": "review_script",
         "summary": "【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念",
-        "description": "【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念。★extract_assets 与 generate_storyboards 之前必须先跑本工具——人物档案和分镜都从改写稿派生,稿子里的问题会被逐层放大到定妆图/出图/出视频,等成片才发现就是整集重来。把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。",
+        "description": "【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念。★extract_assets 与 generate_storyboards 之前必须先跑本工具——人物档案和分镜都从改写稿派生,稿子里的问题会被逐层放大到定妆图/出图/出视频,等成片才发现就是整集重来。把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。\n★【剧本评估与建议】materials 里有客户原稿(script:original)和改写稿(script):先评估客户给的稿子本身(主线、动机、冲突、节奏、漏洞、能不能拍),再核对改写稿;每个问题在 submit_qc_report 的 suggestions 里给出具体改法(能直接改字的给 before/after)。提交后把评估和建议逐条讲给客户,让客户选:采纳其中几条 / 全部直接执行 / 不改直接往下做——由客户决定,不要替他选,也不要没问就改。",
         "tags": [
           "episodes"
         ],
@@ -10249,7 +10292,7 @@
       "post": {
         "operationId": "generate_prop_sheet",
         "summary": "给道具 AI 出设定图",
-        "description": "给道具 AI 出设定图。图片步,按用量后付不欠费。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "给道具 AI 出设定图。图片步,按用量后付不欠费。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "props"
         ],
@@ -10517,7 +10560,7 @@
       "post": {
         "operationId": "regenerate_scene_image",
         "summary": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)",
-        "description": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)。图片步,按用量后付不欠费。★先调 quote_regenerate_scene_image 拿报价、把点数告诉客户,再带 quote_id 调本工具:换了场景图后,没有可用宽景镜首帧的场景平台会自动再出一张打光参考图(另扣一张图的点数),报价里已含。★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。★episode_id 通常不必传(平台按场景归属、再按引用它的分镜自动推导)。只有回执报「本场景被多集分镜共用」时才需要点名:那说明同一地点跨集复用,平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "description": "按当前提示词重出**这一场**的场景图(改完 image_prompt 让画面跟上)。图片步,按用量后付不欠费。★先调 quote_regenerate_scene_image 拿报价、把点数告诉客户,再带 quote_id 调本工具:换了场景图后,没有可用宽景镜首帧的场景平台会自动再出一张打光参考图(另扣一张图的点数),报价里已含。★覆盖式:出好后本场旧图被换掉(要留档先 get_scene_prompt/资产列表拿旧图 URL)。★已生成的镜头帧不会自动跟着重出——它们仍拿旧场景图当背景锚,要跟上得逐镜重出。★与 generate_scene_images 的区别:那个是整剧批量、只补**缺图**的场景,已有图的一律跳过;这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。★episode_id 通常不必传(平台按场景归属、再按引用它的分镜自动推导)。只有回执报「本场景被多集分镜共用」时才需要点名:那说明同一地点跨集复用,平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
         "tags": [
           "scenes"
         ],

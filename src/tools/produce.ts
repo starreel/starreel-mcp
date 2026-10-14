@@ -98,7 +98,8 @@ const ASSET_GATE_HINT =
 const ASSET_QC_HINT =
   '\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层' +
   '(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;' +
-  '再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;' +
+  '再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;' +
+  '道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;' +
   '出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。'
 /** 视频与配音生成工具的「完成后质检」引导。 */
 const VIDEO_QC_HINT =
@@ -958,7 +959,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念。' +
       '★extract_assets 与 generate_storyboards 之前必须先跑本工具——人物档案和分镜都从改写稿派生,' +
       '稿子里的问题会被逐层放大到定妆图/出图/出视频,等成片才发现就是整集重来。' +
-      '把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。' + AGENT_QC_HINT,
+      '把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。' + AGENT_QC_HINT +
+      '\n★【剧本评估与建议】materials 里有客户原稿(script:original)和改写稿(script):先评估客户给的稿子本身(主线、动机、冲突、节奏、漏洞、能不能拍),' +
+      '再核对改写稿;每个问题在 submit_qc_report 的 suggestions 里给出具体改法(能直接改字的给 before/after)。' +
+      '提交后把评估和建议逐条讲给客户,让客户选:采纳其中几条 / 全部直接执行 / 不改直接往下做——由客户决定,不要替他选,也不要没问就改。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/script`)),
   )
@@ -1016,6 +1020,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'materials 里的每个 ref 都要列进 inspected(漏一件就拒收并点名漏了哪些);有问题就 verdict=issues 并在 issues 里逐条写,有问题却报 pass 会被拒。' +
       '★别走过场:没打开看就列进 inspected,等于替客户签了字——出了废片照常扣费。' +
       '★verdict=issues 时这张 token 默认进不了下一步:把问题讲给客户,修完重新 review + 质检;客户明确知情并坚持照现状继续,下一步才带 acknowledge_review:true。' +
+      '★suggestions(修改建议):剧本层(agent_qc.suggestions_required=true)报了问题就必须给,其它层可选。每条写 problem + proposal,能直接改字的再给 before/after;' +
+      '返回会给每条编号(s1…)。把建议讲给客户,客户选采纳几条 / 全部直接执行 / 不改直接往下做,照客户的选择办。' +
       '审查之后内容又变了,报告会被拒,重新 review 后按新的 agent_qc 再质检。',
     {
       episode_id: z.number().int().positive(),
@@ -1033,6 +1039,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         action: z.string().optional().describe('建议怎么修(用哪个工具)'),
       })).optional().describe("verdict='issues' 时至少一条"),
       summary: z.string().optional().describe('给客户看的一段质检小结'),
+      suggestions: z.array(z.object({
+        ref: z.string().optional().describe('针对哪一件(materials 的 ref,如 script:original / script / prop:12)'),
+        problem: z.string().describe('什么问题'),
+        proposal: z.string().describe('具体怎么改(给客户看、也是你执行修改的依据)'),
+        before: z.string().optional().describe('能直接改字时:原文片段(逐字,便于定位替换)'),
+        after: z.string().optional().describe('能直接改字时:改成什么'),
+        priority: z.enum(['must', 'should', 'could']).optional().describe('must 不改会出问题 / should 建议改 / could 可改可不改;默认 should'),
+      })).max(50).optional().describe('修改建议,最多 50 条。剧本层报了问题必填,客户可采纳或直接执行'),
     },
     async ({ episode_id, ...report }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/qc-report`, report)),
   )
