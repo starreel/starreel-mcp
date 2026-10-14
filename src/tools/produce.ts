@@ -75,7 +75,36 @@ const REVIEW_GATE_HINT = (tool: string, layer: string) =>
   `(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。` +
   `未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。` +
   `有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——` +
-  `带病推进大概率产出废片且照常扣费,不要替客户做这个决定。`
+  `带病推进大概率产出废片且照常扣费,不要替客户做这个决定。` +
+  `★灰度剧还要你(agent)亲自质检:按 ${tool} 返回的 agent_qc 逐件看素材、逐条答清单,调 submit_qc_report 提交后这张 token 才能用` +
+  `(没交 → 400 agent_qc_required;报告有问题 → 与 error 同样默认拦)。`
+
+/** 五个审查工具共用:平台审查之外,外部 agent 亲自看素材的质检(2026-10-14 用户拍板)。 */
+const AGENT_QC_HINT =
+  '\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。' +
+  '平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。' +
+  '逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。' +
+  'agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。'
+
+/** 资产层 token:出镜头图同时要分镜层(review_token)与资产层两张,资产层这张单独一个参数。 */
+const ASSET_REVIEW_ARG = {
+  asset_review_token: z.string().optional().describe('★来自 review_assets 的凭据(资产层硬闸:角色形象图/场景图/道具图;灰度剧必填,缺了 400 会点名 review_assets)。与分镜层的 review_token 一起传'),
+}
+/** 出镜头图的第二道闸提示(与分镜层并存)。 */
+const ASSET_GATE_HINT =
+  '\n★【资产层硬闸·免费】还要先跑 review_assets(角色形象图/场景图/道具图),把它的 review_token 作为 asset_review_token 传进来' +
+  '(与分镜层的 review_token 并存,两张都要;灰度剧缺了会 400 并点名 review_assets)。出完帧不会让资产 token 失效。'
+/** 资产生成工具的「完成后质检」引导(每一步完成后都要质检,2026-10-14 用户拍板)。 */
+const ASSET_QC_HINT =
+  '\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层' +
+  '(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;' +
+  '再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对),submit_qc_report 提交质检报告;' +
+  '出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。'
+/** 视频与配音生成工具的「完成后质检」引导。 */
+const VIDEO_QC_HINT =
+  '\n★【完成后质检·免费】出完等它落库(get_storyboards 看 video_status / get_pipeline_status),再调 review_videos 审视频与配音层' +
+  '(缺视频 / 旧帧出的视频 / 片尾硬切 / 意外人声 / 配音缺失 / 音色未分配 / 原声声线过期),修完复审;' +
+  '再按 agent_qc 亲自逐镜看视频、听配音(动作到位、不变脸、台词念全、嗓音对),submit_qc_report 提交;compose_episode 要带它的 review_token。'
 
 /** 三个被闸的收费工具共用的参数(zod 形状,展开进各自 schema)。 */
 const REVIEW_ARGS = {
@@ -107,7 +136,7 @@ export const WORKFLOW_HINT =
   '非人化形一并判成「不合时代」,把画面往写实古代拽。某一场要破例(如奇幻世界里一场现代回忆)' +
   '用 update_scene 的 era_contract 单独覆写,场级压过集级。' +
   '★★【逐环节审查协议·全部免费·这是防废片的主线,不是可选项】每个环节产出后先审查、把结论原样告诉客户,再进下一步。' +
-  '**三道硬闸(不过会被 400 拒)**:①改写稿产出后 → review_script(在 extract_assets / generate_storyboards 之前);' +
+  '**五道硬闸(不过会被 400 拒;④⑤与 agent 质检见下文)**:①改写稿产出后 → review_script(在 extract_assets / generate_storyboards 之前);' +
   '②分镜产出后 → review_storyboards(在 generate_frames 之前);③镜头图片产出后 → review_frames(在 generate_videos 之前)。' +
   '每次审查返回 review_token,把它随下游收费工具一起传;findings 逐条讲给客户(code=问题类型·shots=命中镜号·action=该调哪个工具修),' +
   '按 action 修完后**复审**再走。审查后又改了内容 → token 自动失效,复审一次即可(免费)。' +
@@ -157,6 +186,11 @@ export const WORKFLOW_HINT =
   '★客户自带图:定妆图须单人、单张单角度、无文字;场景图须空景无人、无叠加文字——set_character_portrait/upload_scene_image 会自动检查、不合规 422 拒收。' +
   '★别先建角色形象/道具设定图/动作模板再分镜——分镜是纯文本步、不依赖任何图;分镜后阵容才定,先删不出场角色再出图才省(动作模板本就必须分镜后)。收费步照现有 quote 报价确认流程。' +
   '广告另需 add_product+generate_product_sheet;MV 走 set_mv_lyrics→generate_mv_story→generate_mv_script(没有现成歌曲:set_mv_lyrics 后先 suggest_mv_song_styles→quote_mv_song→generate_mv_song→get_mv_song→select_mv_song)。' +
+  '★★【④⑤两道新硬闸 + agent 亲自质检】④资产层:定妆图/设定图/场景图/道具图出完 → review_assets' +
+  '(在 generate_frames / generate_shot_frame 之前,它的 token 作为 asset_review_token、与分镜层 review_token 一起传);' +
+  '⑤视频与配音层:视频/配音/配乐出完 → review_videos(在 compose_episode 之前);成片出来后跑 review_final_cut。' +
+  '★每一层审查之后你还要**亲自质检**:按返回的 agent_qc 逐件看素材(图下载看、视频抽帧看、文本通读),逐条答清单,' +
+  'submit_qc_report 提交;灰度剧没交报告那张 review_token 进不了下一步,报告有问题与 error 同样默认拦。平台判有没有,你判像不像、对不对。' +
   '★★【单镜路径同样受审查闸】:generate_shot_frame 同样要带分镜层 review_token,regenerate_shot_video 同样要带镜头图片层 review_token——' +
   '别指望用逐镜工具绕开审查(实测有整集 25 镜全靠单镜出帧、一道闸都没碰到的做法,成片返工全是真扣费)。' +
   '出完帧**不会**让分镜层 token 失效(指纹只看分镜内容);只有改了分镜内容——update_shot / 导入 / 增删镜 / 改角色绑定——才要复审一次(免费、秒级)。' +
@@ -615,7 +649,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '从可拍稿提取角色/场景/道具(一次写三表,是下游一致性的地基)。后台异步,文本步后付不欠费。' +
       '前置:已 rewrite_script 产出改写稿(新项目强制;人物档案从改写稿提取才与剧本、分镜自洽)。' +
       '★分钟级后台任务;用 get_run_status 判断是否还在跑,别拿 60 秒当失败判据。' +
-      REVIEW_GATE_HINT('review_script', '改写稿') + WORKFLOW_HINT,
+      REVIEW_GATE_HINT('review_script', '改写稿') + WORKFLOW_HINT +
+      '\n★【完成后质检】提取完用 get_characters / get_scenes / get_props 核对档案(名字、外貌、时代)与客户剧本一致;' +
+      '定妆图/设定图/场景图/道具图出完后由 review_assets 统一审覆盖与质量。',
     { episode_id: z.number().int().positive(), ...REVIEW_ARGS },
     async ({ episode_id, review_token, acknowledge_review }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/extract`, { review_token, acknowledge_review })),
@@ -648,7 +684,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'generate_character_portraits',
     '确认后批量出角色定妆图(★仅定妆图):后台异步。定妆图只是单张身份锚——镜头一致性(尤其服装)还需**设定图**,' +
       '出完定妆图强烈建议 generate_character_sheets;或直接用 generate_portraits_and_sheets 一步到位。' +
-      '用 get_pipeline_status/get_storyboards 查进度。' + CONFIRM_HINT,
+      '用 get_pipeline_status/get_storyboards 查进度。' + CONFIRM_HINT + ASSET_QC_HINT,
     { episode_id: z.number().int().positive(), quote_id: z.string().describe('来自 quote_character_portraits') },
     async ({ episode_id, quote_id }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/portraits/generate`, { quote_id })),
@@ -660,7 +696,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '镜头人物换角度/换光/服装会漂移(2.5 更直接用设定图切片做骨相锚)。只对缺设定图的角色出(不重复扣费)。' +
       '前置:角色须已有定妆图(缺则拦并提示先出定妆图)。图片步,按用量后付不欠费。轮询 get_characters 看 sheet_status:' +
       'pending=生成/审计中(设定图约 2~4 分钟,别重复点);ready=入库;**rejected=图已出但被一致性闸拒收**,' +
-      '读 sheet_fail_hint 拒收判词——可重掷一次,连拒理由相同则是锚字段与人物档案冲突,先 run_precheck 再重掷。',
+      '读 sheet_fail_hint 拒收判词——可重掷一次,连拒理由相同则是锚字段与人物档案冲突,先 run_precheck 再重掷。' + ASSET_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/character-sheets`)),
   )
@@ -668,7 +704,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'generate_portraits_and_sheets',
     '★一键:定妆图 + 设定图(推荐,产线标配)。设定图强依赖定妆图,故智能两阶段——有角色缺定妆图就先派定妆图并提示,' +
       '定妆图齐了再调一次即批量出设定图。避免只出定妆图导致镜头漂移。图片步,按用量后付不欠费。' +
-      '轮询 get_characters 看 image/sheet_url 就绪;每调一次推进一步。',
+      '轮询 get_characters 看 image/sheet_url 就绪;每调一次推进一步。' + ASSET_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/portraits-and-sheets`)),
   )
@@ -922,7 +958,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念。' +
       '★extract_assets 与 generate_storyboards 之前必须先跑本工具——人物档案和分镜都从改写稿派生,' +
       '稿子里的问题会被逐层放大到定妆图/出图/出视频,等成片才发现就是整集重来。' +
-      '把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。',
+      '把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。' + AGENT_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/script`)),
   )
@@ -934,7 +970,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),' +
       '照着这两个去 update_shot 改掉即可,不用逐字猜。' +
       '★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。' +
-      '★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。',
+      '★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。' + AGENT_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/storyboards`)),
   )
@@ -946,9 +982,59 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'generate_shot_frame 单镜重生)再复审。' +
       '★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接,或发起的衔接重生没落地 / 衔接后首帧又被重生)/' +
       'seam_broken(接过但没接上,或上一镜尾帧在衔接之后又重生过),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,' +
-      '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。',
+      '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。' + AGENT_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/frames`)),
+  )
+  server.tool(
+    'review_assets',
+    '【资产层硬闸·免费】审查本集**出镜**用到的角色形象图、场景图、道具图——覆盖与质量:' +
+      '出镜角色缺定妆图 / 缺设定图 / 还在生成 / 生成失败 / 设定图被一致性闸拒收(hint 带拒收理由);' +
+      '场景缺空景基板;分镜引用的道具缺道具图 / 被拒;道具图与本镜时代形制冲突;缺色彩脚本(warning)。' +
+      '★出完定妆图、设定图、场景图、道具图后都调一次;generate_frames / generate_shot_frame 之前必须审过——' +
+      '把返回的 review_token 作为 **asset_review_token**,连同分镜层的 review_token 一起传(两张都要)。' +
+      '只看资产本身:出完镜头图不会让它失效;换了定妆图/场景图/道具图会失效,复审即可(免费、秒级)。' +
+      'findings 逐条讲给客户(code=问题类型、names=哪个角色/场景/道具、shots=影响的镜号、action=该调哪个工具修)。' + AGENT_QC_HINT,
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/assets`)),
+  )
+  server.tool(
+    'review_videos',
+    '【视频与配音层硬闸·免费】审查本集视频与配音——覆盖与质量:缺视频 / 还在生成 / 生成失败 / 被厂商拒;' +
+      '首帧换过而视频还是旧帧出的(video_stale);疑似片尾硬切、无台词镜意外人声(warning);' +
+      '配音剧:台词镜缺配音、会开口的角色没音色、缺旁白角色;原声剧:出片时没挂上当前声线的镜、没锁声线的角色;缺配乐(warning)。' +
+      '★出完视频、配音(generate_tts)、配乐后都调一次;compose_episode 之前必须审过,带返回的 review_token。' +
+      '更细的检查(要解码画面/音轨)另有 scan_intra_shot_cuts / scan_dialogue_coverage / audit_silent_shot_audio;拼完成片再跑 review_final_cut。' + AGENT_QC_HINT,
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/videos`)),
+  )
+  server.tool(
+    'submit_qc_report',
+    '提交你(agent)亲自看素材做的质检报告。免费。先调对应层的 review_*(script / storyboards / assets / frames / videos),' +
+      '按返回的 agent_qc 逐件打开 materials 看、逐条回答 checklist,再调本工具。' +
+      '★平台只校验报告**是否完整**,不评判你的结论:checklist 每个 id 都要答(ok / issue / na,issue 必须写 note 说清哪件什么问题);' +
+      'materials 里的每个 ref 都要列进 inspected(漏一件就拒收并点名漏了哪些);有问题就 verdict=issues 并在 issues 里逐条写,有问题却报 pass 会被拒。' +
+      '★别走过场:没打开看就列进 inspected,等于替客户签了字——出了废片照常扣费。' +
+      '★verdict=issues 时这张 token 默认进不了下一步:把问题讲给客户,修完重新 review + 质检;客户明确知情并坚持照现状继续,下一步才带 acknowledge_review:true。' +
+      '审查之后内容又变了,报告会被拒,重新 review 后按新的 agent_qc 再质检。',
+    {
+      episode_id: z.number().int().positive(),
+      review_token: z.string().describe('对应层 review_* 返回的 review_token(资产层也是这个值,出图时再作为 asset_review_token 传)'),
+      verdict: z.enum(['pass', 'issues']).describe("'pass'=本层没问题;'issues'=发现了问题"),
+      checklist: z.array(z.object({
+        id: z.string().describe('agent_qc.checklist[].id'),
+        result: z.enum(['ok', 'issue', 'na']),
+        note: z.string().optional().describe('result=issue 时必填:哪一件(ref)、看到了什么问题'),
+      })).describe('agent_qc.checklist 里每一项都要回答'),
+      inspected: z.array(z.string()).describe('亲自打开看过的素材 ref(agent_qc.materials[].ref),必须一件不漏'),
+      issues: z.array(z.object({
+        ref: z.string().optional().describe('哪一件(materials 的 ref)'),
+        problem: z.string().describe('看到的具体问题'),
+        action: z.string().optional().describe('建议怎么修(用哪个工具)'),
+      })).optional().describe("verdict='issues' 时至少一条"),
+      summary: z.string().optional().describe('给客户看的一段质检小结'),
+    },
+    async ({ episode_id, ...report }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/qc-report`, report)),
   )
   server.tool(
     'review_all',
@@ -1035,11 +1121,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '若 diagnosis_required,先按 fail_hint 诊断已有候选;审计错误先重审,证据不足先复核,不要原样重抽或擅自改剧本。' +
       '然后**跑 run_precheck**(事后也能跑,会告诉你是哪种矛盾),按它的提示用 update_shot 改景别/描述/绑定角色再重生。' +
       '别继续 generate_frames 空转,也别把客户支去外部工具做图——外部图绕开身份锚与帧审计,人脸服装画风必漂。' +
-      REVIEW_GATE_HINT('review_storyboards', '分镜') + CONFIRM_HINT,
+      REVIEW_GATE_HINT('review_storyboards', '分镜') + ASSET_GATE_HINT + CONFIRM_HINT,
     {
       episode_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_frames'),
       ...REVIEW_ARGS,
+      ...ASSET_REVIEW_ARG,
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame,须与报价时一致'),
       image_model: z.string().optional().describe('临时覆盖本次出图模型(★必须与 quote_frames 传的那个一致,否则 400;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)。可选:' +
         'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准)/' +
@@ -1047,9 +1134,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         'gemini-3.1-flash-lite-image(Nano Banana 2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream 5.0)'),
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true:这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
     },
-    async ({ episode_id, quote_id, frame_type, image_model, review_token, acknowledge_review, allow_era_ref_conflict }) =>
+    async ({ episode_id, quote_id, frame_type, image_model, review_token, asset_review_token, acknowledge_review, allow_era_ref_conflict }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/frames/generate`, {
-        quote_id, frame_type, image_model, review_token, acknowledge_review, allow_era_ref_conflict,
+        quote_id, frame_type, image_model, review_token, asset_review_token, acknowledge_review, allow_era_ref_conflict,
       })),
   )
 
@@ -1083,11 +1170,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★★出尾帧若被拦下并提示「此镜标为状态改变,但没有任何地方说明结束时是什么样子」:' +
       '正解是用 update_shot 把结束状态写进 last_frame_prompt 再出,**别直接加 allow_missing_terminal 硬上**——' +
       '这类镜照现状出尾帧的历史成功率只有 9.4%(有终态描述的 40.2%),硬上多半是白扣一次钱。' +
-      '只有确认这一镜就是要「几乎不变」的画面时才带那个参数。' + REVIEW_GATE_HINT('review_storyboards', '分镜') + CONFIRM_HINT,
+      '只有确认这一镜就是要「几乎不变」的画面时才带那个参数。' + REVIEW_GATE_HINT('review_storyboards', '分镜') + ASSET_GATE_HINT + CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_shot_frame'),
       ...REVIEW_ARGS,
+      ...ASSET_REVIEW_ARG,
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame,须与报价时一致;传了 reopen_pair_id 时会被忽略'),
       replace_user_frame: z.boolean().optional().describe('默认 true(显式重生允许覆盖已上传帧);传 false 则保护已上传帧'),
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
@@ -1095,8 +1183,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true:这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
     },
-    async ({ storyboard_id, quote_id, review_token, acknowledge_review, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, acknowledge_review, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict })),
+    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict })),
   )
 
   // ---------- 出视频(videos,大额) ----------
@@ -1130,7 +1218,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'generate_videos',
     '确认后批量出视频:一条后台链跑完整集,余额不足会自动中止整链(防重复扣)。' +
       '要求本集已出首帧(未出会被拒)。用 get_storyboards 轮询 video_url 逐镜填充即完成。' +
-      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT,
+      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT + VIDEO_QC_HINT,
     {
       episode_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_videos'),
@@ -1146,13 +1234,19 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '把某一集所有镜头视频拼成一条成片(终拼)。**免费**(纯拼接,无需报价确认),后台异步。' +
       '发起前有终拼预检:缺视频的镜或仍在生成中的视频任务会 400 硬阻断并列出问题镜(blockers),' +
       '补齐后重试;确要拼部分成片传 force=true(缺视频镜被跳过,成片缺镜,留痕)。' +
-      '响应里的 advisories(时长偏差/孤儿任务/缺TTS)只提醒不阻断,建议逐条处理后再拼。发起后用 get_final_cut 轮询。',
+      '响应里的 advisories(时长偏差/孤儿任务/缺TTS)只提醒不阻断,建议逐条处理后再拼。发起后用 get_final_cut 轮询。' +
+      REVIEW_GATE_HINT('review_videos', '视频与配音') +
+      '\n★【完成后质检·免费】成片出来后跑 review_final_cut(缺镜/字幕放不下/身份锚/跳轴/错别字,proofread=false 则不扣费),' +
+      '结论讲给客户;客户确认后才 confirm_delivery_acceptance。force 只越过终拼预检,不越过审查闸。',
     {
       episode_id: z.number().int().positive(),
       force: z.boolean().optional().describe('true=预检有硬阻断也强制照拼(默认拦截)。缺视频的镜会被静默跳过,成片为部分'),
+      ...REVIEW_ARGS,
     },
-    async ({ episode_id, force }) =>
-      jsonResult(await client.producePost(`/episodes/${episode_id}/compose`, force ? { force: true } : {})),
+    async ({ episode_id, force, review_token, acknowledge_review }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/compose`, {
+        review_token, acknowledge_review, ...(force ? { force: true } : {}),
+      })),
   )
   server.tool(
     'get_final_cut',
@@ -1645,7 +1739,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★出得不对不要重调本工具(它只补缺图的场景、已有图的一律跳过):' +
       '`get_scene_prompt` 读正文 → `update_scene` 改 image_prompt → `regenerate_scene_image` 单场重出。' +
       '★非现代题材先设 `set_era_contract`,否则基板会画成别的时代,下游整场的镜头帧跟着错。' +
-      '★进度看 `get_pipeline_status` 的 generate_scene_images 步。' + CONFIRM_HINT,
+      '★进度看 `get_pipeline_status` 的 generate_scene_images 步。' + CONFIRM_HINT + ASSET_QC_HINT,
     { drama_id: z.number().int().positive(), quote_id: z.string().describe('来自 quote_scene_images') },
     async ({ drama_id, quote_id }) =>
       jsonResult(await client.producePost(`/dramas/${drama_id}/scene-images/generate`, { quote_id })),
@@ -1681,7 +1775,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★换图只是**解除引用**,旧定妆图/设定图的文件不会被删除。响应里的 old_assets 逐项列出被解除的旧资产:' +
       'unlinked=[{kind,url,in_history}](in_history=false 表示平台没留记录——典型是客户上传的旧定妆图,要留就把 url 存下来),' +
       'physically_deleted 恒为空。客户说「删掉旧图」时,如实告诉他只是不再使用、文件仍在,别说成已删除。' +
-      '传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。',
+      '传本地文件(file_path,自动上传 COS)或已托管的图片 URL(image_url),二选一。登记免费;内容检查是一次小额视觉审核,按用量后付。' + ASSET_QC_HINT,
     {
       character_id: z.number().int().positive(),
       file_path: z.string().optional().describe('本地定妆图路径(与 image_url 二选一;自动上传 COS)'),
@@ -1765,7 +1859,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '(或 generate_videos 的参考视频通道)。本工具的语义是「这段视频**就是**成片本身,不再生成」。' +
       '两者传的是同一个文件,结果天差地别:走本工具会让该镜从此被出视频守卫拒(含 edit_video_shot),' +
       '得先 clear_shot_footage 或显式 replace_user_footage 才能继续。' +
-      '要换回 AI 生成请先 clear_shot_footage。',
+      '要换回 AI 生成请先 clear_shot_footage。' + VIDEO_QC_HINT,
     {
       storyboard_id: z.number().int().positive(),
       file_path: z.string().describe('本地视频路径(mp4/mov/webm/m4v,≤300MB)'),
@@ -1842,7 +1936,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '登记免费;内容检查是一次小额视觉审核,按用量后付。' +
       '★换了场景图后旧的打光参考图作废,平台**不会**自动补(那要另扣一张图的点数):' +
       '回执 lighting_ref.needed=true 时把 estimated_points 告诉客户,客户同意再调 quote_scene_lighting_ref → generate_scene_lighting_ref。' +
-      '上传时该场景还没有分镜(needed=false 且分镜还没建)的,等分镜建好后再调 quote_scene_lighting_ref 看要不要补——平台不会自动补上传图的打光参考图。',
+      '上传时该场景还没有分镜(needed=false 且分镜还没建)的,等分镜建好后再调 quote_scene_lighting_ref 看要不要补——平台不会自动补上传图的打光参考图。' + ASSET_QC_HINT,
     {
       scene_id: z.number().int().positive(),
       file_path: z.string().describe('本地场景图路径'),
@@ -1855,7 +1949,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'upload_prop_sheet',
-    '用客户自有图片作为某道具的设定图。自动上传+登记。免费。',
+    '用客户自有图片作为某道具的设定图。自动上传+登记。免费。' + ASSET_QC_HINT,
     { prop_id: z.number().int().positive(), file_path: z.string().describe('本地道具图路径') },
     async ({ prop_id, file_path }) => {
       const image_url = await client.uploadLocalFile(file_path, 'image')
@@ -1893,7 +1987,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '再重新 quote 并编辑;**别连发**多条编辑想让它们叠加,每一条都只基于当时的源。' +
       '若在途那条正是你刚提交的同一次编辑(例如调用超时后重发),直接等它的结果,不必再发。' +
       '同一次编辑原样重发(指令、参考素材、区间、引擎都一样)不会 409,会挂到在途那条上、不重复扣费。' +
-      CONFIRM_HINT,
+      CONFIRM_HINT + VIDEO_QC_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_edit_video_shot'),
@@ -2038,7 +2132,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '先等在途那条完成、看过结果,再重新 quote 并重生——否则拿到的视频是旧内容(旧提示词或旧首尾帧)出的,会误以为改动没效果。' +
       '\n★成功但返回里带 **`reused_in_flight: true`** = 同样的内容已经在生成(重发/双击/批量出视频已派发),' +
       '这次没有新建、没有新扣费,返回的就是在途那一条,看它的进度即可,不必再发。' +
-      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT,
+      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT + VIDEO_QC_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_regenerate_shot_video'),
@@ -2361,7 +2455,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。\n' +
       '★candidates 可选=候选整版对比:每幕出 2~3 首**完整**候选让客户挑(挑中的直接用,听到什么成片里就是什么)。' +
       '每首单独按首计费 ⇒ 费用是单首的 N 倍,**必须先 quote_bgm_candidates 报价、把点数告诉客户、客户同意后**带 quote_id 调本工具。' +
-      '不传或传 1=原行为(每幕一首,无需报价)。生成后 get_bgm_status 的 candidate_groups 给每首的试听地址,select_bgm_candidate 挑选(免费),不挑默认第 1 首。',
+      '不传或传 1=原行为(每幕一首,无需报价)。生成后 get_bgm_status 的 candidate_groups 给每首的试听地址,select_bgm_candidate 挑选(免费),不挑默认第 1 首。' + VIDEO_QC_HINT,
     {
       episode_id: z.number().int().positive(),
       prompt: z.string().optional().describe(
@@ -2648,7 +2742,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'generate_tts',
-    '给整集所有对白批量配音(TTS)。成片前的音频步——不配音成片会缺对白。前置:先 assign_voices 给角色分配音色。后台异步,按用量后付不欠费。',
+    '给整集所有对白批量配音(TTS)。成片前的音频步——不配音成片会缺对白。前置:先 assign_voices 给角色分配音色。后台异步,按用量后付不欠费。' + VIDEO_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/tts`)),
   )
@@ -2873,7 +2967,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '这个是单场景强制重出。客户自己上传过的场景图也会被覆盖,先确认是不是要保留。' +
       '★episode_id 通常不必传(平台按场景归属、再按引用它的分镜自动推导)。' +
       '只有回执报「本场景被多集分镜共用」时才需要点名:那说明同一地点跨集复用,' +
-      '平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。',
+      '平台不猜该按哪一集的时代/世界观出图——猜错就是画面年代静默错掉。' + ASSET_QC_HINT,
     {
       scene_id: z.number().int().positive(),
       quote_id: z.string().optional().describe('来自 quote_regenerate_scene_image(建议必带)'),
@@ -2895,14 +2989,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'generate_character_sheet',
     '给**单个**角色出三视图设定图(镜头一致性根锚,所有镜头帧都会引用;比定妆图更完整)。整集批量用 generate_character_sheets。' +
-      '前置:该角色已有定妆图。图片步,按用量后付不欠费。',
+      '前置:该角色已有定妆图。图片步,按用量后付不欠费。' + ASSET_QC_HINT,
     { character_id: z.number().int().positive(), episode_id: z.number().int().positive().optional() },
     async ({ character_id, episode_id }) =>
       jsonResult(await client.producePost(`/characters/${character_id}/sheet`, episode_id ? { episode_id } : {})),
   )
   server.tool(
     'generate_prop_sheet',
-    '给道具 AI 出设定图。图片步,按用量后付不欠费。',
+    '给道具 AI 出设定图。图片步,按用量后付不欠费。' + ASSET_QC_HINT,
     { prop_id: z.number().int().positive() },
     async ({ prop_id }) => jsonResult(await client.producePost(`/props/${prop_id}/generate-sheet`)),
   )
@@ -3176,7 +3270,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'lipsync_episode',
-    '给整集批量口型同步。后台异步,按用量后付。用 get_lipsync_status 查进度。' + LIPSYNC_UNAVAILABLE_HINT,
+    '给整集批量口型同步。后台异步,按用量后付。用 get_lipsync_status 查进度。' + LIPSYNC_UNAVAILABLE_HINT + VIDEO_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/lipsync-batch`)),
   )

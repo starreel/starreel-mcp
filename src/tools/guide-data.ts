@@ -308,15 +308,20 @@ export const PIPELINE: PipelineStep[] = [
 
 export const REVIEW_GATES = [
   { after: '改写稿产出', run: 'review_script', before: ['extract_assets', 'generate_storyboards'] },
-  { after: '分镜产出', run: 'review_storyboards', before: ['generate_frames'] },
-  { after: '镜头图产出', run: 'review_frames', before: ['generate_videos'] },
+  { after: '分镜产出', run: 'review_storyboards', before: ['generate_frames', 'generate_shot_frame'] },
+  { after: '定妆图/设定图/场景图/道具图产出', run: 'review_assets', before: ['generate_frames', 'generate_shot_frame'] },
+  { after: '镜头图产出', run: 'review_frames', before: ['generate_videos', 'regenerate_shot_video'] },
+  { after: '视频/配音/配乐产出', run: 'review_videos', before: ['compose_episode'] },
 ] as const
 
 export const REVIEW_GATE_RULE =
-  '三道闸全部免费、服务端强制(跳过 → 400)。每次审查返回 review_token,把它随下游收费工具一起传;' +
+  '五道闸全部免费、服务端强制(跳过 → 400;资产层与视频层两道按剧灰度)。每次审查返回 review_token,把它随下游收费工具一起传' +
+  '(资产层那张作为 asset_review_token,与分镜层 review_token 一起传给出图工具);' +
   'findings 逐条原样告诉客户(code=问题类型 · shots=命中镜号 · action=该调哪个工具修),按 action 修完复审再走。' +
   '审查后又改了内容 → token 自动失效,复审一次即可。有 error 时默认拦截;只有客户知情并坚持才带 acknowledge_review:true——不要替客户做这个决定。' +
-  '`review_all` 是整集体检、不发 token。'
+  '`review_all` 是整集体检、不发 token。' +
+  '★每一层审查之后你(agent)还要**亲自质检**:按返回的 agent_qc 清单逐件看素材(图下载看、视频抽帧看、文本通读),' +
+  '调 submit_qc_report 提交报告;灰度剧没交报告 token 不能用,报告有问题与 error 同样默认拦。平台判有没有,你判像不像、对不对。'
 
 export interface QaTool { symptom: string; run: string; then: string[] }
 export const QA_TOOLS: QaTool[] = [
@@ -786,8 +791,9 @@ export function buildInstructions(): string {
     '★第一步永远是判「客户手上有什么材料」——它决定入口,选错入口的返工都是真扣费(全表与要点:get_capabilities_guide):',
     entry,
     '',
-    '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 世界观图 / 动作模板 / 色彩脚本 → run_precheck → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费·哪几镜要独立尾帧) → quote/generate_frames(frame_type=last_frame) → ★review_frames → quote/generate_videos → 音频 → compose_episode → get_final_cut。用 get_pipeline_status 查进度。',
-    '三道免费硬闸(跳过 → 400):review_script(extract_assets/分镜前)· review_storyboards(出图前,含单镜 generate_shot_frame)· review_frames(出视频前,含单镜 regenerate_shot_video);review_token 随下游收费工具传(批量与单镜工具都要),findings 逐条原样告诉客户。',
+    '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 场景图 / 道具图 / 色彩脚本 → ★review_assets → run_precheck → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费·哪几镜要独立尾帧) → quote/generate_frames(frame_type=last_frame) → ★review_frames → quote/generate_videos → 音频 → ★review_videos → compose_episode → get_final_cut → review_final_cut。用 get_pipeline_status 查进度。',
+    '五道免费硬闸(跳过 → 400):review_script(extract_assets/分镜前)· review_storyboards(出图前,含单镜 generate_shot_frame)· review_assets(出图前,token 作 asset_review_token)· review_frames(出视频前,含单镜 regenerate_shot_video)· review_videos(compose_episode 前);review_token 随下游收费工具传(批量与单镜工具都要),findings 逐条原样告诉客户。',
+    '★每层审查之后你还要亲自质检:按返回的 agent_qc 逐件看素材,submit_qc_report 提交报告;灰度剧没交报告进不了下一步。',
     '计费纪律:预付费不透支;大额步 quote_* → 把 estimated_points 原样告诉客户 → 客户同意后 generate_*(quote_id),绝不擅自确认;' +
     '出图类报价给 estimated_points(上界,按它准备余额)与 typical_points(通常花费),两个都说;' +
     '文本步按 token 后付;402 就停下让客户充值,别重试。',

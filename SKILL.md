@@ -42,13 +42,17 @@ create_drama → set_script(raw) → rewrite_script(AI draft, user may edit)
   → scene-images(empty-set plates = the background anchor — every shot in a scene
     anchors on its plate; skip it and each scene's FIRST shot has no background
     anchor at all, and the backdrop drifts from shot to shot)
+  → prop sheets(generate_prop_sheet per referenced prop = the prop anchor)
+  → [review_assets]
   → frames(first frames → tail_frame_plan → tail frames)
   → seams(chain_frames dry_run → confirm → run; per-shot fixes via chain_shot_from*)
-  → [review_frames] → videos → generate_tts(voiceover) → compose_episode → final cut (.mp4 link)
+  → [review_frames] → videos → generate_tts(voiceover) → [review_videos]
+  → compose_episode → final cut (.mp4 link) → review_final_cut
 ```
 
-The three `[review_*]` steps are free and **enforced** — see discipline 11.
-Nothing downstream of them runs until you have reviewed that layer.
+The five `[review_*]` steps are free and **enforced** — see discipline 11.
+Nothing downstream of them runs until you have reviewed that layer **and done
+your own QC of it** (look at the materials yourself, then `submit_qc_report`).
 
 `project_type` picks the flavor at `create_drama`: `drama` / `ad` / `mv` /
 `brand_film`. MV replaces `rewrite_script` with
@@ -525,20 +529,41 @@ content that will be rejected.
     key in an environment variable or secrets manager, never in code or logs.
     The 15-min token auto-re-exchanges; a leaked key is revoked in Settings.
 
-11. **Review every layer before you spend on the next one — free, and three of
+11. **Review every layer before you spend on the next one — free, and five of
     them are enforced.** Never run the pipeline straight through from
     `rewrite_script` to `compose_episode`. A flaw in the rewritten draft gets
     copied into character profiles, then storyboards, then frames, then video —
     by the time you see it in the final cut, the whole episode has to be redone,
     and every redo is another real charge. Reviewing costs nothing.
 
-    **Three hard gates** (the server returns `400` if you skip them):
+    **Five hard gates** (the server returns `400` if you skip them; the assets
+    and videos gates are rolled out per drama):
 
     | After you produce | Run | Before you call |
     |---|---|---|
     | the rewritten draft | `review_script` | `extract_assets`, `generate_storyboards` |
     | storyboards | `review_storyboards` | `generate_frames`, `generate_shot_frame` |
+    | portraits, sheets, scene plates, prop sheets | `review_assets` | `generate_frames`, `generate_shot_frame` (pass its token as `asset_review_token`, alongside the storyboard `review_token`) |
     | shot frames | `review_frames` | `generate_videos`, `regenerate_shot_video` |
+    | videos, voiceover, BGM | `review_videos` | `compose_episode` |
+
+    **Your own QC, on top of the platform's.** The platform can tell whether an
+    asset exists, is still generating, or was rejected; it cannot tell whether
+    it *looks right*. Every `review_*` response carries `agent_qc`: a checklist
+    for that layer and the materials to inspect (one `ref` each — script, every
+    shot, every on-screen character's portrait and sheet, every scene plate and
+    prop sheet, every frame, every video — with links). Open each one yourself
+    (download and view images, sample at least the start, middle and end of each
+    video, read text with the named tool), answer every checklist item
+    (`ok` / `issue` / `na`, with a note for each issue), list every `ref` you
+    inspected, and call `submit_qc_report`. The server only checks that the
+    report is complete — every item answered, every material listed, no "pass"
+    with issues in it — it does not judge your verdict. When
+    `agent_qc.required` is true the `review_token` is unusable until the report
+    is in, and a report with `verdict: "issues"` holds the gate exactly like a
+    platform error (only the user's explicit OK + `acknowledge_review: true`
+    lets it through). Relay your QC findings to the user verbatim. Listing a
+    `ref` you never opened is signing off on the user's money.
 
     The per-shot tools are gated too (since 2026-10-14). A whole episode driven
     shot by shot through `generate_shot_frame` / `regenerate_shot_video` used to
