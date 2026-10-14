@@ -19,7 +19,7 @@
 - 下载端到端基线失败：图片清单没有可下载资源。
 - 改动后 `npm run build && npm test`：7 项通过，包括 MCP handler 到本机 HTTP 下载、文件和清单落盘。
 - `node scripts/release-check.mjs --ci` 通过；OpenAPI 已重新生成。
-- `bash huobao-drama/docs/handoff/selftest.sh`：13 项通过，包含真实 FFmpeg 装配和 LUT 回归。
+- `bash starreel-drama/docs/handoff/selftest.sh`：13 项通过，包含真实 FFmpeg 装配和 LUT 回归。
 - 使用实时只读分镜结果，通过本地新 handler 与下载脚本取回现有测试图片，SHA-256 与此前原件一致。
   此项证明本地新代码适配实际数据，不代表线上 MCP 已更新。
 - 浏览器实看未完成：工具安全策略不允许打开 file://。未绕过；文本转义和产物存在性由测试覆盖。

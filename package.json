@@ -1,6 +1,6 @@
 {
   "name": "@starreel/mcp",
-  "version": "0.1.141",
+  "version": "0.1.143",
   "mcpName": "ai.starreel/starreel",
   "description": "StarReel MCP server — drive the AI short-drama production pipeline (script → storyboards → frames → video → final cut) from Claude, Cursor, or any MCP client",
   "license": "MIT",
@@ -18,7 +18,7 @@
     "openapi.json"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-i18n.mjs",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build && node scripts/release-check.mjs",

@@ -45,6 +45,19 @@ Or install the **Claude Code plugin** — MCP server + agent skill in one step
 3. Ask your agent: *"Take this script and produce a full episode: `<your script>`"* —
    it will quote each paid stage first and only spend after you confirm.
 
+### Tool-catalog language
+
+Tool descriptions and the server instructions are authored in Simplified Chinese. Set
+`STARREEL_MCP_LANG=en` for the English edition: the server instructions (the entry-point
+decision tree) are shipped in English; tool descriptions are being translated in batches and
+any tool without an English entry yet falls back to Chinese (nothing goes blank — the startup
+log on stderr reports the current coverage, e.g. `lang=en ⚠ English catalog 40/230`). The same
+switch sends `Accept-Language` so backend-provided labels follow it:
+
+```bash
+claude mcp add starreel -e STARREEL_API_KEY=srk_live_xxx -e STARREEL_MCP_LANG=en -- npx -y @starreel/mcp
+```
+
 ## Works with any MCP client
 
 Requires Node ≥ 18 (`npx`). The **standard config** below works as-is in

@@ -15,6 +15,7 @@ import { registerLocalizeTools } from './tools/localize.js'
 import { registerProduceTools } from './tools/produce.js'
 import { registerGuideTools } from './tools/guide.js'
 import { buildInstructions } from './tools/guide-data.js'
+import { instructionsFor, patchToolDescriptions, describeCoverage, MCP_LANG } from './i18n.js'
 
 const apiKey = process.env.STARREEL_API_KEY
 if (!apiKey) {
@@ -29,7 +30,11 @@ if (!apiKey) {
 // server 级 instructions:客户端 initialize 时拿到,多数客户端注入系统提示——agent 在看任何工具之前
 // 就先拿到「客户这种材料该走哪条入口」的决策树。全文与 get_capabilities_guide 同源(tools/guide-data.ts),
 // 后端哨兵测试钉住:引导里提到的每个工具名都必须真的注册了。
-const server = new McpServer({ name: 'starreel', version: '0.1.0' }, { instructions: buildInstructions() })
+// 语言开关 STARREEL_MCP_LANG（zh-CN 默认 / en）：工具描述按 src/i18n/tools.en.json 替换（没翻的回中文），
+// instructions 用 src/i18n/instructions.en.md（存在才用），请求头带 Accept-Language。见 src/i18n.ts
+const server = patchToolDescriptions(
+  new McpServer({ name: 'starreel', version: '0.1.0' }, { instructions: instructionsFor(buildInstructions()) }),
+)
 const client = new StarReelClient(apiKey)
 registerGuideTools(server)             // 功能地图(免费·本地·不联网):什么情况下该用哪个工具
 registerProduceTools(server, client)   // 短剧编排产线(需 produce scope)——从剧本到成片
@@ -39,4 +44,4 @@ registerProduceTools(server, client)   // 短剧编排产线(需 produce scope)�
 
 const transport = new StdioServerTransport()
 await server.connect(transport)
-console.error('[starreel-mcp] ready (drama production toolset, stdio)')
+console.error(`[starreel-mcp] ready (drama production toolset, stdio, ${describeCoverage() || `lang=${MCP_LANG}`})`)

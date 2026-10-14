@@ -25,6 +25,10 @@ npx skills add starreel/starreel-mcp
 claude mcp add starreel -e STARREEL_API_KEY=srk_live_xxx -- npx -y @starreel/mcp
 ```
 
+工具目录语言：工具描述与 server 引导默认简体中文，加 `-e STARREEL_MCP_LANG=en` 切英文版——server 引导
+（入口决策树）已有英文；工具描述分批翻译中，还没译文的工具回落中文、不会留空（启动日志 stderr 报当前覆盖率，
+如 `lang=en ⚠ English catalog 40/230`）。同一开关会带 `Accept-Language`，后端给的 label 跟着走。
+
 也可装 **Claude Code 插件**——MCP server + agent skill 一步到位
 (先在 shell 里 `export STARREEL_API_KEY=srk_live_xxx`):
 

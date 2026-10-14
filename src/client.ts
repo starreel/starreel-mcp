@@ -14,6 +14,7 @@ import { createReadStream, statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { Readable } from 'node:stream'
 import { assertSafeLocalMediaPath } from './path-guard.js'   // v0.1.37 — P0③ 路径安全闸
+import { acceptLanguageFor } from './i18n.js'                 // STARREEL_MCP_LANG → Accept-Language
 
 /** 扩展名 → MIME(presign 需要 content_type)。 */
 const MIME_BY_EXT: Record<string, string> = {
@@ -64,7 +65,8 @@ export class StarReelClient {
   private async authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
     const attempt = async (): Promise<Response> => {
       const token = await this.ensureToken()
-      return fetch(url, { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${token}` } })
+      // Accept-Language 随 STARREEL_MCP_LANG：后端 ui-i18n 按语言族挑 label（zh 族中文，其余英文）
+      return fetch(url, { ...init, headers: { ...(init.headers ?? {}), authorization: `Bearer ${token}`, 'accept-language': acceptLanguageFor() } })
     }
     let res = await attempt()
     if (res.status === 401) {
