@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.155",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.155 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.156",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.156 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -12137,7 +12137,7 @@
       "get": {
         "operationId": "get_frame_candidates",
         "summary": "免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）",
-        "description": "免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）。每张候选给原图地址（被拒的也在，可直接打开看原尺寸）、状态、是否为当前在用（adopted）、拒因 reject（main 主码 / code 具体病因 / details 明细 / class 分流：needs_content_fix=要改内容、content_retryable=内容问题但重掷约 1/3 能成、transient=审核没审成或偶发——不是画面不合格）、审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。",
+        "description": "免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）。每张候选给原图地址（被拒的也在，可直接打开看原尺寸）、状态、是否为当前在用（adopted）、拒因 reject（main 主码 / code 具体病因 / details 明细 / class 分流：needs_content_fix=要改内容、content_retryable=内容问题但重掷约 1/3 能成、transient=审核没审成或偶发——不是画面不合格）、审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。客户看过原图确认画面没问题、是审计误判时，用 adopt_frame_candidate 人工采用（免费）；manual_adoption 非空 = 该候选是人工放行的。",
         "tags": [
           "storyboards"
         ],
@@ -12152,6 +12152,84 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/frame-workbench/adopt": {
+      "post": {
+        "operationId": "adopt_frame_candidate",
+        "summary": "免费：人工采用一张被审计拒掉（rejected）或落选（dismissed）的首帧/尾帧候选，作为本镜在用帧——审计误判时的人工兜底（例如作者契约写明的设定被判成冲突）",
+        "description": "免费：人工采用一张被审计拒掉（rejected）或落选（dismissed）的首帧/尾帧候选，作为本镜在用帧——审计误判时的人工兜底（例如作者契约写明的设定被判成冲突）。★必须先用 get_frame_candidates 让客户看过原图和拒因、客户明确同意采用后才调；不许为了让流程走下去自行放行。只能采用本镜本帧位、有画面、且不是当前在用的那张；会在该候选上记录人工放行（谁/何时/原拒因），原拒因保留供统计。本镜已有视频的会标成待重生（视频是按旧帧出的，需 regenerate_shot_video）。本镜该帧是客户上传或已定稿的，要带 replace_user_frame:true 才会替换（并解除定稿）。同帧位有在途出图或本镜视频在途时返回 409，等它结束再采用。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "generation_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "description": "get_frame_candidates 返回的候选 generation_id"
+                  },
+                  "frame_type": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame"
+                    ]
+                  },
+                  "replace_user_frame": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "generation_id",
+                  "frame_type"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",

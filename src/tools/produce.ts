@@ -762,9 +762,25 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '拒因 reject（main 主码 / code 具体病因 / details 明细 / class 分流：needs_content_fix=要改内容、content_retryable=内容问题但重掷约 1/3 能成、transient=审核没审成或偶发——不是画面不合格）、' +
       '审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、' +
       '以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。' +
-      '★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。',
+      '★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。' +
+      '客户看过原图确认画面没问题、是审计误判时，用 adopt_frame_candidate 人工采用（免费）；manual_adoption 非空 = 该候选是人工放行的。',
     { storyboard_id: z.number().int().positive() },
     async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/frame-workbench`)),
+  )
+  server.tool(
+    'adopt_frame_candidate',
+    '免费：人工采用一张被审计拒掉（rejected）或落选（dismissed）的首帧/尾帧候选，作为本镜在用帧——审计误判时的人工兜底（例如作者契约写明的设定被判成冲突）。' +
+      '★必须先用 get_frame_candidates 让客户看过原图和拒因、客户明确同意采用后才调；不许为了让流程走下去自行放行。' +
+      '只能采用本镜本帧位、有画面、且不是当前在用的那张；会在该候选上记录人工放行（谁/何时/原拒因），原拒因保留供统计。' +
+      '本镜已有视频的会标成待重生（视频是按旧帧出的，需 regenerate_shot_video）。本镜该帧是客户上传或已定稿的，要带 replace_user_frame:true 才会替换（并解除定稿）。' +
+      '同帧位有在途出图或本镜视频在途时返回 409，等它结束再采用。',
+    {
+      storyboard_id: z.number().int().positive(),
+      generation_id: z.number().int().positive().describe('get_frame_candidates 返回的候选 generation_id'),
+      frame_type: z.enum(['first_frame', 'last_frame']),
+      replace_user_frame: z.boolean().optional().describe('本镜该帧是上传/定稿帧时，确认替换才传 true'),
+    },
+    async ({ storyboard_id, ...body }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame-workbench/adopt`, body)),
   )
   server.tool(
     'get_stale_portrait_frames',
