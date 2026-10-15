@@ -1399,7 +1399,7 @@ Full reference: https://api.shortreelai.com/docs/mcp
 - `get_asset_versions(storyboard_id)` 查看历史版本链接、依赖 ID/版本哈希及各自状态。历史没有快照时不从当前绑定伪造依赖。
 - `get_image_dispatch(image_id)` 查一张镜头帧的派发台账：每张参考图的用途、所属角色、是否送达模型，派发前被剔的图在哪一步因什么被剔（如时代预检点名的冲突物件），以及最终发给模型的提示词。画面「不像某角色/少了某道具」时先查它，确认是参考没送到还是模型没画对，再决定改什么；`ledger` 不是 `full` 时缺失项为 `null`，不能当作已送达。
 - `get_frame_candidates(storyboard_id)` 一镜首帧/尾帧的全部候选（含被拒的原图）：`adopted` 标出当前在用那张；`reject.class` 区分要改内容（`needs_content_fix`）、内容问题但可重掷（`content_retryable`）、审核没审成或偶发（`transient`，不是画面不合格）；`audit.warnings` / `expected` / `derived_shot_type` / `boxes` 是审计证据（老候选为 `null`，不代表审过）。镜头反复被拒或客户问「被拒的长什么样」时先逐张看它，再决定改分镜、改参考还是重掷。
-- `adopt_frame_candidate(storyboard_id, generation_id, frame_type)` 客户看过原图、确认是审计误判后，人工采用一张被拒/落选候选作为在用帧（免费）。必须客户明确同意才调，别为了让流程走下去自行放行；已有视频的镜会标待重生，上传/定稿帧要带 `replace_user_frame:true`。
+- `adopt_frame_candidate(storyboard_id, generation_id, frame_type)` 客户看过原图、确认是审计误判后，人工采用一张已出完的候选（被拒 / 落选 / 曾经在用）作为在用帧（免费），可随时换回之前那张。必须客户明确同意才调，别为了让流程走下去自行放行；已有视频的镜会标待重生，上传/定稿帧要带 `replace_user_frame:true`。
 - `get_stale_portrait_frames(episode_id)` 换定妆图后查影响范围：列出在用帧仍基于角色旧资产的镜头，每条附证据（`ledger-old-asset` / `references-previous-asset` / `portrait-born-after-frame`）。`unknown` 是证据不足，不是已过期，不要据此批量重出。先把 `stale` 清单和 `has_video` 告诉客户，由客户决定重出哪些镜——重出帧和视频都要付费。
 - `get_asset_binding_repair_plan(episode_id)` 只返回缺失场景绑定的候选和依据，`applied=false`。必须逐项审核，不按名字自动回填，也不自动重新生成客户已完成的片子。
 
