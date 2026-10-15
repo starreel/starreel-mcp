@@ -515,7 +515,22 @@ content that will be rejected.
    image still matches the rest of the film. Do **not** render the image in another
    image tool and push it in with `upload_shot_frame` — that bypasses every anchor
    (faces, wardrobe and style drift) and makes you hostage to that tool's queue.
-   `upload_shot_frame` is for art the customer already owns.
+   `upload_shot_frame` is for art the customer already owns — the one exception is
+   a **local touch-up of this shot's own platform candidate** (option 2 below).
+
+   **When a shot frame fails, offer the customer three choices** (both
+   `get_frame_candidates` and `get_frame_retry_diagnosis` return them as
+   `recovery_options`, ordered free → free → paid; `needs_attention=false` means
+   leave the customer alone):
+   1. `adopt_rejected` — look through the rejected / unselected candidates for one
+      the audit got wrong, then `adopt_frame_candidate` (free; customer must agree).
+   2. `upload_fixed` — take one of this shot's platform candidates, fix small flaws
+      locally (crop, colour, a stray object, slight distortion) and `upload_shot_frame`
+      it (free; customer confirms the edited image). Never generate the frame from
+      scratch in an outside tool — uploaded frames skip the identity / reference audit.
+   3. `regenerate` — change the shot or references per the diagnosis, then
+      `quote_shot_frame` → `generate_shot_frame` (paid; quote first, never re-roll
+      the same inputs unchanged).
 
 7. **Poll, don't block; don't hammer.** Long steps return immediately as
    `status:generating`. Poll `get_pipeline_status` / `get_jobs` /
@@ -875,8 +890,10 @@ If a shot still will not come out, say so plainly and leave it — **do not send
 the customer to an outside image tool.** Frames made elsewhere bypass the
 identity anchor, reference assembly, best-of-N and frame audit, so faces,
 wardrobe and art style drift; the customer will read that drift as *the
-platform's* quality. `upload_shot_frame` exists for genuinely external artwork,
-not as an escape hatch from a rejection loop.
+platform's* quality. `upload_shot_frame` exists for genuinely external artwork
+and for local touch-ups of this shot's own platform candidate (`recovery_options`
+choice 2), not as an escape hatch from a rejection loop. Before giving up, walk the
+customer through the three `recovery_options`.
 
 Three action classes, one decision: **moderation / identity / copyright → change
 content**; **overdue / token → not self-healable (tell user / wait)**; **network

@@ -746,7 +746,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_frame_retry_diagnosis',
-    '免费只读查询图片任务的连败诊断、证据任务 ID 和下一步动作。diagnosis_required 时先调用本工具：审计故障重审已有候选，未知原因先复核；不得原样重抽或擅自改剧本。',
+    '免费只读查询图片任务的连败诊断、证据任务 ID 和下一步动作。diagnosis_required 时先调用本工具：审计故障重审已有候选，未知原因先复核；不得原样重抽或擅自改剧本。' +
+      '★返回的 recovery_options 是出图失败后的三选一（按免费→免费→付费排序，needs_attention=false 时不必打扰客户）：' +
+      '① adopt_rejected 从被拒/落选候选里挑审计误判的（get_frame_candidates→adopt_frame_candidate，candidates 是可采用张数）；' +
+      '② upload_fixed 拿本镜平台候选局部修补后 upload_shot_frame；③ regenerate 按诊断改内容后 quote_shot_frame→generate_shot_frame。' +
+      'ask_customer=true 时三条都摆给客户由客户选，不许替客户放行或擅自付费重抽；failure_class=transient 是偶发失败、稍等按原输入重试即可，' +
+      'not_self_healable 是欠费/点数不足/配额满/模型不可用、重生也无用（regenerate.available=false），先处理账户或换模型。',
     { image_id: z.number().int().positive() },
     async ({ image_id }) => jsonResult(await client.produceGet(`/images/${image_id}/diagnosis`)),
   )
@@ -763,7 +768,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、' +
       '以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。' +
       '★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。' +
-      '客户看过原图确认画面没问题、是审计误判时，用 adopt_frame_candidate 人工采用（免费）；manual_adoption 非空 = 该候选是人工放行的。',
+      '客户看过原图确认画面没问题、是审计误判时，用 adopt_frame_candidate 人工采用（免费）；manual_adoption 非空 = 该候选是人工放行的。' +
+      'recovery_options 按帧位给出失败后的三选一（挑误拒 / 修图上传 / 重生），与 get_frame_retry_diagnosis 同口径。',
     { storyboard_id: z.number().int().positive() },
     async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/frame-workbench`)),
   )
@@ -1839,8 +1845,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'upload_shot_frame',
     '用**客户自有图片**作为某镜的首帧(first_frame)或尾帧(last_frame)。尾帧可选——仅在想固定某镜结尾画面(大运镜/揭示镜)时传;常规只需首帧。会把该镜已有视频标为过期待重生。自动上传+登记。免费。' +
-      '⚠️ 只用于客户自己提供的素材。想「重画/修某一镜」请用 generate_shot_frame 让平台重生——' +
-      '外部工具出的图不带本片的身份锚与画风锚,贴进来人物/服装/画风会漂。',
+      '⚠️ 只用于客户自己提供的素材，或**本镜平台候选的局部修补**（recovery_options 的 upload_fixed：在 get_frame_candidates 给的原图上裁切/调色/修小瑕疵，客户确认后上传）。' +
+      '想「重画某一镜」请用 generate_shot_frame 让平台重生——外部工具从头生成的图不带本片的身份锚与画风锚,贴进来人物/服装/画风会漂。',
     {
       storyboard_id: z.number().int().positive(),
       file_path: z.string().describe('本地帧图路径'),
