@@ -152,6 +152,8 @@ export const WORKFLOW_HINT =
   '出视频后同样看 video_status;成片前用 get_pipeline_status 确认没有缺镜。' +
   '★**禁止一路 generate 到底**:不审查就连推的做法,问题会在每一层被放大,最后整集废掉重来——' +
   '而重来的每一次出图/出视频都是真扣费。审查全部免费,拦下来一分钱不花。' +
+  '★换服装改的是结构化绑定:update_shot 的 active_wardrobe_id(整镜)/ appearance_wardrobes(多人逐角色),可覆盖、可清空——' +
+  '改文字描述不换衣服,也不用让客户去网页改。' +
   '②【产线主干·按序不跳步·★先分镜再建资产】set_script→rewrite_script→★review_script→extract_assets→storyboards(先分镜·纯文本拆镜)→★review_storyboards→' +
   '★剧本纪律(端点强制,绕不过):原始素材(梗概/大纲/成品稿都算)一律放 set_script,**必须经 rewrite_script 产出 AI 改写稿**——' +
   '把自己写好的剧本直接贴进 edit_rewritten_script 绕过改写会被 400 拒(没有改写稿就没有可改的对象),extract_assets 同样要求基于改写稿。' +
@@ -816,9 +818,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '原样传给 generate_shot_frame 的 reopen_pair_id 参数可以只重掷有问题的那一侧(省一半算力/费用,' +
       '不会拿去生成一张这次根本没打算重做的图)。没有这个字段就按 fail_reason/retryable 走常规重试。免费。' +
       '★每镜还带**绑定**(只有 ID):character_ids(本镜绑定的角色)、character_bindings[{character_id,presence}]' +
-      '(presence=on_screen 在画面 / voice_only 只有声音、不进画面)、scene_id、prop_ids、active_wardrobe_id。' +
+      '(presence=on_screen 在画面 / voice_only 只有声音、不进画面)、scene_id、prop_ids、active_wardrobe_id(整镜服装)、' +
+      'appearance_wardrobes[{character_id,wardrobe_id}](逐角色服装锚,只列声明了服装的角色)。' +
       '出图注入谁的定妆图/哪张场景图/哪些道具图由这几项决定;角色名对照 get_characters、道具名对照 get_props。' +
       '改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;' +
+      '改服装用 update_shot 的 active_wardrobe_id / appearance_wardrobes(可覆盖、可传 null 清空);' +
       '改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。' +
       '★启用双边版本审核时，seam_review.status 为 passed/failed/not_checked/stale；stale 是证据过期，不是画面失败，不据此付费重生。continuity_intent 可用 update_shot 明确。' +
       '★每镜带 **seam_state**(本镜与上一镜的镜间接缝,与官网帧时间线同一判据):' +
@@ -1447,11 +1451,16 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'apply_wardrobe_timeline',
     '把客户勾选的换装建议落库(第②步,免费)。改的是每镜的 **active_wardrobe_id 结构化绑定**,'
       + '不是文字描述——这正是「改了 update_shot 的文字却不生效」那个坑的正解。\n'
-      + '★只传客户点头的那几条;一次最多 200 条。\n'
-      + '★多角色同框的镜头单列装不下,那些走 apply_wardrobe_appearances。',
+      + '★items 只要 {storyboard_id, wardrobe_id}:可以传 build 给的建议(只传客户点头的),'
+      + '也可以**不跑 build、手工指定**(客户点名「这几镜换成这件」时直接传,免得为一次指定花 LLM 的钱)。一次最多 200 条。\n'
+      + '★改单镜、或要**清空**绑定,用 update_shot 的 active_wardrobe_id(传 null 清空);本工具只能设、不能清。\n'
+      + '★多角色同框的镜头单列装不下,那些走 update_shot 的 appearance_wardrobes(或本工具的多角色版 apply_wardrobe_appearances)。',
     {
       episode_id: z.number().int().positive(),
-      items: z.array(z.any()).describe('build_wardrobe_timeline 给的建议,只放客户勾选的那几条'),
+      items: z.array(z.object({
+        storyboard_id: z.number().int().positive().describe('本集里的镜头 id'),
+        wardrobe_id: z.number().int().positive().describe('服装资产 id(list_wardrobe 查;必须是本剧的)'),
+      })).min(1).max(200).describe('[{storyboard_id, wardrobe_id}]。build 的建议或手工指定都行'),
     },
     async ({ episode_id, items }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/wardrobe-timeline/apply`, { items })),
@@ -1460,10 +1469,17 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'apply_wardrobe_appearances',
     '逐角色回填 appearances 的服装绑定(第②步的多角色版,免费)。'
       + '用于**多角色同框**的镜头:单个 active_wardrobe_id 装不下几个人各穿各的,'
-      + '这条按角色逐个绑。同样只传客户勾选的那几条,一次最多 200 条。',
+      + '这条按角色逐个绑。items 可以是 build 的建议,也可以手工指定;一次最多 200 条。\n'
+      + '★它是**补空位**:该角色在这一镜已有服装选择的会被跳过(绝不覆盖);角色在这一镜必须已有出场条目,'
+      + '同一角色在一镜出现两次(同源分身)也跳过。要**覆盖改错的、清空、或给还没有出场条目的已绑定角色设服装**,'
+      + '用 update_shot 的 appearance_wardrobes(逐镜,显式覆盖,wardrobe_id:null 清空)。回执的 skipped/errors 要看。',
     {
       episode_id: z.number().int().positive(),
-      items: z.array(z.any()).describe('build_wardrobe_timeline 给的建议,只放客户勾选的那几条'),
+      items: z.array(z.object({
+        storyboard_id: z.number().int().positive().describe('本集里的镜头 id'),
+        character_id: z.number().int().positive().describe('该镜里的角色 id'),
+        wardrobe_id: z.number().int().positive().describe('该角色自己的服装资产 id(list_wardrobe 查)'),
+      })).min(1).max(200).describe('[{storyboard_id, character_id, wardrobe_id}]。build 的建议或手工指定都行'),
     },
     async ({ episode_id, items }) =>
       jsonResult(await client.producePost(
@@ -2279,9 +2295,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_shot',
-    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)与画外音标记(character_presence)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
+    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)、画外音标记(character_presence)与服装绑定(active_wardrobe_id / appearance_wardrobes)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
       '**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);' +
-      '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids)。' +
+      '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids / active_wardrobe_id / appearance_wardrobes)。' +
+      '★★【换衣服改这里,不是改文字】出图穿什么由**服装绑定**决定:单人镜用 active_wardrobe_id(整镜一件),' +
+      '多人同框各穿各的用 appearance_wardrobes(逐角色)。把「穿某某衣服」写进 description/action 不会换衣服。' +
+      '服装 id 用 list_wardrobe 查;改完不会自动重出图,要让画面跟上需重生本镜首帧再重生视频。' +
       '★★原声镜(厂商原生音频)改 dialogue 后,本镜视频会被标记「待重生」——因为台词是**烤进视频人声**的,' +
       '不重生就终拼,成片里念的仍是改动前的台词(典型现象:台词像是跑到了别的镜头上)。' +
       'compose_episode 会以 advisory `stale_video_after_edit` 列出这些镜;正确处置是先 regenerate_shot_video 再终拼。' +
@@ -2310,6 +2329,19 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
           '出图时他的定妆图、人脸锁、站位、主体脸锚全部跳过,台词与配音不受影响;on_screen = 恢复在画面。' +
           '角色必须在本镜绑定里(可与 character_ids 同一请求,先改绑再标)。只列要改的角色,没列的不动(空数组 = 不改任何标记)。' +
           '★完全没出现在画面、台词也不是他说的 → 直接从 character_ids 去掉,不用标 voice_only'),
+      active_wardrobe_id: z.number().int().positive().nullable().optional()
+        .describe('整镜服装绑定(服装资产 id,list_wardrobe 查,必须是本剧的);null = 清空(回到按角色自动匹配)。' +
+          '单人镜换衣服用它;直接覆盖现值。多人同框它只装得下一件(会被当成那件服装所属角色的),各穿各的用 appearance_wardrobes'),
+      appearance_wardrobes: z.array(z.object({
+        character_id: z.number().int().positive(),
+        wardrobe_id: z.number().int().positive().nullable(),
+      })).min(1).optional()
+        .describe('逐角色服装绑定:[{character_id, wardrobe_id}],wardrobe_id=null 清空该角色的服装锚。' +
+          '**显式覆盖**已有选择(apply_wardrobe_appearances 只补空位、改不回改错的,改错了用这里)。只列要改的角色,没列的不动。' +
+          '角色必须在本镜绑定里(可与 character_ids 同一请求);服装必须是本剧里**该角色自己的**(别集专属的不行),否则 400 且本请求一个字段都不写。' +
+          '同一角色在本镜出现两次(同源分身)不猜,400。★本镜的整镜绑定 active_wardrobe_id 若是你点名角色的另一件,出图时它优先、会遮住逐角色服装 ⇒ 409 WARDROBE_SHADOWED_BY_ACTIVE,同一请求加 active_wardrobe_id:null 即可。' +
+          '出场数据是旧格式时 409 APPEARANCES_NONCANONICAL(一字不写),单人镜改用 active_wardrobe_id。回执带 appearance_wardrobes(现值)与 appearance_wardrobes_effective:' +
+          'false = 已落库但本剧尚未开启逐角色服装读取(灰度),出图暂不按它选——单人镜请改用 active_wardrobe_id'),
       title: z.string().optional().describe('镜头标题'),
       description: z.string().optional().describe('画面描述'),
       shot_type: z.string().optional().describe('景别(如 特写/中景/全景/远景)'),

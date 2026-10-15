@@ -1221,6 +1221,17 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   (`active_wardrobe_id` / `appearances[].wardrobeAssetId`), not prose in the
   shot description — editing the text via `update_shot` and leaving the binding
   alone leaves the character in the old outfit.
+  To set, **override or clear** one shot's binding directly (no LLM, free), use
+  `update_shot`: `active_wardrobe_id` (one outfit for the whole shot; `null`
+  clears it) for single-character shots, and `appearance_wardrobes:
+  [{character_id, wardrobe_id|null}]` when several characters share the frame
+  and each wears their own. The apply tools only *fill gaps* (they never
+  overwrite an existing choice and cannot clear), and their `items` can also be
+  written by hand without running `build_wardrobe_timeline`. Read the result
+  back from `get_storyboards` (`active_wardrobe_id`, `appearance_wardrobes`);
+  `appearance_wardrobes_effective: false` in the reply means the drama has not
+  yet enabled per-character wardrobe reads, so prefer `active_wardrobe_id` for a
+  single-character shot. Never send the customer to the web editor for this.
 - **Continuity ledger**: `get_world_state` (which props / garments / injuries
   are tracked, and where two shots disagree), `rebuild_world_state` (LLM,
   **billed** — rerun it when `stale=true`), `add/delete_world_state_event`
