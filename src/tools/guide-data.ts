@@ -14,6 +14,15 @@
  * ★列表字段(use / tools / run / fix)里每一项以**工具名开头**,括号里写关键参数;
  *   散文字段里的工具名用反引号包住——referencedTools() 靠这两条约定抽名字。
  */
+
+/**
+ * 2026-10-15 — seedance-2.5 写实真人题材暂未开放(厂商侧),动漫/风格化可用。
+ * 写实真人剧的默认与推荐改为 hailuo-3(后端建剧不传 video_engine 时按画风自动选,开关 SEEDANCE25_PHOTOREAL_OPEN)。
+ * 恢复时:grep SEEDANCE25_PHOTOREAL_NOTE 找到全部引用处改回「写实首选 seedance-2.5」,并发一版 MCP。
+ * 对客只说「暂未开放」,不写商务原因。
+ */
+export const SEEDANCE25_PHOTOREAL_NOTE = 'seedance-2.5 真人题材暂未开放,动漫/风格化可用'
+
 export const GUIDE_VERSION = '2026-10-13'
 
 export interface EntryPoint {
@@ -290,7 +299,7 @@ export const PIPELINE: PipelineStep[] = [
     step: '8 出视频',
     tools: ['quote_videos', 'generate_videos', 'get_scene_group_plan', 'generate_scene_groups', 'quote_regenerate_shot_video', 'regenerate_shot_video', 'quote_edit_video_shot', 'edit_video_shot', 'upload_shot_footage(实拍素材镜:客户录屏/产品实拍直接当该镜视频,不出视频不扣费)', 'get_edit_capabilities', 'get_repaint_capabilities', 'quote_repaint_shot_video', 'repaint_shot_video', 'quote_reskin_shot_video', 'reskin_shot_video', 'get_repaint_status', 'restore_repaint_original'],
     billing: '报价确认后扣点',
-    note: 'video_engine 必须在出视频前定(seedance-2.5 默认 / hailuo-3 降本 / wan3.0 风格化·绝不用于写实真人);切换不回溯已生成镜头。',
+    note: 'video_engine 必须在出视频前定(写实真人剧 hailuo-3 / 动漫·风格化 seedance-2.5 或 wan3.0·wan 绝不用于写实真人;' + SEEDANCE25_PHOTOREAL_NOTE + ');切换不回溯已生成镜头。',
   },
   {
     step: '9 音频',
@@ -326,7 +335,7 @@ export const REVIEW_GATE_RULE =
 export interface QaTool { symptom: string; run: string; then: string[] }
 export const QA_TOOLS: QaTool[] = [
   { symptom: '话没说完就切 / 台词跑到别的镜上', run: 'scan_dialogue_coverage', then: ['repair_episode_dialogue(首选:换音频不重生,便宜)', 'regenerate_shot_video(特写镜或画面也错时)', 'compose_episode'] },
-  { symptom: '切太快 / 一个镜头里画面跳来跳去', run: 'scan_intra_shot_cuts', then: ['update_project_settings(video_engine 改 seedance-2.5 或 hailuo-3)', 'regenerate_shot_video'] },
+  { symptom: '切太快 / 一个镜头里画面跳来跳去', run: 'scan_intra_shot_cuts', then: ['update_project_settings(video_engine 改 hailuo-3;动漫/风格化剧也可改 seedance-2.5)', 'regenerate_shot_video'] },
   // 「动作太慢」的判据全部来自实测(同剧同镜多版对照):删 slow/缓慢这类措辞没有可测效果;
   // 远景镜的运动量整体只有中景的几分之一;把更多节拍放进同样秒数才真的更有动感。
   // ★只作为逐镜修法给 agent,平台默认拆镜规则不在这里改(等运动量基线攒够再裁决)。
@@ -493,6 +502,8 @@ export interface ModelCard {
   id: string
   name: string
   is_default?: boolean
+  /** 条件默认:只对这一类剧是默认(视频引擎按画风分流时用,不传 video_engine 时平台据此自动选) */
+  default_for?: string
   price: string
   strengths: string[]
   weaknesses: string[]
@@ -591,10 +602,10 @@ export const MODEL_GUIDE = {
   ],
   video_engines: [
     {
-      id: 'seedance-2.5', name: 'Seedance 2.5', is_default: true,
+      id: 'seedance-2.5', name: 'Seedance 2.5', default_for: '动漫/风格化剧',  // 视频引擎无全局默认:按画风分流,写实见 hailuo-3
       price: '720p 约 212 点/秒(在售 480p/720p,高清档停售);单镜 2~30 秒',
       strengths: [
-        '指令遵循与人脸细节最强,写实真人剧首选',
+        '指令遵循与人脸细节最强(' + SEEDANCE25_PHOTOREAL_NOTE + ')',
         '能力最全:首尾帧链、场景组、关键帧组(组内每镜都送自己的首帧,只有它支持)、就地编辑含时间区间、延长、参考图锚',
         '镜内自行跳切少(实测 1/6 镜),单镜叙事稳',
         '台词念不全的比例最低:23%(294 镜)',
@@ -604,10 +615,10 @@ export const MODEL_GUIDE = {
         '文本审核最严:打斗、流血一类措辞容易直接被拒,要中性化描述',
         '写实角色要做一次虚拟人像核验(每个人物锁 200 点,只有本引擎收)',
       ],
-      best_for: '写实真人剧、对白多的剧、要逐镜精确控制画面的剧',
+      best_for: '动漫/风格化剧、要逐镜精确控制画面的剧(' + SEEDANCE25_PHOTOREAL_NOTE + ')',
     },
     {
-      id: 'hailuo-3', name: 'MiniMax H3',
+      id: 'hailuo-3', name: 'MiniMax H3', default_for: '写实真人剧(含未定画风)',
       price: '720p(=768P)70 点/秒、1080p(=2K)112 点/秒;无独立 480p 档(选了也按 768P 计);单镜 4~15 秒',
       strengths: [
         '约 1/3 成本,还能出 2K',
@@ -621,8 +632,8 @@ export const MODEL_GUIDE = {
         '不支持关键帧组与时间区间编辑',
         '提示词上限 7000 字符,平台会自动剥掉软性描述块,极长的镜头描述会丢细节',
       ],
-      best_for: '写实真人剧但预算紧、对白不密集;单镜编辑(配合 `edit_video_shot` 的 model 参数)',
-      avoid_for: '对白密集、赶交付时间的项目',
+      best_for: '写实真人剧(当前写实剧默认,不传 video_engine 时平台按画风自动选它);单镜编辑(配合 `edit_video_shot` 的 model 参数)',
+      avoid_for: '赶交付时间的项目;对白密集时注意台词念不全,先用 `scan_dialogue_coverage` 核查',
     },
     {
       id: 'wan3.0', name: 'WAN 3.0',
@@ -652,8 +663,8 @@ export const MODEL_GUIDE = {
     },
   ] as ModelCard[],
   video_decision: [
-    '① 先定「是不是写实真人」:是 → seedance-2.5(默认)或降本 hailuo-3;绝不选 wan3.0 / wan3.0-prime。',
-    '② 写实真人 + 对白密集 → seedance-2.5(台词念不全 23% vs hailuo-3 50%)。',
+    '① 先定「是不是写实真人」:是 → hailuo-3(' + SEEDANCE25_PHOTOREAL_NOTE + ');绝不选 wan3.0 / wan3.0-prime。',
+    '② 写实真人 + 对白密集 → 仍用 hailuo-3,但它台词念不全的比例偏高(50%),出完先跑 `scan_dialogue_coverage`,念不全的用 `repair_episode_dialogue` 修。',
     '③ 风格化/动画/3D/空镜/产品镜 → wan3.0,赶交付用 wan3.0-prime;但讲连贯故事、要单镜稳定的叙事剧仍优先 seedance-2.5(WAN 镜内自剪 11/12)。',
     '④ 想让每一镜的首帧都进组视频(关键帧组)→ 只有 seedance-2.5 支持;其他引擎的场景组只送组首镜首帧。',
     '⑤ 出视频前就把引擎定好:切换不会重做已生成的镜头,同一剧混用引擎会有风格/身份跳变。',
@@ -662,12 +673,11 @@ export const MODEL_GUIDE = {
     '⑧ 只想改一镜的色调/局部 → `edit_video_shot` 可以单独选 model=hailuo-3(保真、便宜),不用改剧引擎;但它不支持 start_sec/end_sec 区间。',
   ],
   combos: [
-    { scenario: '写实真人短剧(标准配置)', image_model: 'gpt-image-2.5-flare', video_engine: 'seedance-2.5', resolution: '720p', why: '出图一次过率最高 + 视频人脸与指令遵循最强,返工最少' },
-    { scenario: '写实真人短剧 · 预算紧、对白不多', image_model: 'gpt-image-2.5-flare', video_engine: 'hailuo-3', resolution: '草稿 720p / 交付 1080p', why: '视频成本约 1/3;对白多就回到 seedance-2.5' },
+    { scenario: '写实真人短剧(标准配置)', image_model: 'gpt-image-2.5-flare', video_engine: 'hailuo-3', resolution: '草稿 720p / 交付 1080p', why: '出图一次过率最高;视频成本约 1/3、可出 2K(' + SEEDANCE25_PHOTOREAL_NOTE + ')' },
     { scenario: '动画 / 3D 卡通 / 风格化剧', image_model: 'gpt-image-2.5-flare', video_engine: 'wan3.0', resolution: '草稿 480p / 交付 1080p', why: '视频约 4 折且快;记得出尾帧给双锚,风格才锁得住' },
     { scenario: '广告 / 产品片 / 空镜为主', image_model: 'gpt-image-2.5-flare', video_engine: 'wan3.0', resolution: '480p 试片 / 1080p 交付', why: '无真人脸审核问题,短镜 2 秒起计费最省;赶工换 wan3.0-prime' },
-    { scenario: '画面文字多(招牌、屏幕、文件、字卡)', image_model: 'gpt-image-2.5-sunburst', video_engine: 'seedance-2.5', resolution: '720p', why: '中文字形更准;视频按剧的真人/风格化再按上面选' },
-    { scenario: '打斗、流血场面多的写实剧', image_model: 'gpt-image-2.5-flare', video_engine: 'seedance-2.5', resolution: '720p', why: '图被安全拒的镜平台自动换 Nano Banana 2;视频侧把血腥措辞改成中性描述(Seedance 文本审核严)。不要为了过审换 WAN——写实人脸会被拒' },
+    { scenario: '画面文字多(招牌、屏幕、文件、字卡)', image_model: 'gpt-image-2.5-sunburst', video_engine: 'hailuo-3', resolution: '720p', why: '中文字形更准;视频按剧的真人/风格化再按上面选(风格化剧可用 seedance-2.5)' },
+    { scenario: '打斗、流血场面多的写实剧', image_model: 'gpt-image-2.5-flare', video_engine: 'hailuo-3', resolution: '720p', why: '图被安全拒的镜平台自动换 Nano Banana 2;视频侧把血腥措辞改成中性描述。不要为了过审换 WAN——写实人脸会被拒(' + SEEDANCE25_PHOTOREAL_NOTE + ')' },
   ] as ModelCombo[],
 }
 

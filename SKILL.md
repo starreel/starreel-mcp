@@ -449,8 +449,11 @@ content that will be rejected.
    **Video engine**: videos use a drama-level engine, set via `create_drama` /
    `update_project_settings` field `video_engine`. Four options — surface the
    choice to the customer with the price gaps and let them decide:
-   `seedance-2.5` (default; full capability: frame chain / scene groups /
-   in-place edit / extend / reference anchors; 720p ≈ 212 pts/s);
+   `seedance-2.5` (default for anime / stylized dramas; full capability: frame
+   chain / scene groups / in-place edit / extend / reference anchors; 720p ≈
+   212 pts/s; **realistic live-action subjects are not available on it for
+   now**); if `video_engine` is omitted the platform picks by style —
+   realistic or unspecified → `hailuo-3`, anime / stylized → `seedance-2.5`;
    `hailuo-3` (MiniMax H3; ≈1/3 cost at 70 pts/s for 720p; native dialogue &
    SFX baked in; up to 2K; ~6 min per shot; in-place edit — high fidelity —
    and episode extend supported, input video billed per second on top);
@@ -476,8 +479,9 @@ content that will be rejected.
    reference image's raised-arm pose" produced exactly that raised arm at the
    opening, overriding the source video's motion.
    **How to choose (guide the customer proactively)**: ① realistic live-action
-   dramas → `seedance-2.5` (best instruction-following and face detail), or
-   `hailuo-3` to cut cost to ~1/3 (slower, ~6 min/shot); ② stylized / animated /
+   dramas → `hailuo-3` (~1/3 cost, up to 2K, slower at ~6 min/shot;
+   `seedance-2.5` does not take realistic live-action subjects for now — it
+   stays available for anime / stylized work); ② stylized / animated /
    3D-cartoon dramas, empty shots and product shots → `wan3.0` (~40% cost,
    2s-minimum billing), or `wan3.0-prime` when delivery speed matters;
    ③ NEVER pick wan3.0/prime for realistic live-action — WAN's output
@@ -1029,8 +1033,9 @@ Four distinct causes; they need **opposite** fixes, so identify the family first
    generated after the Aug-30 native-audio fix, so this is the engine itself).
    `wan3.0` is **not measured**: its 26 sampled shots (46%) all predate that
    same fix, and only 2 shots exist after it — treat WAN as unknown here, not
-   as bad. For dialogue-heavy work prefer `seedance-2.5`; be cautious with
-   `hailuo-3` when the script is dialogue-dense.
+   as bad. For dialogue-heavy stylized work prefer `seedance-2.5`; on
+   realistic dramas (`hailuo-3` for now) run `scan_dialogue_coverage` after
+   generating and repair short lines with `repair_episode_dialogue`.
 4. **The transition ate the tail.** A cross-fade pulls the *next* shot's start
    backwards, covering the end of the current one. The platform now shortens or
    drops that transition automatically so it can never cover a spoken word, so
@@ -1212,7 +1217,8 @@ start in the middle.
 
 Pick the engine **before** generating video — switching does not retroactively
 fix shots already made. For anything with dialogue and a story to follow, use
-`seedance-2.5` (or `hailuo-3` to cut cost). Reach for `wan3.0` when the shots
+`hailuo-3` for realistic live-action (realistic subjects are not available on
+`seedance-2.5` for now) or `seedance-2.5` for anime / stylized. Reach for `wan3.0` when the shots
 are short and stylised — animation, 3D cartoon, empty/scenery shots, product
 shots — where an extra angle change inside a shot does not read as a mistake.
 Two hard limits on WAN: realistic human faces at 720p+ are rejected outright by
