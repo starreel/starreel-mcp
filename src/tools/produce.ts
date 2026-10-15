@@ -261,7 +261,13 @@ export const WORKFLOW_HINT =
   '★两条导入通道都是确定性的——写错了也会原样建进去,所以**先取契约再自检再导**:分镜表走 get_storyboard_table_spec → check_storyboard_table → import_storyboard_table;' +
   '客户自己的工具/表格能导出结构化数据、或让外部 AI 直接产 JSON 时走 get_bulk_import_spec → check_bulk_import → bulk_import_storyboards(只建分镜;角色/场景/道具由 extract_assets 从剧本提取,导入按名字绑定已有的——先 extract 再导)。' +
   '两条导入默认带 auto_complete(后台 AI 补专业字段 + 出图/视频提示词,文本步后付,调用前告知客户):回执 started=true 就用 get_autofill_status 轮询到 done 再 review_storyboards——补全会改镜,先审的 token 会失效。' +
-  '用 get_pipeline_status 查进度(按项目类型返回专属步骤)。'
+  '用 get_pipeline_status 查进度(按项目类型返回专属步骤)。' +
+  '★★【开场方案·建剧后第一件事·免费】先问基本视频参数(项目类型/画幅/集数×每集分钟/题材:写实真人 realistic_human·动漫风格化 stylized·产品空镜 product/原声还是配音),' +
+  '再调 get_production_menu 拿**当前可用**的三档套餐(效果说明+实时预估+不计入项)讲给客户——别凭记忆推荐模型,某些模型对某些题材会临时不可用,菜单已过滤;' +
+  '然后让客户选执行模式(pro 每步自己把控 / auto 一键出片 / custom 选环节托管)、预算 budget_points 与自动追加上限(0/10/20/30%),' +
+  '把汇总讲清楚、客户明确同意后才调 confirm_production_plan(customer_confirmed:true)——不许替客户确认。' +
+  '确认过方案的剧:收费派发前平台复核模型仍可用、报价上界不超过预算×(1+追加%),被拦(402 BUDGET_WOULD_EXCEED / 409 MODEL_UNAVAILABLE)就停下问客户,别自己换模型或调预算。' +
+  'confirm 返回 403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。'
 
 const ETHNICITY_CODES = [
   'east_asian', 'southeast_asian', 'south_asian', 'central_asian',
@@ -2815,6 +2821,82 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '客户问「一共花了多少」时要说明这部分另计,不要把 spent 当成全部费用。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/budget-status`)),
+  )
+
+  // ========== 一键出片开场方案(2026-10-15)==========
+  server.tool(
+    'get_production_menu',
+    '★开场第二步(免费·只读·不需要剧号):按客户的基本视频参数,返回**当前可用**的三档模型套餐(省钱/标准/高品质)。' +
+      '每档给:图片模型+视频引擎+分辨率、效果说明(effect)、实时预估(estimate:每集与全剧的 typical 通常花费与 upper 上界,breakdown 分项)、' +
+      'warnings(所选模型近期繁忙/失败偏多)、substitutions(本档首选模型暂不可用、退到后备组合的原因)。' +
+      '某档 available=false 表示该档模型当前都不可用(unavailable_reason 说明),别推荐它。' +
+      'estimate=null 表示价格服务暂时取不到实时单价——如实告诉客户「暂时估不出」,别自己编数字。' +
+      'not_included 列出不在预估里的花费(文本步、配音配乐、质检重出),一并讲给客户;质检重出这部分正是「自动追加」兜底的。' +
+      'availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。' +
+      '★题材 content_class 决定可用性:同一引擎可能动漫可用、写实真人暂不可用——按剧情实际画面选,别为了用某个模型改题材。',
+    {
+      content_class: z.enum(['realistic_human', 'stylized', 'product']).describe('题材:realistic_human 写实真人 / stylized 动漫·风格化 / product 产品·空镜'),
+      episodes: z.number().int().min(1).max(200).describe('集数'),
+      minutes_per_episode: z.number().positive().max(30).describe('每集时长(分钟),预估按每镜约 5.3 秒折算镜数'),
+      aspect_ratio: z.string().optional().describe('画幅,如 9:16 / 16:9(只影响视频报价)'),
+      assets: z.object({
+        characters: z.number().int().min(0).max(100).optional(),
+        scenes: z.number().int().min(0).max(200).optional(),
+        props: z.number().int().min(0).max(200).optional(),
+      }).optional().describe('资产图粗估的数量假设(默认 6 角色/8 场景/6 道具),知道大概数量就传,预估更准'),
+    },
+    async (args) => jsonResult(await client.producePost('/production-menu', args)),
+  )
+  server.tool(
+    'confirm_production_plan',
+    '★开场最后一步:把客户**明确同意**的整份方案写进本剧(免费)。写入图片模型/视频引擎/分辨率/预算,并记录题材、执行模式、自动追加上限与确认快照。' +
+      '调用前必须把汇总完整讲给客户:所选套餐与效果、全剧预估(通常值与上界)、执行模式、预算、追加比例,以及「追加只在预算用完后才动用、到硬上限会停下来问」——客户点头才传 customer_confirmed:true。' +
+      '★确认后平台在每次收费派发前复核:①本剧模型对本剧题材仍可用,否则 409 MODEL_UNAVAILABLE;②报价上界+已花 ≤ 预算×(1+追加%),否则 402 BUDGET_WOULD_EXCEED(都未扣费)。' +
+      '被拦就停下问客户,别自己换模型、别自己调预算。' +
+      '★执行模式本期只记录:各层审查(review_*)与 agent 质检照旧,error 照旧要客户知情才能 acknowledge_review。' +
+      '★选套餐要带 expected_combo(该档 combo 原样)与 expected_total_upper:确认的必须是客户看到的那组模型与预估。' +
+      '409 PACKAGE_CHANGED = 菜单返回后该档换了组合或预估明显上涨,返回体里有新的组合与预估,重新讲给客户、同意后带新值再确认;' +
+      '409 PACKAGE_UNAVAILABLE / MODEL_UNAVAILABLE = 确认这一刻该模型不可用了,重新 get_production_menu 让客户改选。403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。',
+    {
+      drama_id: z.number().int().positive(),
+      customer_confirmed: z.literal(true).describe('客户已听完汇总并明确同意(必须为 true;不许替客户确认)'),
+      content_class: z.enum(['realistic_human', 'stylized', 'product']),
+      package_key: z.enum(['economy', 'standard', 'premium']).optional().describe('选菜单里的一档;与 custom 二选一'),
+      expected_combo: z.object({
+        image_model: z.string(),
+        video_engine: z.string(),
+        video_resolution: z.string(),
+      }).optional().describe('选 package_key 时必填:把 get_production_menu 里该档的 combo 原样传回。确认这一刻若该档已换成别的组合,平台回 409 PACKAGE_CHANGED、不写入'),
+      expected_total_upper: z.number().positive().optional().describe('该档的 estimate.total.upper(客户看到的全剧预估上界)。重算后涨幅超过 5% 也会 409 PACKAGE_CHANGED'),
+      assets: z.object({
+        characters: z.number().int().min(0).max(200).optional(),
+        scenes: z.number().int().min(0).max(200).optional(),
+        props: z.number().int().min(0).max(200).optional(),
+      }).optional().describe('调 get_production_menu 时传过 assets 就原样再传一次,否则按默认数量重算的预估对不上客户看到的'),
+      custom: z.object({
+        image_model: z.string(),
+        video_engine: z.string(),
+        video_resolution: z.enum(['480p', '720p', '1080p']).optional(),
+      }).optional().describe('专业客户自选模型(须在 get_production_menu 的 availability 里是可用的);与 package_key 二选一'),
+      execution_mode: z.enum(['pro', 'auto', 'custom']).describe('pro 每步客户把控 / auto 一键出片 / custom 按环节选托管'),
+      stage_control: z.object({
+        script: z.enum(['customer', 'agent']), storyboards: z.enum(['customer', 'agent']), assets: z.enum(['customer', 'agent']),
+        frames: z.enum(['customer', 'agent']), videos: z.enum(['customer', 'agent']), compose: z.enum(['customer', 'agent']),
+      }).optional().describe('execution_mode=custom 时必填:每个环节 customer(客户把控)或 agent(托管)'),
+      budget_points: z.number().int().positive().optional().describe('预算(点)。auto / custom 必填(客户授权 agent 自主花费的上限);建议不低于所选套餐的 estimate.total.upper'),
+      overrun_pct: z.union([z.literal(0), z.literal(10), z.literal(20), z.literal(30)]).optional().describe('自动追加上限(%),默认 0。硬上限 = 预算 × (1 + 本值/100)'),
+      episodes: z.number().int().min(1).max(200),
+      minutes_per_episode: z.number().positive().max(30),
+    },
+    async ({ drama_id, ...body }) => jsonResult(await client.producePost(`/dramas/${drama_id}/production-plan`, body)),
+  )
+  server.tool(
+    'get_production_plan',
+    '查本剧已确认的开场方案(免费)。返回方案快照、当前模型、models_unavailable_now(本剧模型此刻已不可用时非空——出图/出视频前要先问客户怎么办)、' +
+      'budget(含 hard_cap 硬上限、overrun_in_use 是否已在动用追加额度)。confirmed=false 表示还没确认过方案。' +
+      '★budget.overrun_in_use 变成 true 时主动告诉客户「预算已用完、正在动用追加额度,还剩 cap_remaining 点」。',
+    { drama_id: z.number().int().positive() },
+    async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/production-plan`)),
   )
 
   // ========== P1 · 整集配音(成片前的强制音频步)==========

@@ -121,6 +121,42 @@ When refused, relay the `message` to the customer as-is. Pass
 `allow_issues: true` only when the customer has seen the issues and explicitly
 insists on that image (the check is automatic and can be wrong).
 
+## Opening plan — models, budget and execution mode, confirmed once
+
+Right after `create_drama`, before any paid step:
+
+1. Ask the basic video parameters: project type, aspect ratio, episodes ×
+   minutes per episode, subject class (`realistic_human` / `stylized` /
+   `product`), original clip audio or TTS.
+2. Call `get_production_menu` (free). It returns three packages built only
+   from models that are **available right now for that subject class** — a
+   model can be temporarily unavailable for one class (e.g. realistic humans)
+   while fine for another. Never recommend models from memory. Relay each
+   package's `effect`, live `estimate` (typical and upper bound), `warnings`,
+   `substitutions` and the `not_included` list. `estimate: null` means live
+   prices are unreachable — say so, don't invent numbers.
+3. Let the customer pick an execution mode (`pro` — they control every step;
+   `auto` — one-click; `custom` — they pick which stages to delegate), a budget
+   (`budget_points`, required for auto/custom) and an automatic overrun cap
+   (0 / 10 / 20 / 30 %).
+4. Summarize everything; only after the customer explicitly agrees call
+   `confirm_production_plan` with `customer_confirmed: true`, passing the
+   chosen package's `combo` back as `expected_combo` and its
+   `estimate.total.upper` as `expected_total_upper`. Never confirm on their
+   behalf. `409 PACKAGE_CHANGED` means the package changed after the menu was
+   shown (fallback model or a price rise above 5%) — present the new combo and
+   estimate from the response and ask again.
+
+After confirmation, every paid dispatch is re-checked server-side: the model
+must still be available (`409 MODEL_UNAVAILABLE`) and quote upper bound + spent
+must stay within budget × (1 + overrun %) (`402 BUDGET_WOULD_EXCEED`). Nothing
+is charged when blocked — stop and ask the customer; don't switch models or
+raise the budget yourself. `get_production_plan` shows the plan, budget headroom
+and whether the overrun allowance is in use. The execution mode is recorded only
+for now: review gates and agent QC behave exactly as before.
+`403 PRODUCTION_PLAN_NOT_OPEN` means the drama isn't in the rollout yet —
+follow the normal step-by-step flow.
+
 ## Execution tiers — when to just do it vs. when to ask
 
 Don't ask the user at every step. Sort work into three tiers:
