@@ -327,7 +327,8 @@ export const REVIEW_GATE_RULE =
   '五道闸全部免费、服务端强制(跳过 → 400;资产层与视频层两道按剧灰度)。每次审查返回 review_token,把它随下游收费工具一起传' +
   '(资产层那张作为 asset_review_token,与分镜层 review_token 一起传给出图工具);' +
   'findings 逐条原样告诉客户(code=问题类型 · shots=命中镜号 · action=该调哪个工具修),按 action 修完复审再走。' +
-  '审查后又改了内容 → token 自动失效,复审一次即可。有 error 时默认拦截;只有客户知情并坚持才带 acknowledge_review:true——不要替客户做这个决定。' +
+  '审查后又改了内容 → token 自动失效,复审一次即可。有 error 时默认拦截;专业模式只有客户知情并坚持才带 acknowledge_review:true——不要替客户做这个决定;' +
+  '一键 / 混合模式的托管环节里,白名单内的启发式 error 带 auto_acknowledge:true 放行(平台判、写决策日志),其余自修后复审,修不好就汇总问客户(get_autopilot_log)。' +
   '`review_all` 是整集体检、不发 token。' +
   '★每一层审查之后你(agent)还要**亲自质检**:按返回的 agent_qc 清单逐件看素材(图下载看、视频抽帧看、文本通读),' +
   '调 submit_qc_report 提交报告;灰度剧没交报告 token 不能用,报告有问题与 error 同样默认拦。平台判有没有,你判像不像、对不对。'

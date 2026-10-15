@@ -163,8 +163,33 @@ must still be available (`409 MODEL_UNAVAILABLE`) and quote upper bound + spent
 must stay within budget × (1 + overrun %) (`402 BUDGET_WOULD_EXCEED`). Nothing
 is charged when blocked — stop and ask the customer; don't switch models or
 raise the budget yourself. `get_production_plan` shows the plan, budget headroom
-and whether the overrun allowance is in use. The execution mode is recorded only
-for now: review gates and agent QC behave exactly as before.
+and whether the overrun allowance is in use.
+
+### Executing by mode (`get_production_plan` → `autopilot`)
+
+Read `autopilot` before working on a confirmed drama. `enabled: false` (rollout
+`AUTOPILOT_DRAMAS` not open for this drama), `pro`, or no plan → every quote,
+review verdict and suggestion goes to the customer first, exactly as below.
+In a **delegated stage** (`auto` = all stages; `custom` = stages whose
+`stage_control` is `agent`) don't ask the customer:
+
+- follow `get_pipeline_status` → `next_action` (`run` / `wait_customer` /
+  `ask_customer` / `done`); confirm quotes yourself while they fit the hard cap;
+- review + agent QC every layer as usual, then do what `autopilot.next_step`
+  says: errors that are all in `auto_ack_codes` (heuristics) → pass
+  `auto_acknowledge: true` to the next paid step; anything else → fix and
+  re-review, at most `max_fix_rounds` rounds (default 3, counted server-side);
+- decisions follow `default_decisions` (adopt only `must` suggestions that keep
+  the customer's lines, apply precheck proposals, first BGM candidate,
+  auto-assigned voices, never delete characters); `never_auto_actions`
+  (`mode=replace`, deleting assets, overwriting customer uploads,
+  `allow_era_ref_conflict`, voice cloning, `confirm_delivery_acceptance`) always
+  need the customer;
+- `402` / `409` / `400 AUTOPILOT_MUST_ASK` / non-empty `pending_questions` →
+  pause and ask everything in `get_autopilot_log` → `pending_questions` **at
+  once**. The log is written by the server; your own claims don't count.
+- When done, present `get_autopilot_log` → `report`: spend, fix rounds per
+  layer, what was auto-acknowledged, leftover defects.
 `403 PRODUCTION_PLAN_NOT_OPEN` means the drama isn't in the rollout yet —
 follow the normal step-by-step flow.
 
