@@ -2996,8 +2996,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'quote_scene_lighting_ref',
-    '给某个场景补一张打光参考图的报价(免费,不出图)。打光参考图=只复现该场景光线的中性人脸特写,' +
-      '近景/特写镜看不到场景图时靠它统一光线。场景缺它时(例如上传了新场景图后)才需要补;' +
+    '给某个场景补一张打光参考图的报价(免费,不出图)。打光参考图=只复现该场景光线、不当身份参考的图:' +
+      '新版是无身份光照探针(中性灰背景上两只哑光标定球,不含任何人物),平台尚未对该剧切换新版时仍是中性人脸特写;' +
+      '报价返回的 note 会说明本剧这次出的是哪一种。近景/特写镜看不到场景图时靠它统一光线。场景缺它时(例如上传了新场景图后)才需要补;' +
       '有宽景镜但还没出首帧的场景不必补(宽景镜出帧时平台自动派生)。不够格时返回 400 并说明原因。' + CONFIRM_HINT,
     { scene_id: z.number().int().positive() },
     async ({ scene_id }) => jsonResult(await client.producePost(`/scenes/${scene_id}/lighting-ref/quote`)),
