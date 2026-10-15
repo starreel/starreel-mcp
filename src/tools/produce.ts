@@ -167,7 +167,14 @@ export const WORKFLOW_HINT =
   'generate_portraits_and_sheets(定妆图+设定图·分镜后建:先用 delete_character 删掉**全剧任何一集都不出场、后续集也不打算用**的出镜角色再出图——角色是剧级的,删了每一集的出帧装配都不再带它,只看本集分镜判不出来、拿不准就留着(一张定妆图的钱远小于后面某集丢身份锚);定妆图步对**所有未删的出镜角色**出图、不看分镜绑定,留着的都照常扣费;' +
   '画外音角色(char_type=voiceover 的旁白/电话音)本就不出图、也没有分镜绑定,**别删**,配音还靠它)→' +
   '★generate_color_script(色彩脚本·统一调色)→assign_voices(分配音色;旁白/角色库里没合适的→design_voice 按描述造一个,定样后 set_character_voice)→' +
-  '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames(默认只出首帧)→★tail_frame_plan(免费·哪几镜要独立尾帧)→frames(frame_type=last_frame)→★review_frames→videos→generate_tts→compose;' +
+  '★quote_scene_images+generate_scene_images(空景基板·出帧前必做)→frames(默认只出首帧)→★tail_frame_plan(免费·哪几镜要独立尾帧)→frames(frame_type=last_frame)→★chain_frames(接缝·先 dry_run:true)→★review_frames→videos→generate_tts→compose;' +
+  '★★【接缝别跳·尾帧补完、review_frames 之前】首尾帧齐了之后调 chain_frames(dry_run:true,免费)看平台的接缝计划与 estimated_points' +
+  '(copy 免费、reframe 每道一张图),讲给客户、确认后不带 dry_run 执行;已接好的缝不进计划,重复调不重复扣费。' +
+  '★执行后 reframe 是**异步出图**:用 get_jobs 看计划里那些镜的 first_frame 出图行,等 pending/processing 全部结束(failed 的看 error_msg,单道用 chain_shot_from 重接)再 review_frames——' +
+  '旧首帧还在时 get_storyboards 的 frame_status 仍是 ready,看不出新图在出还是失败了。' +
+  'get_jobs 清空后再用 get_storyboards 核对 seam_state:晋升被拒的替换图不留在 get_jobs 里,那道缝会仍是 unchained(review_frames 也会报 seam_unchained),按它的 action 重接。' +
+  '没落地就审,审的是旧首帧,token 在新首帧落地后作废。' +
+  '逐镜/批量出帧的集平台多半没自动接过(get_storyboards 的 seam_state=unchained 就是),跳过它不报错——代价是镜与镜之间画面对不上,成片一处一个跳切。' +
   '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
   '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
   '跳过不报错、不拦你——代价是那些镜出视频时只有首帧一个锚,末态由模型自由发挥:动作做不到位、大运镜结束又回到起点构图。生产实测 32 集里 30 集整集只出了首帧,其中 23 集一路出完了视频。' +
@@ -1122,6 +1129,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '返回 shots_needing_last_frame(总数)、ready(已有首帧、现在就能补尾帧的镜)、' +
       'pending_first_frame(还需要尾帧但首帧尚未落地的镜——等首帧出完再调一次本工具)。' +
       '拿到 ready 清单后:quote_frames + generate_frames 带 frame_type=last_frame 即可批量补。' +
+      '★尾帧补完(或本工具报 0)之后的下一步是接缝:chain_frames(dry_run:true) 看计划与预估、客户确认后执行,再 review_frames。' +
       '★跳过尾帧不会报错,但那些镜出视频时只有首帧一个锚,末态由模型自由发挥——' +
       '动作做不到位、大运镜结束又回到起点构图,多半就是这么来的。零扣费,可随时调。',
     { episode_id: z.number().int().positive() },
@@ -3299,7 +3307,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★平台自己判哪道缝该接:有意切换(换场/时间跳跃/换装/插入镜)、已出视频的镜、已经接好的缝都会跳过——' +
       '「已接好」= 首帧就是上镜尾帧,或 reframe 接在上镜**当前**尾帧上,所以重复执行不会重复扣费。' +
       '上镜尾帧后来被重生过的缝会重新出现在计划里,那道缝确实断了。只补个别缝用 chain_shot_from_prev / chain_shot_from。' +
-      '执行后改了首帧的镜若已有视频会被标为待重生。执行完用 get_storyboards 核对 seam_state。',
+      '执行后改了首帧的镜若已有视频会被标为待重生。★执行只派发 reframe、不等出图:用 get_jobs 看这些镜的 first_frame 出图行,' +
+      '等 pending/processing 全部结束(failed 的看 error_msg,单道用 chain_shot_from 重接;旧首帧还在时 get_storyboards 的 frame_status 仍是 ready、看不出失败),' +
+      '再用 get_storyboards 核对 seam_state、review_frames——提前审会审到旧首帧,token 随后作废。',
     {
       episode_id: z.number().int().positive(),
       dry_run: z.boolean().optional().describe('true=只看计划与预估(免费,推荐先调一次);不传=真执行'),

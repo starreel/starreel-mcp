@@ -45,7 +45,8 @@ create_drama → set_script(raw) → rewrite_script(AI draft, user may edit)
   → prop sheets(generate_prop_sheet per referenced prop = the prop anchor)
   → [review_assets]
   → frames(first frames → tail_frame_plan → tail frames)
-  → seams(chain_frames dry_run → confirm → run; per-shot fixes via chain_shot_from*)
+  → seams(chain_frames dry_run → confirm → run → get_jobs until its reframe images finish;
+    per-shot fixes via chain_shot_from*)
   → [review_frames] → videos → generate_tts(voiceover) → [review_videos]
   → compose_episode → final cut (.mp4 link) → review_final_cut
 ```
@@ -459,7 +460,15 @@ content that will be rejected.
    shot's first frame the previous shot's last frame (free, but the shot inherits the
    previous shot's framing); *reframe* regenerates the first frame anchored on that last
    frame (one image per seam, keeps the shot's own framing). Tell the customer, then run
-   it without `dry_run`. Seams that are already joined — the first frame *is* the
+   it without `dry_run`. **Reframes render asynchronously** — the call returns as soon as
+   they are dispatched. Before `review_frames`, watch `get_jobs` until those shots'
+   `first_frame` jobs are no longer pending/processing (a failed one carries `error_msg`;
+   re-join that seam with `chain_shot_from`), then re-check `seam_state` in
+   `get_storyboards` — a replacement rejected at promotion leaves no job behind but keeps
+   the seam `unchained`. While the old first frame is still in place, `get_storyboards`
+   shows `frame_status: "ready"`, so it cannot tell you a reframe is still running.
+   Reviewing early grades the old frames and the token goes stale when the new ones land.
+   Seams that are already joined — the first frame *is* the
    previous last frame, or a reframe landed on the previous shot's **current** last
    frame — are left out of the plan, so running it again does not re-bill them; a seam
    reappears only when the previous shot's last frame was regenerated afterwards (then it

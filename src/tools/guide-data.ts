@@ -801,7 +801,7 @@ export function buildInstructions(): string {
     '★第一步永远是判「客户手上有什么材料」——它决定入口,选错入口的返工都是真扣费(全表与要点:get_capabilities_guide):',
     entry,
     '',
-    '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 场景图 / 道具图 / 色彩脚本 → ★review_assets → run_precheck → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费·哪几镜要独立尾帧) → quote/generate_frames(frame_type=last_frame) → ★review_frames → quote/generate_videos → 音频 → ★review_videos → compose_episode → get_final_cut → review_final_cut。用 get_pipeline_status 查进度。',
+    '产线顺序(不跳步):create_drama(建剧即设好 setting_brief/画幅/video_engine/image_model/一致性锚,全免费) → set_script → rewrite_script → ★review_script → extract_assets → quote/generate_storyboards → ★review_storyboards → 定妆图+设定图 / 场景图 / 道具图 / 色彩脚本 → ★review_assets → run_precheck → quote/generate_frames(默认只出首帧) → tail_frame_plan(哪几镜要独立尾帧) → quote/generate_frames(last_frame) → chain_frames(dry_run→确认后执行)→get_jobs → ★review_frames → quote/generate_videos → 音频 → ★review_videos → compose_episode → get_final_cut → review_final_cut。用 get_pipeline_status 查进度。',
     '五道免费硬闸(跳过 → 400):review_script(extract_assets/分镜前)· review_storyboards(出图前,含单镜 generate_shot_frame)· review_assets(出图前,token 作 asset_review_token)· review_frames(出视频前,含单镜 regenerate_shot_video)· review_videos(compose_episode 前);review_token 随下游收费工具传(批量与单镜工具都要),findings 逐条原样告诉客户。',
     '★每层审查之后你还要亲自质检:按返回的 agent_qc 逐件看素材,submit_qc_report 提交报告;灰度剧没交报告进不了下一步。',
     '计费纪律:预付费不透支;大额步 quote_* → 把 estimated_points 原样告诉客户 → 客户同意后 generate_*(quote_id),绝不擅自确认;' +

@@ -39,7 +39,52 @@ function section(text,start,end,label){
 const HINT_MAIN=section(WORKFLOW_HINT,/②【产线主干/,/③【可选增强/,'WORKFLOW_HINT ②')
 test('WORKFLOW_HINT ②产线主干：分镜 → 定妆图+设定图 → 色彩脚本 → 场景图 → 帧 → 尾帧 → 审帧 → 视频 → TTS → 成片',()=>{
  assertOrdered(HINT_MAIN,[/extract_assets/,/storyboards/,/review_storyboards/,/generate_portraits_and_sheets/,
-  /generate_color_script/,/generate_scene_images/,/frames/,/tail_frame_plan/,/last_frame/,/review_frames/,/videos/,/generate_tts/,/compose/],'WORKFLOW_HINT ②')
+  /generate_color_script/,/generate_scene_images/,/frames/,/tail_frame_plan/,/last_frame/,/chain_frames/,/review_frames/,/videos/,/generate_tts/,/compose/],'WORKFLOW_HINT ②')
+})
+
+// ---- 接缝（chain_frames）必须在主线里：尾帧补完 → 接缝 → 审帧 ----
+// 2026-10-16：WORKFLOW_HINT / server instructions（中英）三处主线都是 last_frame → review_frames，
+// 接缝只出现在 guide-data 第 7 步与 chain_frames 自己的描述里——agent 照主线走就跳过接缝。
+// 生产只读：走门面出帧、帧已齐的集里有 4 个从没建过链（最后落地的帧走 best-of-N 晋升，不触发自动帧链）。
+const LAST_TO_REVIEW=[/tail_frame_plan/,/last_frame/,/chain_frames/,/dry_run/,/review_frames/]
+test('WORKFLOW_HINT ②：尾帧之后、review_frames 之前有 chain_frames（先 dry_run）',()=>{
+ assertOrdered(HINT_MAIN,LAST_TO_REVIEW,'WORKFLOW_HINT ② 接缝')
+})
+test('server instructions（buildInstructions / instructions.zh-CN.md / instructions.en.md）主线含接缝一步',async()=>{
+ const {buildInstructions}=await import('../dist/tools/guide-data.js')
+ const order=s=>section(s,/产线顺序|Pipeline order/,/get_pipeline_status/,'instructions 主线')
+ assertOrdered(order(buildInstructions()),LAST_TO_REVIEW,'buildInstructions')
+ const zh=readFileSync(new URL('../src/i18n/instructions.zh-CN.md',import.meta.url),'utf8')
+ assert.equal(zh.trim(),buildInstructions().trim(),'instructions.zh-CN.md 与 buildInstructions 不同步（跑 scripts/i18n-extract-tools.mjs）')
+ const en=readFileSync(new URL('../src/i18n/instructions.en.md',import.meta.url),'utf8')
+ assertOrdered(order(en),LAST_TO_REVIEW,'instructions.en.md')
+})
+// PR#1033 Codex P2：真执行 chain_frames 时 reframe 只派发不等图（门面不带 waitForReframes），
+// 引导若叫 agent 执行完直接 review_frames，审的是旧首帧，token 在 reframe 落地后作废。
+// 第二轮 P2：等待要看 get_jobs（逐张出图行 pending/processing/failed + error_msg）——旧首帧还在时
+// get_storyboards 的 frame_status 恒 ready、fail_reason 为空，分不清「还在出」和「失败了」。
+test('接缝执行后先 get_jobs 等 reframe 出图结束，再 review_frames（WORKFLOW_HINT / chain_frames 描述 / 顶层主线）',async()=>{
+ const seam=section(WORKFLOW_HINT,/【接缝别跳/,/★★【尾帧别跳/,'WORKFLOW_HINT 接缝段')
+ assertOrdered(seam,[/chain_frames/,/get_jobs/,/failed/,/review_frames/],'WORKFLOW_HINT 接缝段')
+ const zh=JSON.parse(readFileSync(new URL('../src/i18n/tools.zh-CN.json',import.meta.url),'utf8'))
+ assertOrdered(zh.chain_frames,[/执行/,/get_jobs/,/failed/,/review_frames/],'chain_frames 描述')
+ const {buildInstructions}=await import('../dist/tools/guide-data.js')
+ const order=s=>section(s,/产线顺序|Pipeline order/,/get_pipeline_status/,'instructions 主线')
+ // 第三轮 P2：dry_run 不派发任何 reframe——主线必须写出「确认后不带 dry_run 执行」，否则 agent 试算完就去等一个不存在的出图
+ assertOrdered(order(buildInstructions()),[/chain_frames/,/dry_run/,/执行/,/get_jobs/,/review_frames/],'buildInstructions 等待')
+ const en=readFileSync(new URL('../src/i18n/instructions.en.md',import.meta.url),'utf8')
+ assertOrdered(order(en),[/chain_frames/,/dry_run/,/run it/,/get_jobs/,/review_frames/],'instructions.en.md 等待')
+})
+// 第六轮 P2：SKILL.md 随 npm 包发、被当系统提示用——概览与详述都要写出「执行后 get_jobs 等 reframe 出图结束再审帧」
+test('SKILL.md 接缝：run 之后 get_jobs 等出图结束，再 review_frames（概览 + 详述）',()=>{
+ const ov=section(SKILL,/→ seams\(chain_frames/,/→ compose_episode/,'SKILL 概览接缝')
+ assertOrdered(ov,[/chain_frames/,/dry_run/,/run/,/get_jobs/,/review_frames/],'SKILL 概览接缝')
+ const det=section(SKILL,/Whole episode: `chain_frames`/,/\*\*Image model\*\*/,'SKILL 详述接缝')
+ assertOrdered(det,[/without `dry_run`/,/`get_jobs`/,/`error_msg`/,/seam_state/,/`review_frames`/],'SKILL 详述接缝')
+})
+test('tail_frame_plan 工具描述：补完尾帧的下一步是 chain_frames 再 review_frames',()=>{
+ const zh=JSON.parse(readFileSync(new URL('../src/i18n/tools.zh-CN.json',import.meta.url),'utf8'))
+ assertOrdered(zh.tail_frame_plan,[/last_frame/,/chain_frames/,/dry_run/,/review_frames/],'tail_frame_plan 描述')
 })
 
 // ---- SKILL.md 四处顺序描述，逐处对齐 ----
