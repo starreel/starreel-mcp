@@ -2378,6 +2378,23 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
   )
   server.tool(
+    'rederive_shot_contract',
+    '按本镜**当前**的正文与角色绑定,让平台重新推导构图契约(画面里可见几人、主体是人物还是局部/道具、景别)。' +
+      '契约本身不对外,读不到也改不了;本工具只回结论 outcome:updated(已改并生效)/ unchanged(推出来和原来一样)/ ' +
+      'rejected(推出来自相矛盾,未采用,原契约保留)/ no_candidate(没拿到可用结果,原契约保留)/ ' +
+      'stale(推导期间本镜又被改过,结果未写入,改完再调一次),附 note 说下一步。点数不足回 402。' +
+      '★什么时候用:出图/预检/审核反复说人数不对、局部镜(手部/道具特写)被当成完整人物出图或审核,' +
+      '而你已经改过正文或绑定——补全器只填空、不覆盖已有契约,不调本工具改动不会进契约。' +
+      '★正确顺序:先 update_shot 把画面写对(谁在画面里、谁只出声音用 character_presence 标 voice_only、' +
+      '不该出现的人从 character_ids 解绑),再调本工具;不改正文直接调多半回 unchanged。' +
+      '★一次文本 AI 调用,按 token 后付(与 autofill_storyboards 同链路),调用前告知客户。' +
+      '★只改契约这一个字段,不碰台词/提示词/其它专业字段;已出的首尾帧不会自动重出,要让画面跟上需对本镜重新出帧(先报价)。' +
+      '★updated 会作废本镜及同集未消费的出帧/出视频报价,之后要重新报价。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/rederive-contract`, {})),
+  )
+  server.tool(
     'get_shot_prompts',
     '读某一镜的四条提示词**正文**(image_prompt=首帧画面 / video_prompt=动态表演 / ' +
       'first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 update_shot 写回。免费。' +

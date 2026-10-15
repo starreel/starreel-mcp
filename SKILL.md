@@ -376,6 +376,19 @@ content that will be rejected.
    **9.4%** of the time versus **40.2%** with one. `generate_shot_frame` does accept
    `allow_missing_terminal: true` for the rare shot that genuinely should barely change,
    but reach for the text fix first.
+   **If frames keep getting the head count or the subject wrong** (a hand / prop insert
+   drawn or judged as a full person, an off-screen speaker counted as visible, precheck or
+   frame review repeatedly complaining about how many people are in shot), the shot's
+   composition contract is wrong. You cannot read or edit that contract directly, and the
+   completion passes only fill empty contracts, so editing text alone does not reach it.
+   Fix the shot with `update_shot` first (who is on screen; mark voice-only speakers with
+   `character_presence: voice_only`; unbind people who should not appear), then call
+   `rederive_shot_contract` (one metered text call — tell the customer). It returns only an
+   `outcome`: `updated` means the new contract is live (regenerate that shot's frames, quote
+   first); `unchanged` usually means the text still says the same thing; `rejected` /
+   `no_candidate` keep the old contract — make the text more explicit and retry; `stale`
+   means the shot was edited while it ran, so nothing was written — call it again. An
+   `updated` result voids unconsumed frame / video quotes covering that shot (re-quote).
    **If an emotional shot comes out with a blank, neutral face**, set the expression
    explicitly: `update_shot` with `expression_hint` (one concrete sentence about the
    face, ≤120 characters, written as what the face *does* — not "don't smile"), then

@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.151",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.151 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.153",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.153 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -12732,6 +12732,64 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/rederive-contract": {
+      "post": {
+        "operationId": "rederive_shot_contract",
+        "summary": "按本镜**当前**的正文与角色绑定,让平台重新推导构图契约(画面里可见几人、主体是人物还是局部/道具、景别)",
+        "description": "按本镜**当前**的正文与角色绑定,让平台重新推导构图契约(画面里可见几人、主体是人物还是局部/道具、景别)。契约本身不对外,读不到也改不了;本工具只回结论 outcome:updated(已改并生效)/ unchanged(推出来和原来一样)/ rejected(推出来自相矛盾,未采用,原契约保留)/ no_candidate(没拿到可用结果,原契约保留)/ stale(推导期间本镜又被改过,结果未写入,改完再调一次),附 note 说下一步。点数不足回 402。★什么时候用:出图/预检/审核反复说人数不对、局部镜(手部/道具特写)被当成完整人物出图或审核,而你已经改过正文或绑定——补全器只填空、不覆盖已有契约,不调本工具改动不会进契约。★正确顺序:先 update_shot 把画面写对(谁在画面里、谁只出声音用 character_presence 标 voice_only、不该出现的人从 character_ids 解绑),再调本工具;不改正文直接调多半回 unchanged。★一次文本 AI 调用,按 token 后付(与 autofill_storyboards 同链路),调用前告知客户。★只改契约这一个字段,不碰台词/提示词/其它专业字段;已出的首尾帧不会自动重出,要让画面跟上需对本镜重新出帧(先报价)。★updated 会作废本镜及同集未消费的出帧/出视频报价,之后要重新报价。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
