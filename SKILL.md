@@ -136,6 +136,14 @@ Right after `create_drama`, before any paid step:
    package's `effect`, live `estimate` (typical and upper bound), `warnings`,
    `substitutions` and the `not_included` list. `estimate: null` means live
    prices are unreachable — say so, don't invent numbers.
+   For a professional customer picking their own models, call it again with
+   `custom` (image model + video engine + resolution): the response gains a
+   `custom` preview (availability + live estimate) to relay before confirming.
+   `overrun_history` tells how often past dramas needed the overrun allowance
+   (from the billing ledger). Quote its percentages only when
+   `sufficient: true`, as history rather than a promise; when it is `false`,
+   give no percentage at all — just explain the allowance covers QC re-takes
+   and re-runs after vendor rejections, and is not charged if unused.
 3. Let the customer pick an execution mode (`pro` — they control every step;
    `auto` — one-click; `custom` — they pick which stages to delegate), a budget
    (`budget_points`, required for auto/custom) and an automatic overrun cap
@@ -143,7 +151,9 @@ Right after `create_drama`, before any paid step:
 4. Summarize everything; only after the customer explicitly agrees call
    `confirm_production_plan` with `customer_confirmed: true`, passing the
    chosen package's `combo` back as `expected_combo` and its
-   `estimate.total.upper` as `expected_total_upper`. Never confirm on their
+   `estimate.total.upper` as `expected_total_upper` (for a custom combo, pass
+   `custom.estimate.total.upper`; without it you get
+   `409 CUSTOM_ESTIMATE_UNCONFIRMED`). Never confirm on their
    behalf. `409 PACKAGE_CHANGED` means the package changed after the menu was
    shown (fallback model or a price rise above 5%) — present the new combo and
    estimate from the response and ask again.

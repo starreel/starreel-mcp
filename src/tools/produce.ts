@@ -2841,6 +2841,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'estimate=null 表示价格服务暂时取不到实时单价——如实告诉客户「暂时估不出」,别自己编数字。' +
       'not_included 列出不在预估里的花费(文本步、配音配乐、质检重出),一并讲给客户;质检重出这部分正是「自动追加」兜底的。' +
       'availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。' +
+      '★专业客户自选模型:带 custom(图片模型+视频引擎+分辨率)再调一次,返回体多一个 custom(可用性+实时预估);把 custom.estimate 讲给客户,确认时把 custom.estimate.total.upper 作为 expected_total_upper 原样带回。' +
+      '★overrun_history = 历史上多少剧会用到自动追加(按扣费账本统计):sufficient=true 时可告诉客户「历史上约 used_overrun_pct% 的剧会用到追加,平均多 avg_excess_pct_when_used%,选 10/20/30% 追加能兜住 covered_pct_by_overrun 里的比例」,并说明这是历史统计不是承诺;' +
+      'sufficient=false(暂无足够数据)时**不许**给客户任何比例或自己估一个数,只说追加用于兜底质检重出、审核拒绝后的重出,用不到不扣。' +
       '★题材 content_class 决定可用性:同一引擎可能动漫可用、写实真人暂不可用——按剧情实际画面选,别为了用某个模型改题材。',
     {
       content_class: z.enum(['realistic_human', 'stylized', 'product']).describe('题材:realistic_human 写实真人 / stylized 动漫·风格化 / product 产品·空镜'),
@@ -2852,6 +2855,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         scenes: z.number().int().min(0).max(200).optional(),
         props: z.number().int().min(0).max(200).optional(),
       }).optional().describe('资产图粗估的数量假设(默认 6 角色/8 场景/6 道具),知道大概数量就传,预估更准'),
+      custom: z.object({
+        image_model: z.string(),
+        video_engine: z.string(),
+        video_resolution: z.enum(['480p', '720p', '1080p']).optional(),
+      }).optional().describe('专业客户自选的一组模型:传了就额外返回 custom 预览(可用性 + 实时预估),确认自选组合前必须先拿到它讲给客户'),
     },
     async (args) => jsonResult(await client.producePost('/production-menu', args)),
   )
@@ -2863,6 +2871,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '被拦就停下问客户,别自己换模型、别自己调预算。' +
       '★执行模式本期只记录:各层审查(review_*)与 agent 质检照旧,error 照旧要客户知情才能 acknowledge_review。' +
       '★选套餐要带 expected_combo(该档 combo 原样)与 expected_total_upper:确认的必须是客户看到的那组模型与预估。' +
+      '★自选组合(custom)要先调 get_production_menu 带同一组 custom 拿到预估讲给客户,确认时带 expected_total_upper=custom.estimate.total.upper;没带或重算后涨幅超 5% ⇒ 409 CUSTOM_ESTIMATE_UNCONFIRMED(未写入),返回体里有最新预估,讲给客户同意后带新值再确认。' +
       '409 PACKAGE_CHANGED = 菜单返回后该档换了组合或预估明显上涨,返回体里有新的组合与预估,重新讲给客户、同意后带新值再确认;' +
       '409 PACKAGE_UNAVAILABLE / MODEL_UNAVAILABLE = 确认这一刻该模型不可用了,重新 get_production_menu 让客户改选。403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。',
     {
@@ -2875,7 +2884,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         video_engine: z.string(),
         video_resolution: z.string(),
       }).optional().describe('选 package_key 时必填:把 get_production_menu 里该档的 combo 原样传回。确认这一刻若该档已换成别的组合,平台回 409 PACKAGE_CHANGED、不写入'),
-      expected_total_upper: z.number().positive().optional().describe('该档的 estimate.total.upper(客户看到的全剧预估上界)。重算后涨幅超过 5% 也会 409 PACKAGE_CHANGED'),
+      expected_total_upper: z.number().positive().optional().describe('客户看到的全剧预估上界:选套餐时为该档 estimate.total.upper,自选组合时为 custom.estimate.total.upper(自选时必填)。重算后涨幅超过 5% 会 409'),
       assets: z.object({
         characters: z.number().int().min(0).max(200).optional(),
         scenes: z.number().int().min(0).max(200).optional(),
@@ -2885,7 +2894,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         image_model: z.string(),
         video_engine: z.string(),
         video_resolution: z.enum(['480p', '720p', '1080p']).optional(),
-      }).optional().describe('专业客户自选模型(须在 get_production_menu 的 availability 里是可用的);与 package_key 二选一'),
+      }).optional().describe('专业客户自选模型(须在 get_production_menu 的 availability 里是可用的;先带同一组 custom 调 get_production_menu 拿预估);与 package_key 二选一'),
       execution_mode: z.enum(['pro', 'auto', 'custom']).describe('pro 每步客户把控 / auto 一键出片 / custom 按环节选托管'),
       stage_control: z.object({
         script: z.enum(['customer', 'agent']), storyboards: z.enum(['customer', 'agent']), assets: z.enum(['customer', 'agent']),

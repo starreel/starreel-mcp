@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.163",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.163 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.164",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.164 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -2960,7 +2960,7 @@
       "post": {
         "operationId": "confirm_production_plan",
         "summary": "★开场最后一步:把客户**明确同意**的整份方案写进本剧(免费)",
-        "description": "★开场最后一步:把客户**明确同意**的整份方案写进本剧(免费)。写入图片模型/视频引擎/分辨率/预算,并记录题材、执行模式、自动追加上限与确认快照。调用前必须把汇总完整讲给客户:所选套餐与效果、全剧预估(通常值与上界)、执行模式、预算、追加比例,以及「追加只在预算用完后才动用、到硬上限会停下来问」——客户点头才传 customer_confirmed:true。★确认后平台在每次收费派发前复核:①本剧模型对本剧题材仍可用,否则 409 MODEL_UNAVAILABLE;②报价上界+已花 ≤ 预算×(1+追加%),否则 402 BUDGET_WOULD_EXCEED(都未扣费)。被拦就停下问客户,别自己换模型、别自己调预算。★执行模式本期只记录:各层审查(review_*)与 agent 质检照旧,error 照旧要客户知情才能 acknowledge_review。★选套餐要带 expected_combo(该档 combo 原样)与 expected_total_upper:确认的必须是客户看到的那组模型与预估。409 PACKAGE_CHANGED = 菜单返回后该档换了组合或预估明显上涨,返回体里有新的组合与预估,重新讲给客户、同意后带新值再确认;409 PACKAGE_UNAVAILABLE / MODEL_UNAVAILABLE = 确认这一刻该模型不可用了,重新 get_production_menu 让客户改选。403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。",
+        "description": "★开场最后一步:把客户**明确同意**的整份方案写进本剧(免费)。写入图片模型/视频引擎/分辨率/预算,并记录题材、执行模式、自动追加上限与确认快照。调用前必须把汇总完整讲给客户:所选套餐与效果、全剧预估(通常值与上界)、执行模式、预算、追加比例,以及「追加只在预算用完后才动用、到硬上限会停下来问」——客户点头才传 customer_confirmed:true。★确认后平台在每次收费派发前复核:①本剧模型对本剧题材仍可用,否则 409 MODEL_UNAVAILABLE;②报价上界+已花 ≤ 预算×(1+追加%),否则 402 BUDGET_WOULD_EXCEED(都未扣费)。被拦就停下问客户,别自己换模型、别自己调预算。★执行模式本期只记录:各层审查(review_*)与 agent 质检照旧,error 照旧要客户知情才能 acknowledge_review。★选套餐要带 expected_combo(该档 combo 原样)与 expected_total_upper:确认的必须是客户看到的那组模型与预估。★自选组合(custom)要先调 get_production_menu 带同一组 custom 拿到预估讲给客户,确认时带 expected_total_upper=custom.estimate.total.upper;没带或重算后涨幅超 5% ⇒ 409 CUSTOM_ESTIMATE_UNCONFIRMED(未写入),返回体里有最新预估,讲给客户同意后带新值再确认。409 PACKAGE_CHANGED = 菜单返回后该档换了组合或预估明显上涨,返回体里有新的组合与预估,重新讲给客户、同意后带新值再确认;409 PACKAGE_UNAVAILABLE / MODEL_UNAVAILABLE = 确认这一刻该模型不可用了,重新 get_production_menu 让客户改选。403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。",
         "tags": [
           "dramas"
         ],
@@ -10284,7 +10284,7 @@
       "post": {
         "operationId": "get_production_menu",
         "summary": "★开场第二步(免费·只读·不需要剧号):按客户的基本视频参数,返回**当前可用**的三档模型套餐(省钱/标准/高品质)",
-        "description": "★开场第二步(免费·只读·不需要剧号):按客户的基本视频参数,返回**当前可用**的三档模型套餐(省钱/标准/高品质)。每档给:图片模型+视频引擎+分辨率、效果说明(effect)、实时预估(estimate:每集与全剧的 typical 通常花费与 upper 上界,breakdown 分项)、warnings(所选模型近期繁忙/失败偏多)、substitutions(本档首选模型暂不可用、退到后备组合的原因)。某档 available=false 表示该档模型当前都不可用(unavailable_reason 说明),别推荐它。estimate=null 表示价格服务暂时取不到实时单价——如实告诉客户「暂时估不出」,别自己编数字。not_included 列出不在预估里的花费(文本步、配音配乐、质检重出),一并讲给客户;质检重出这部分正是「自动追加」兜底的。availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。★题材 content_class 决定可用性:同一引擎可能动漫可用、写实真人暂不可用——按剧情实际画面选,别为了用某个模型改题材。",
+        "description": "★开场第二步(免费·只读·不需要剧号):按客户的基本视频参数,返回**当前可用**的三档模型套餐(省钱/标准/高品质)。每档给:图片模型+视频引擎+分辨率、效果说明(effect)、实时预估(estimate:每集与全剧的 typical 通常花费与 upper 上界,breakdown 分项)、warnings(所选模型近期繁忙/失败偏多)、substitutions(本档首选模型暂不可用、退到后备组合的原因)。某档 available=false 表示该档模型当前都不可用(unavailable_reason 说明),别推荐它。estimate=null 表示价格服务暂时取不到实时单价——如实告诉客户「暂时估不出」,别自己编数字。not_included 列出不在预估里的花费(文本步、配音配乐、质检重出),一并讲给客户;质检重出这部分正是「自动追加」兜底的。availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。★专业客户自选模型:带 custom(图片模型+视频引擎+分辨率)再调一次,返回体多一个 custom(可用性+实时预估);把 custom.estimate 讲给客户,确认时把 custom.estimate.total.upper 作为 expected_total_upper 原样带回。★overrun_history = 历史上多少剧会用到自动追加(按扣费账本统计):sufficient=true 时可告诉客户「历史上约 used_overrun_pct% 的剧会用到追加,平均多 avg_excess_pct_when_used%,选 10/20/30% 追加能兜住 covered_pct_by_overrun 里的比例」,并说明这是历史统计不是承诺;sufficient=false(暂无足够数据)时**不许**给客户任何比例或自己估一个数,只说追加用于兜底质检重出、审核拒绝后的重出,用不到不扣。★题材 content_class 决定可用性:同一引擎可能动漫可用、写实真人暂不可用——按剧情实际画面选,别为了用某个模型改题材。",
         "tags": [
           "production-menu"
         ],
@@ -10338,6 +10338,30 @@
                         "maximum": 200
                       }
                     },
+                    "additionalProperties": false
+                  },
+                  "custom": {
+                    "type": "object",
+                    "properties": {
+                      "image_model": {
+                        "type": "string"
+                      },
+                      "video_engine": {
+                        "type": "string"
+                      },
+                      "video_resolution": {
+                        "type": "string",
+                        "enum": [
+                          "480p",
+                          "720p",
+                          "1080p"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "image_model",
+                      "video_engine"
+                    ],
                     "additionalProperties": false
                   }
                 },
