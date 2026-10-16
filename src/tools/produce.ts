@@ -296,7 +296,7 @@ export const WORKFLOW_HINT =
   '用 get_pipeline_status 查进度(按项目类型返回专属步骤)。' +
   '★★【开场方案·建剧后第一件事·免费】先问基本视频参数(项目类型/画幅/集数×每集分钟/题材:写实真人 realistic_human·动漫风格化 stylized·产品空镜 product/原声还是配音),' +
   '再调 get_production_menu 拿**当前可用**的三档套餐(效果说明+实时预估+不计入项)讲给客户——别凭记忆推荐模型,某些模型对某些题材会临时不可用,菜单已过滤;' +
-  '然后让客户选执行模式(pro 每步自己把控 / auto 一键出片 / custom 选环节托管)、预算 budget_points 与自动追加上限(0/10/20/30%),' +
+  '然后让客户选执行模式(pro 每步自己把控 / auto 一键出片 / custom 选环节托管)、预算 budget_points 与自动追加上限(0/10/20/30/50%),' +
   '把汇总讲清楚、客户明确同意后才调 confirm_production_plan(customer_confirmed:true)——不许替客户确认。' +
   '确认过方案的剧:收费派发前平台复核模型仍可用、报价上界不超过预算×(1+追加%),被拦(402 BUDGET_WOULD_EXCEED / 409 MODEL_UNAVAILABLE)就停下问客户,别自己换模型或调预算。' +
   'confirm 返回 403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。'
@@ -2929,7 +2929,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         frames: z.enum(['customer', 'agent']), videos: z.enum(['customer', 'agent']), compose: z.enum(['customer', 'agent']),
       }).optional().describe('execution_mode=custom 时必填:每个环节 customer(客户把控)或 agent(托管)'),
       budget_points: z.number().int().positive().optional().describe('预算(点)。auto / custom 必填(客户授权 agent 自主花费的上限);建议不低于所选套餐的 estimate.total.upper'),
-      overrun_pct: z.union([z.literal(0), z.literal(10), z.literal(20), z.literal(30)]).optional().describe('自动追加上限(%),默认 0。硬上限 = 预算 × (1 + 本值/100)'),
+      overrun_pct: z.union([z.literal(0), z.literal(10), z.literal(20), z.literal(30), z.literal(50)]).optional().describe('自动追加上限(%),默认 0。硬上限 = 预算 × (1 + 本值/100)'),
       max_fix_rounds: z.number().int().min(0).max(5).optional().describe('托管环节每层最多自修几轮(默认 3);到上限仍有问题就暂停、汇总问客户'),
       episodes: z.number().int().min(1).max(200),
       minutes_per_episode: z.number().positive().max(30),

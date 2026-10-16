@@ -147,7 +147,7 @@ Right after `create_drama`, before any paid step:
 3. Let the customer pick an execution mode (`pro` — they control every step;
    `auto` — one-click; `custom` — they pick which stages to delegate), a budget
    (`budget_points`, required for auto/custom) and an automatic overrun cap
-   (0 / 10 / 20 / 30 %).
+   (0 / 10 / 20 / 30 / 50 %).
 4. Summarize everything; only after the customer explicitly agrees call
    `confirm_production_plan` with `customer_confirmed: true`, passing the
    chosen package's `combo` back as `expected_combo` and its
