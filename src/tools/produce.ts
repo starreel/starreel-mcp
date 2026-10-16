@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { StarReelClient } from '../client.js'
 import { assertSafeToolchainDir, TOOLCHAIN_FILENAMES } from '../path-guard.js'
-import { SEEDANCE25_PHOTOREAL_NOTE } from './guide-data.js'
+import { MODEL_AVAILABILITY_NOTE } from './guide-data.js'
 
 const TOOLCHAIN_USAGE = [
   '1. 三个脚本放同一目录(assemble.sh 需可执行位)。',
@@ -263,7 +263,7 @@ export const WORKFLOW_HINT =
   'gemini-3.1-flash-lite-image(香蕉2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream5.0);generate_frames 可临时覆盖某次。' +
   '★2.5 按输入量计费(基础11点+每张参考图18点),香蕉/Seedream 是一口价——参考图多的镜头要把这笔算进预算。' +
   '★视频引擎四选一(drama级·AI 建剧时必须主动按剧选型引导并给价差让客户定):' +
-  '【选型决策树】①写实真人剧→hailuo-3(约1/3成本70点/秒·强保真编辑·可出2K·但单镜约6分钟;不传 video_engine 时平台按画风自动选它);' + SEEDANCE25_PHOTOREAL_NOTE + '(动漫/风格化剧仍默认 seedance-2.5,指令遵循/细节最强·720p 212点/秒);' +
+  '【选型决策树】★先调 get_production_menu:' + MODEL_AVAILABILITY_NOTE + ';菜单里不可用的模型别推荐。①写实真人剧→seedance-2.5(指令遵循/人脸细节最强·720p 212点/秒),预算敏感可 hailuo-3(约1/3成本70点/秒·强保真编辑·可出2K·但单镜约6分钟);★选定引擎后在 create_drama / update_project_settings 显式传 video_engine(取菜单里该题材可用的那个)——不传时平台只按画风兜底盖章,不保证落在菜单可用的引擎上;' +
   '②风格化/动画/3D卡通剧·空镜·产品镜→wan3.0(约4折84点/秒·最长30秒·最短2秒计费·单镜约2分钟),赶交付用 wan3.0-prime(126点/秒·约1分钟);' +
   '③★写实真人剧绝不选 wan3.0/prime——WAN 输出侧真人脸审核在 720p+ 一致拒、重试救不回;' +
   '④★★叙事剧(有对白、讲连贯故事、镜头节奏要稳的)慎选 wan3.0/prime:WAN 会在**单个分镜片内自行换机位硬切**' +
@@ -359,9 +359,9 @@ const PROJECT_SETTINGS_FIELDS = {
     'gemini-3.1-flash-image(香蕉2·71点)/gemini-3-pro-image(香蕉Pro·精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·31点)/' +
     'doubao-seedream-5-0-260128(Seedream 5.0)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图。★各模型实测优劣(一次过率/手部结构/安全拒绝率/画风稳定度)与选型步骤见 get_capabilities_guide(section=model_guide)'),
   // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它;按镜例外入口:quote_videos 的 shot_engines / quote_regenerate_shot_video 的 model / edit_video_shot 的 model)
-  video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→hailuo-3(' + SEEDANCE25_PHOTOREAL_NOTE + ');风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒):' +
-    'seedance-2.5(动漫/风格化剧默认·全能力:帧链/场景组/就地编辑/延长/参考图锚·720p约212点/秒;真人题材暂未开放) / ' +
-    '★不传时平台按画风自动选:写实/未定画风→hailuo-3,动漫/风格化→seedance-2.5。' +
+  video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→seedance-2.5 或降本 hailuo-3(' + MODEL_AVAILABILITY_NOTE + ');风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒):' +
+    'seedance-2.5(动漫/风格化剧默认·写实真人剧在该题材可用时也默认它·全能力:帧链/场景组/就地编辑/延长/参考图锚·720p约212点/秒) / ' +
+    '★不传时平台按画风兜底:动漫/风格化→seedance-2.5;写实/未定画风→seedance-2.5 写实开关开着用它,否则 hailuo-3——这只是兜底盖章,不查菜单的题材可用性,所以按 get_production_menu 选定后要显式传。' +
     'hailuo-3(MiniMax H3:约1/3成本 720p 70点/秒·原生对白与音效·支持2K·单镜约6分钟·支持就地编辑(强保真)与成片续写·关键帧组/时间戳区间暂不可用;编辑/续写输入视频另按秒计费) / ' +
     'wan3.0(WAN 3.0:约4折成本 720p 84点/秒·原生对白与音效·支持1080P·单次最长30秒·最短2秒计费·支持就地编辑(强语义)与成片续写·关键帧组/时间戳区间暂不可用;★写实真人720p+可能被厂商审核拒绝,风格化/动画剧适用;★★会在单个分镜片内自行换机位硬切(实测11/12镜)→叙事剧慎用,详见选型决策树④) / ' +
     'wan3.0-prime(WAN 3.0 高速版:能力同wan3.0·出片约2×·费率1.5×=720p 126点/秒;镜内自剪同 wan3.0)。' +
@@ -2887,7 +2887,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'not_included 列出不在预估里的花费(配音配乐、质检重出与审核拒绝后的重出),一并讲给客户;质检重出不进上界,由「自动追加」额度兜底。' +
       '★建议预算:每档 recommended_budget = (该档 estimate.total.upper − breakdown 的 text 项) × 1.2 + text 项(文本不放大);菜单的 recommended_overrun_pct=30 是建议的追加档位。' +
       '向客户**默认建议**「预算 = recommended_budget、追加 30%」(budget_advice 是现成的说法),说明这只是建议,预算与追加比例由客户决定(追加可选 0/10/20/30/50)。' +
-      'availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。' +
+      'availability 是全部模型对该题材的实时可用性(由管理控制台开关决定、随时可能变,专业客户自选模型时用,unavailable 的不能选;unavailable 项带 customer_note 与 expected_until,原样转告客户,别自己编原因或日期)。' +
       '★专业客户自选模型:带 custom(图片模型+视频引擎+分辨率)再调一次,返回体多一个 custom(可用性+实时预估);把 custom.estimate 讲给客户,确认时把 custom.estimate.total.upper 作为 expected_total_upper 原样带回。' +
       '★「历史上多少剧会用到追加」平台目前不提供:**不许**自己估一个比例或数字给客户;客户问追加会不会用到,只说明追加额度用于兜底质检重出、审核拒绝后的重出,用不到不扣。' +
       '★题材 content_class 决定可用性:同一引擎可能动漫可用、写实真人暂不可用——按剧情实际画面选,别为了用某个模型改题材。',
