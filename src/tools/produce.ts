@@ -309,7 +309,7 @@ export const WORKFLOW_HINT =
   '★★【开场方案·建剧后第一件事·免费】先问基本视频参数(项目类型/画幅/集数×每集分钟/题材:写实真人 realistic_human·动漫风格化 stylized·产品空镜 product/原声还是配音),' +
   '再调 get_production_menu 拿**当前可用**的三档套餐(效果说明+实时预估(含文本步)+建议预算+不计入项)讲给客户——别凭记忆推荐模型,某些模型对某些题材会临时不可用,菜单已过滤;' +
   '然后让客户选执行模式(pro 每步自己把控 / auto 一键出片 / custom 选环节托管)、预算 budget_points 与自动追加上限(0/10/20/30/50%):' +
-  '**默认建议**预算=所选档的 recommended_budget(预估上界×1.2)、追加=菜单的 recommended_overrun_pct(30%)——质检重出不在上界里,由追加兜底;建议归建议,最终数字由客户定,客户改了就按客户的。' +
+  '**默认建议**预算=所选档的 recommended_budget(不含文本的上界×1.2 再加文本估计)、追加=菜单的 recommended_overrun_pct(30%)——质检重出不在上界里,由追加兜底;建议归建议,最终数字由客户定,客户改了就按客户的。' +
   '把汇总讲清楚、客户明确同意后才调 confirm_production_plan(customer_confirmed:true)——不许替客户确认。' +
   '确认过方案的剧:收费派发前平台复核模型仍可用、报价上界不超过预算×(1+追加%),被拦(402 BUDGET_WOULD_EXCEED / 409 MODEL_UNAVAILABLE)就停下问客户,别自己换模型或调预算。' +
   'confirm 返回 403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。'
@@ -2885,7 +2885,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'estimate=null 表示价格服务暂时取不到实时单价——如实告诉客户「暂时估不出」,别自己编数字。' +
       'estimate 已含文本步(剧本改写、拆镜、分镜补全,按每镜约 360 点估,breakdown 的 text 项)。' +
       'not_included 列出不在预估里的花费(配音配乐、质检重出与审核拒绝后的重出),一并讲给客户;质检重出不进上界,由「自动追加」额度兜底。' +
-      '★建议预算:每档 recommended_budget = 该档 estimate.total.upper × 1.2;菜单的 recommended_overrun_pct=30 是建议的追加档位。' +
+      '★建议预算:每档 recommended_budget = (该档 estimate.total.upper − breakdown 的 text 项) × 1.2 + text 项(文本不放大);菜单的 recommended_overrun_pct=30 是建议的追加档位。' +
       '向客户**默认建议**「预算 = recommended_budget、追加 30%」(budget_advice 是现成的说法),说明这只是建议,预算与追加比例由客户决定(追加可选 0/10/20/30/50)。' +
       'availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。' +
       '★专业客户自选模型:带 custom(图片模型+视频引擎+分辨率)再调一次,返回体多一个 custom(可用性+实时预估);把 custom.estimate 讲给客户,确认时把 custom.estimate.total.upper 作为 expected_total_upper 原样带回。' +
@@ -2913,7 +2913,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'confirm_production_plan',
     '★开场最后一步:把客户**明确同意**的整份方案写进本剧(免费)。写入图片模型/视频引擎/分辨率/预算,并记录题材、执行模式、自动追加上限与确认快照。' +
       '调用前必须把汇总完整讲给客户:所选套餐与效果、全剧预估(通常值与上界)、执行模式、预算、追加比例,以及「追加只在预算用完后才动用、到硬上限会停下来问」——客户点头才传 customer_confirmed:true。' +
-      '★预算与追加默认建议 budget_points=该档 recommended_budget(上界×1.2)、overrun_pct=30(质检重出由追加兜底);客户另定就按客户的数传。' +
+      '★预算与追加默认建议 budget_points=该档 recommended_budget(不含文本的上界×1.2+文本)、overrun_pct=30(质检重出由追加兜底);客户另定就按客户的数传。' +
       '托管环节同一镜重出帧最多 3 轮、重出视频最多 3 次,到上限回 409 AUTOPILOT_SHOT_REGEN_LIMIT,要停下问客户。' +
       '★确认后平台在每次收费派发前复核:①本剧模型对本剧题材仍可用,否则 409 MODEL_UNAVAILABLE;②报价上界+已花 ≤ 预算×(1+追加%),否则 402 BUDGET_WOULD_EXCEED(都未扣费)。' +
       '被拦就停下问客户,别自己换模型、别自己调预算。' +
@@ -2950,7 +2950,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         script: z.enum(['customer', 'agent']), storyboards: z.enum(['customer', 'agent']), assets: z.enum(['customer', 'agent']),
         frames: z.enum(['customer', 'agent']), videos: z.enum(['customer', 'agent']), compose: z.enum(['customer', 'agent']),
       }).optional().describe('execution_mode=custom 时必填:每个环节 customer(客户把控)或 agent(托管)'),
-      budget_points: z.number().int().positive().optional().describe('预算(点)。auto / custom 必填(客户授权 agent 自主花费的上限);默认建议所选档的 recommended_budget(预估上界×1.2),由客户决定'),
+      budget_points: z.number().int().positive().optional().describe('预算(点)。auto / custom 必填(客户授权 agent 自主花费的上限);默认建议所选档的 recommended_budget(不含文本的上界×1.2+文本),由客户决定'),
       overrun_pct: z.union([z.literal(0), z.literal(10), z.literal(20), z.literal(30), z.literal(50)]).optional().describe('自动追加上限(%),不传按 0。硬上限 = 预算 × (1 + 本值/100)。默认建议 30(菜单 recommended_overrun_pct,兜底质检重出),由客户决定'),
       max_fix_rounds: z.number().int().min(0).max(5).optional().describe('托管环节每层最多自修几轮(默认 3);到上限仍有问题就暂停、汇总问客户'),
       episodes: z.number().int().min(1).max(200),

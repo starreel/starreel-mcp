@@ -140,7 +140,7 @@ Right after `create_drama`, before any paid step:
    breakdown, storyboard completion; `breakdown` item `text`, about 360 points
    per shot). QC re-takes are **not** in the upper bound — the overrun
    allowance covers them. Each package carries `recommended_budget`
-   (upper bound × 1.2) and the menu carries `recommended_overrun_pct` (30) and
+   (upper bound without the `text` item × 1.2, plus the text estimate) and the menu carries `recommended_overrun_pct` (30) and
    `budget_advice`: by default suggest budget = `recommended_budget` and a 30 %
    overrun cap, and say it is only a suggestion — the customer decides.
    For a professional customer picking their own models, call it again with
