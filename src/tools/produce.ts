@@ -1621,7 +1621,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'quote_extend_final',
     '★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长。'
       + '回 rounds(轮数)/duration_per_round(每轮秒数)/max_rounds(上限)/estimated_points(预估点数)。'
-      + '\n★**必须先报价、把点数讲给客户、客户确认后再调 extend_final**' + ALWAYS_ASK('续写没有派发前预算预检,') + '——每轮都真扣厂商的钱。'
+      + '\n★**必须先 quote_extend_final 报价,再调 extend_final**' + MODE_DECIDES('报价确认') + '(派发前平台按同参整单报价过预算预检,超出硬上限回 402 BUDGET_WOULD_EXCEED、未扣费,那就停下问客户)' + '——每轮都真扣厂商的钱。'
       + '\n★回 403 = 本剧没开这个能力(要求剧集视频引擎是 2.5 系)。这不是调用错误,别重试;'
       + '告诉客户换引擎或走别的加长方式。',
     {
@@ -1639,7 +1639,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'extend_final',
     '发起成片续写(**收费**,每轮走视频生成扣费链)。后台串行跑,立即返回会话 id,用 get_extend_final 轮询。'
-      + '\n★调之前**必须**先 quote_extend_final 报价并让客户确认点数' + ALWAYS_ASK('续写没有派发前预算预检,') + '。'
+      + '\n★调之前**必须**先 quote_extend_final 报价' + MODE_DECIDES('报价确认') + '(派发前平台按同参整单报价过预算预检,超出硬上限回 402 BUDGET_WOULD_EXCEED、未扣费,那就停下问客户)' + '。'
       + '\n★续写只是「在成片后面接片段」,不改前面已有的内容;接出来的片段也**不会**自动成为本集成片,'
       + '满意之后要显式调 apply_extend_final 才生效。'
       + '\n★403 = 本剧没开(引擎需 2.5 系),别重试。',
@@ -1754,7 +1754,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'generate_world_concept',
     '(★默认必做·很多第三方平台漏做这步·仍走报价确认)生成世界观概念图(固定4格:全景/时代/主场景/色彩),提升整剧视觉一致性。' +
-      '★分镜后默认调这个,别跳过;但仍要告知客户预估点数、客户确认才跑(不静默扣费)' + ALWAYS_ASK('本工具没有报价、不走派发前预算预检,') + '。需 setting_brief ≥30字。图片步,按固定成本后付、不欠费。',
+      '★分镜后默认调这个,别跳过;但仍要告知客户预估点数' + MODE_DECIDES('跑不跑') + '(派发前平台按缺槽数 × 单张上界过预算预检,超出硬上限回 402、未扣费)。需 setting_brief ≥30字。图片步,按固定成本后付、不欠费。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.producePost(`/dramas/${drama_id}/world-concept`)),
   )
@@ -2582,7 +2582,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。' +
       '客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。\n' +
       '★candidates 可选=候选整版对比:每幕出 2~3 首**完整**候选让客户挑(挑中的直接用,听到什么成片里就是什么)。' +
-      '每首单独按首计费 ⇒ 费用是单首的 N 倍,**必须先 quote_bgm_candidates 报价、把点数告诉客户、客户同意后**带 quote_id 调本工具' + ALWAYS_ASK('多候选逐首扣费、没有整单预算预检,') + '。' +
+      '每首单独按首计费 ⇒ 费用是单首的 N 倍,**必须先 quote_bgm_candidates 报价**,再带 quote_id 调本工具' + MODE_DECIDES('报价确认') + '(派发前平台按整单报价过预算预检,超出硬上限回 402、未扣费)' + '。' +
       '不传或传 1=原行为(每幕一首,无需报价)。生成后 get_bgm_status 的 candidate_groups 给每首的试听地址,select_bgm_candidate 挑选(免费),不挑默认第 1 首。' + VIDEO_QC_HINT,
     {
       episode_id: z.number().int().positive(),
@@ -2617,7 +2617,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'quote_bgm_candidates',
     '给「配乐候选整版对比」报价(免费):每幕出 candidates 首完整候选的总点数 = 有配乐的幕数 × 候选数 × 单首价。' +
-      '返回 quote_id(15 分钟有效、一次性)。⚠️ 把 estimated_points 讲给客户,客户同意后才拿 quote_id 调 generate_bgm(candidates 必须与这里一致)' + ALWAYS_ASK('多候选逐首扣费、没有整单预算预检,') + '。' +
+      '返回 quote_id(15 分钟有效、一次性)。⚠️ 拿 quote_id 调 generate_bgm(candidates 必须与这里一致)' + MODE_DECIDES('报价确认') + '(派发前平台按整单报价过预算预检,超出硬上限回 402、未扣费)' + '。' +
       '另有少量配乐总监 LLM 文本费(每幕一次),不在报价内。',
     {
       episode_id: z.number().int().positive(),
@@ -3016,7 +3016,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'quote_mv_song',
     'MV 项目·AI 作曲第 2 步:报价(免费)。总点数 = candidates × 单首价;返回 quote_id(15 分钟有效、一次性)。' +
-      '⚠️ 把 points 原样告诉客户,客户明确同意后才拿 quote_id 调 generate_mv_song(candidates 必须一致)' + ALWAYS_ASK('多候选并发扣费、没有整单预算预检,') + '。',
+      '⚠️ 拿 quote_id 调 generate_mv_song(candidates 必须一致)' + MODE_DECIDES('报价确认') + '(派发前平台按整单报价过预算预检,超出硬上限回 402、未扣费)' + '。',
     {
       drama_id: z.number().int().positive(),
       candidates: z.number().int().min(1).max(3).describe('出几首候选对比(1~3),每首单独计费'),

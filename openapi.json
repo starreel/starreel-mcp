@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.169",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.169 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.171",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.171 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -2660,7 +2660,7 @@
       "get": {
         "operationId": "quote_mv_song",
         "summary": "MV 项目·AI 作曲第 2 步:报价(免费)",
-        "description": "MV 项目·AI 作曲第 2 步:报价(免费)。总点数 = candidates × 单首价;返回 quote_id(15 分钟有效、一次性)。⚠️ 把 points 原样告诉客户,客户明确同意后才拿 quote_id 调 generate_mv_song(candidates 必须一致)(多候选并发扣费、没有整单预算预检,任何执行模式都须客户明确同意,托管也不例外)。",
+        "description": "MV 项目·AI 作曲第 2 步:报价(免费)。总点数 = candidates × 单首价;返回 quote_id(15 分钟有效、一次性)。⚠️ 拿 quote_id 调 generate_mv_song(candidates 必须一致)(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)(派发前平台按整单报价过预算预检,超出硬上限回 402、未扣费)。",
         "tags": [
           "dramas"
         ],
@@ -3829,7 +3829,7 @@
       "post": {
         "operationId": "generate_world_concept",
         "summary": "(★默认必做·很多第三方平台漏做这步·仍走报价确认)生成世界观概念图(固定4格:全景/时代/主场景/色彩),提升整剧视觉一致性",
-        "description": "(★默认必做·很多第三方平台漏做这步·仍走报价确认)生成世界观概念图(固定4格:全景/时代/主场景/色彩),提升整剧视觉一致性。★分镜后默认调这个,别跳过;但仍要告知客户预估点数、客户确认才跑(不静默扣费)(本工具没有报价、不走派发前预算预检,任何执行模式都须客户明确同意,托管也不例外)。需 setting_brief ≥30字。图片步,按固定成本后付、不欠费。",
+        "description": "(★默认必做·很多第三方平台漏做这步·仍走报价确认)生成世界观概念图(固定4格:全景/时代/主场景/色彩),提升整剧视觉一致性。★分镜后默认调这个,别跳过;但仍要告知客户预估点数(跑不跑按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)(派发前平台按缺槽数 × 单张上界过预算预检,超出硬上限回 402、未扣费)。需 setting_brief ≥30字。图片步,按固定成本后付、不欠费。",
         "tags": [
           "dramas"
         ],
@@ -4447,7 +4447,7 @@
       "post": {
         "operationId": "generate_bgm",
         "summary": "给整集生成/更换 AI 配乐(按情绪弧线)",
-        "description": "给整集生成/更换 AI 配乐(按情绪弧线)。后台异步,按用量后付不欠费。返回情绪弧线段数与预估耗时;用 get_bgm_status 轮询生成进度。★配乐生成/改动**不会自动进已有成片**——完成后必须重新 compose_episode(免费)才能听到;get_final_cut 的 bgm_stale=true 就是在提示这一步。别用 re-render(吃旧时间线,不含新配乐)。\n★prompt 可选:不传=全自动(和以前一样)。传了就是在自动结果上再加方向,整集一条,系统仍按情绪弧线分幕。怎么写见 get_bgm_prompt_guide(免费);要点=只写音乐维度(情绪气质/主奏配器/速度动态/厚薄空间/风格参照),别写剧情(「主角发现真相时要紧张」→写「紧张,节奏推进感强」)。只出纯器乐:要人声/歌词/拟音当乐器都不会生效,会在 prompt_warnings 里点名但**不拦生成**。\n★prompt_mode: guide(默认)=你的要求与平台专业护栏(时代与题材匹配/配器节制/高潮保规模/段间差异)一起生效;override=直通,跳过护栏,只保留技术底线(纯器乐/时长/可循环)。override 效果自负,**先用 guide 试**,确实拧不过来再换。不传 prompt 时沿用该集上次填的(get_bgm_status 可查)。\n★director 可选=结构化锁定(硬约束):逐项指定 mood 情绪 / instruments 主奏配器 / bpm / tonality 大小调,生成时**强制覆盖**配乐总监的判断(不像 prompt 只是方向,可能被护栏或 AI 取舍改写);没锁的项仍自动判断。整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。★director 按集保存(同 prompt):这次传了就记下,下次不传沿用上次的(get_bgm_status 的 director 可查);传 null 清除。分镜改动后已存的幕号不存在了,那一条会被忽略并在 director_warnings 里说明,不拦生成。幕是按情绪弧线自动分的:按幕锁之前先调 get_bgm_plan(免费,只读)看本集分几幕、每幕覆盖哪些镜。参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。\n★candidates 可选=候选整版对比:每幕出 2~3 首**完整**候选让客户挑(挑中的直接用,听到什么成片里就是什么)。每首单独按首计费 ⇒ 费用是单首的 N 倍,**必须先 quote_bgm_candidates 报价、把点数告诉客户、客户同意后**带 quote_id 调本工具(多候选逐首扣费、没有整单预算预检,任何执行模式都须客户明确同意,托管也不例外)。不传或传 1=原行为(每幕一首,无需报价)。生成后 get_bgm_status 的 candidate_groups 给每首的试听地址,select_bgm_candidate 挑选(免费),不挑默认第 1 首。\n★【完成后质检·免费】出完等它落库(get_storyboards 看 video_status / get_pipeline_status),再调 review_videos 审视频与配音层(缺视频 / 旧帧出的视频 / 片尾硬切 / 意外人声 / 配音缺失 / 音色未分配 / 原声声线过期),修完复审;再按 agent_qc 亲自逐镜看视频、听配音(动作到位、不变脸、台词念全、嗓音对),submit_qc_report 提交;compose_episode 要带它的 review_token。",
+        "description": "给整集生成/更换 AI 配乐(按情绪弧线)。后台异步,按用量后付不欠费。返回情绪弧线段数与预估耗时;用 get_bgm_status 轮询生成进度。★配乐生成/改动**不会自动进已有成片**——完成后必须重新 compose_episode(免费)才能听到;get_final_cut 的 bgm_stale=true 就是在提示这一步。别用 re-render(吃旧时间线,不含新配乐)。\n★prompt 可选:不传=全自动(和以前一样)。传了就是在自动结果上再加方向,整集一条,系统仍按情绪弧线分幕。怎么写见 get_bgm_prompt_guide(免费);要点=只写音乐维度(情绪气质/主奏配器/速度动态/厚薄空间/风格参照),别写剧情(「主角发现真相时要紧张」→写「紧张,节奏推进感强」)。只出纯器乐:要人声/歌词/拟音当乐器都不会生效,会在 prompt_warnings 里点名但**不拦生成**。\n★prompt_mode: guide(默认)=你的要求与平台专业护栏(时代与题材匹配/配器节制/高潮保规模/段间差异)一起生效;override=直通,跳过护栏,只保留技术底线(纯器乐/时长/可循环)。override 效果自负,**先用 guide 试**,确实拧不过来再换。不传 prompt 时沿用该集上次填的(get_bgm_status 可查)。\n★director 可选=结构化锁定(硬约束):逐项指定 mood 情绪 / instruments 主奏配器 / bpm / tonality 大小调,生成时**强制覆盖**配乐总监的判断(不像 prompt 只是方向,可能被护栏或 AI 取舍改写);没锁的项仍自动判断。整集锁写在 director 顶层;只锁某一幕写进 director.acts[{act,…}](同名字段覆盖整集的)。★director 按集保存(同 prompt):这次传了就记下,下次不传沿用上次的(get_bgm_status 的 director 可查);传 null 清除。分镜改动后已存的幕号不存在了,那一条会被忽略并在 director_warnings 里说明,不拦生成。幕是按情绪弧线自动分的:按幕锁之前先调 get_bgm_plan(免费,只读)看本集分几幕、每幕覆盖哪些镜。参数拼错(bpm 越界、调性不是 major/minor/modal、幕号不存在)会 400;配器里写人声/环境声会被丢掉并在 director_warnings 点名。客户说「要慢一点、小调、用古筝」这类**明确参数**用 director;说「整体更压抑」这类**方向**用 prompt;两者可同时用。\n★candidates 可选=候选整版对比:每幕出 2~3 首**完整**候选让客户挑(挑中的直接用,听到什么成片里就是什么)。每首单独按首计费 ⇒ 费用是单首的 N 倍,**必须先 quote_bgm_candidates 报价**,再带 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)(派发前平台按整单报价过预算预检,超出硬上限回 402、未扣费)。不传或传 1=原行为(每幕一首,无需报价)。生成后 get_bgm_status 的 candidate_groups 给每首的试听地址,select_bgm_candidate 挑选(免费),不挑默认第 1 首。\n★【完成后质检·免费】出完等它落库(get_storyboards 看 video_status / get_pipeline_status),再调 review_videos 审视频与配音层(缺视频 / 旧帧出的视频 / 片尾硬切 / 意外人声 / 配音缺失 / 音色未分配 / 原声声线过期),修完复审;再按 agent_qc 亲自逐镜看视频、听配音(动作到位、不变脸、台词念全、嗓音对),submit_qc_report 提交;compose_episode 要带它的 review_token。",
         "tags": [
           "episodes"
         ],
@@ -4950,7 +4950,7 @@
       "get": {
         "operationId": "quote_bgm_candidates",
         "summary": "给「配乐候选整版对比」报价(免费):每幕出 candidates 首完整候选的总点数 = 有配乐的幕数 × 候选数 × 单首价",
-        "description": "给「配乐候选整版对比」报价(免费):每幕出 candidates 首完整候选的总点数 = 有配乐的幕数 × 候选数 × 单首价。返回 quote_id(15 分钟有效、一次性)。⚠️ 把 estimated_points 讲给客户,客户同意后才拿 quote_id 调 generate_bgm(candidates 必须与这里一致)(多候选逐首扣费、没有整单预算预检,任何执行模式都须客户明确同意,托管也不例外)。另有少量配乐总监 LLM 文本费(每幕一次),不在报价内。",
+        "description": "给「配乐候选整版对比」报价(免费):每幕出 candidates 首完整候选的总点数 = 有配乐的幕数 × 候选数 × 单首价。返回 quote_id(15 分钟有效、一次性)。⚠️ 拿 quote_id 调 generate_bgm(candidates 必须与这里一致)(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)(派发前平台按整单报价过预算预检,超出硬上限回 402、未扣费)。另有少量配乐总监 LLM 文本费(每幕一次),不在报价内。",
         "tags": [
           "episodes"
         ],
@@ -5992,7 +5992,7 @@
       "post": {
         "operationId": "extend_final",
         "summary": "发起成片续写(**收费**,每轮走视频生成扣费链)",
-        "description": "发起成片续写(**收费**,每轮走视频生成扣费链)。后台串行跑,立即返回会话 id,用 get_extend_final 轮询。\n★调之前**必须**先 quote_extend_final 报价并让客户确认点数(续写没有派发前预算预检,任何执行模式都须客户明确同意,托管也不例外)。\n★续写只是「在成片后面接片段」,不改前面已有的内容;接出来的片段也**不会**自动成为本集成片,满意之后要显式调 apply_extend_final 才生效。\n★403 = 本剧没开(引擎需 2.5 系),别重试。",
+        "description": "发起成片续写(**收费**,每轮走视频生成扣费链)。后台串行跑,立即返回会话 id,用 get_extend_final 轮询。\n★调之前**必须**先 quote_extend_final 报价(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)(派发前平台按同参整单报价过预算预检,超出硬上限回 402 BUDGET_WOULD_EXCEED、未扣费,那就停下问客户)。\n★续写只是「在成片后面接片段」,不改前面已有的内容;接出来的片段也**不会**自动成为本集成片,满意之后要显式调 apply_extend_final 才生效。\n★403 = 本剧没开(引擎需 2.5 系),别重试。",
         "tags": [
           "episodes"
         ],
@@ -6179,7 +6179,7 @@
       "get": {
         "operationId": "quote_extend_final",
         "summary": "★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长",
-        "description": "★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长。回 rounds(轮数)/duration_per_round(每轮秒数)/max_rounds(上限)/estimated_points(预估点数)。\n★**必须先报价、把点数讲给客户、客户确认后再调 extend_final**(续写没有派发前预算预检,任何执行模式都须客户明确同意,托管也不例外)——每轮都真扣厂商的钱。\n★回 403 = 本剧没开这个能力(要求剧集视频引擎是 2.5 系)。这不是调用错误,别重试;告诉客户换引擎或走别的加长方式。",
+        "description": "★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长。回 rounds(轮数)/duration_per_round(每轮秒数)/max_rounds(上限)/estimated_points(预估点数)。\n★**必须先 quote_extend_final 报价,再调 extend_final**(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)(派发前平台按同参整单报价过预算预检,超出硬上限回 402 BUDGET_WOULD_EXCEED、未扣费,那就停下问客户)——每轮都真扣厂商的钱。\n★回 403 = 本剧没开这个能力(要求剧集视频引擎是 2.5 系)。这不是调用错误,别重试;告诉客户换引擎或走别的加长方式。",
         "tags": [
           "episodes"
         ],
