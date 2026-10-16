@@ -57,7 +57,10 @@ const out = RESUME && existsSync(outPath) ? JSON.parse(readFileSync(outPath, 'ut
 const todo = Object.entries(src).filter(([k]) => !(k in out))
 console.error(`工具 ${Object.keys(src).length}，待翻 ${todo.length}`)
 /** @type {string[]} */ const failed = []
-const BATCH = 12
+// 长描述（带整段产线引导的工具）成批翻时容易丢标识符被回退；续跑时用 TRANSLATE_BATCH=1 逐条补译
+const BATCH = Number(process.env.TRANSLATE_BATCH || 12)
+// 0 / 负数 / 小数会让循环原地打转、不停发付费请求 —— 只收正整数
+if (!Number.isInteger(BATCH) || BATCH < 1) { console.error(`TRANSLATE_BATCH 须为正整数，当前 ${process.env.TRANSLATE_BATCH}`); process.exit(1) }
 for (let i = 0; i < todo.length; i += BATCH) {
   const batch = todo.slice(i, i + BATCH)
   try {
