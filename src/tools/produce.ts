@@ -2869,8 +2869,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'not_included 列出不在预估里的花费(文本步、配音配乐、质检重出),一并讲给客户;质检重出这部分正是「自动追加」兜底的。' +
       'availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。' +
       '★专业客户自选模型:带 custom(图片模型+视频引擎+分辨率)再调一次,返回体多一个 custom(可用性+实时预估);把 custom.estimate 讲给客户,确认时把 custom.estimate.total.upper 作为 expected_total_upper 原样带回。' +
-      '★overrun_history = 历史上多少剧会用到自动追加(按扣费账本统计):sufficient=true 时可告诉客户「历史上约 used_overrun_pct% 的剧会用到追加,平均多 avg_excess_pct_when_used%,选 10/20/30% 追加能兜住 covered_pct_by_overrun 里的比例」,并说明这是历史统计不是承诺;' +
-      'sufficient=false(暂无足够数据)时**不许**给客户任何比例或自己估一个数,只说追加用于兜底质检重出、审核拒绝后的重出,用不到不扣。' +
+      '★「历史上多少剧会用到追加」平台目前不提供:**不许**自己估一个比例或数字给客户;客户问追加会不会用到,只说明追加额度用于兜底质检重出、审核拒绝后的重出,用不到不扣。' +
       '★题材 content_class 决定可用性:同一引擎可能动漫可用、写实真人暂不可用——按剧情实际画面选,别为了用某个模型改题材。',
     {
       content_class: z.enum(['realistic_human', 'stylized', 'product']).describe('题材:realistic_human 写实真人 / stylized 动漫·风格化 / product 产品·空镜'),

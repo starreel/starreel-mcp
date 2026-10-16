@@ -139,11 +139,11 @@ Right after `create_drama`, before any paid step:
    For a professional customer picking their own models, call it again with
    `custom` (image model + video engine + resolution): the response gains a
    `custom` preview (availability + live estimate) to relay before confirming.
-   `overrun_history` tells how often past dramas needed the overrun allowance
-   (from the billing ledger). Quote its percentages only when
-   `sufficient: true`, as history rather than a promise; when it is `false`,
-   give no percentage at all — just explain the allowance covers QC re-takes
-   and re-runs after vendor rejections, and is not charged if unused.
+   The platform does not currently publish how often past dramas needed the
+   overrun allowance: never estimate such a percentage or number for the
+   customer. If asked whether the allowance will be used, just explain it
+   covers QC re-takes and re-runs after vendor rejections, and is not charged
+   if unused.
 3. Let the customer pick an execution mode (`pro` — they control every step;
    `auto` — one-click; `custom` — they pick which stages to delegate), a budget
    (`budget_points`, required for auto/custom) and an automatic overrun cap
