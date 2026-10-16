@@ -134,6 +134,16 @@ const REVIEW_ARGS = {
 //   → quote/generate_frames(默认只出首帧) → tail_frame_plan(免费) → generate_frames(frame_type=last_frame) → quote/generate_videos
 //   → compose_episode → get_final_cut / get_export
 // 项目设定随时可 update_project_settings;色彩脚本保留主干，动作模板仅可选实验。
+/** 一键出片:托管环节单镜重出硬上限(服务端判,见后端 autopilot-policy.ts SHOT_REGEN_LIMIT)。 */
+const SHOT_REGEN_HINT = (what: string) =>
+  `\n★一键出片托管环节:同一镜${what},到上限回 **409 AUTOPILOT_SHOT_REGEN_LIMIT**(未派发、未扣费,quote 未消耗)——` +
+  '别换个工具绕,停下问客户:客户同意再出就照常报价、生成时带 customer_approved_more_regens:true(再给一份上限);' +
+  '客户接受现状就往下走,下一步收费调用带 acknowledge_review:true 记下确认。专业模式与客户把控的环节不受这个上限约束。'
+const SHOT_REGEN_ARG = {
+  customer_approved_more_regens: z.boolean().optional().describe(
+    '只在收到 409 AUTOPILOT_SHOT_REGEN_LIMIT、并且**客户亲口同意**这一镜再重出后才带 true(再给一份上限);平时不传,不许替客户同意'),
+}
+
 /** 执行模式总纲(一键出片第二期):WORKFLOW_HINT 开头,先定「问不问客户」再谈产线顺序。 */
 export const AUTOPILOT_HINT =
   '★★【执行模式总纲·开工先读】确认过开场方案的剧先 get_production_plan 读 autopilot:' +
@@ -142,7 +152,9 @@ export const AUTOPILOT_HINT =
   '每层产出后照常 review_* + agent 质检,审查与质检返回的 autopilot.next_step 告诉你这一层怎么走' +
   '(白名单 error 带 auto_acknowledge:true / 自修第几轮 / 暂停问客户),照做;遇到选择照 autopilot.default_decisions;' +
   'autopilot.never_auto_actions(mode=replace、删资产、覆盖客户上传图、allow_era_ref_conflict、克隆声音、交付验收)任何模式都要客户同意。' +
-  '402 BUDGET_WOULD_EXCEED / 409 MODEL_UNAVAILABLE / 400 AUTOPILOT_MUST_ASK 且 must_ask_customer=true / pending_questions 非空 → 暂停,' +
+  '★托管环节同一镜重出帧(generate_shot_frame)最多 3 轮、重出视频(regenerate_shot_video / edit_video_shot)最多 3 次,到上限平台回 409 AUTOPILOT_SHOT_REGEN_LIMIT(未扣费)——别换个工具绕,停下问客户:' +
+  '客户同意再出就照常报价、生成时带 customer_approved_more_regens:true(再给一份上限);客户接受现状就往下走,下一步收费调用带 acknowledge_review:true 记下确认。' +
+  '402 BUDGET_WOULD_EXCEED / 409 MODEL_UNAVAILABLE / 409 AUTOPILOT_SHOT_REGEN_LIMIT / 400 AUTOPILOT_MUST_ASK 且 must_ask_customer=true / pending_questions 非空 → 暂停,' +
   '把 get_autopilot_log 的 pending_questions **汇总后一次性**问客户;客户把控的环节照专业模式问。出完片用 get_autopilot_log 的 report 向客户交付。'
 
 export const WORKFLOW_HINT =
@@ -295,8 +307,9 @@ export const WORKFLOW_HINT =
   '两条导入默认带 auto_complete(后台 AI 补专业字段 + 出图/视频提示词,文本步后付,调用前告知客户):回执 started=true 就用 get_autofill_status 轮询到 done 再 review_storyboards——补全会改镜,先审的 token 会失效。' +
   '用 get_pipeline_status 查进度(按项目类型返回专属步骤)。' +
   '★★【开场方案·建剧后第一件事·免费】先问基本视频参数(项目类型/画幅/集数×每集分钟/题材:写实真人 realistic_human·动漫风格化 stylized·产品空镜 product/原声还是配音),' +
-  '再调 get_production_menu 拿**当前可用**的三档套餐(效果说明+实时预估+不计入项)讲给客户——别凭记忆推荐模型,某些模型对某些题材会临时不可用,菜单已过滤;' +
-  '然后让客户选执行模式(pro 每步自己把控 / auto 一键出片 / custom 选环节托管)、预算 budget_points 与自动追加上限(0/10/20/30/50%),' +
+  '再调 get_production_menu 拿**当前可用**的三档套餐(效果说明+实时预估(含文本步)+建议预算+不计入项)讲给客户——别凭记忆推荐模型,某些模型对某些题材会临时不可用,菜单已过滤;' +
+  '然后让客户选执行模式(pro 每步自己把控 / auto 一键出片 / custom 选环节托管)、预算 budget_points 与自动追加上限(0/10/20/30/50%):' +
+  '**默认建议**预算=所选档的 recommended_budget(预估上界×1.2)、追加=菜单的 recommended_overrun_pct(30%)——质检重出不在上界里,由追加兜底;建议归建议,最终数字由客户定,客户改了就按客户的。' +
   '把汇总讲清楚、客户明确同意后才调 confirm_production_plan(customer_confirmed:true)——不许替客户确认。' +
   '确认过方案的剧:收费派发前平台复核模型仍可用、报价上界不超过预算×(1+追加%),被拦(402 BUDGET_WOULD_EXCEED / 409 MODEL_UNAVAILABLE)就停下问客户,别自己换模型或调预算。' +
   'confirm 返回 403 PRODUCTION_PLAN_NOT_OPEN = 本剧未开放(灰度),照原流程逐步确认。'
@@ -1252,7 +1265,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★★出尾帧若被拦下并提示「此镜标为状态改变,但没有任何地方说明结束时是什么样子」:' +
       '正解是用 update_shot 把结束状态写进 last_frame_prompt 再出,**别直接加 allow_missing_terminal 硬上**——' +
       '这类镜照现状出尾帧的历史成功率只有 9.4%(有终态描述的 40.2%),硬上多半是白扣一次钱。' +
-      '只有确认这一镜就是要「几乎不变」的画面时才带那个参数。' + REVIEW_GATE_HINT('review_storyboards', '分镜') + ASSET_GATE_HINT + CONFIRM_HINT,
+      '只有确认这一镜就是要「几乎不变」的画面时才带那个参数。' + SHOT_REGEN_HINT('重出帧最多 3 轮(一次调用算一轮,both 也算一轮)') + REVIEW_GATE_HINT('review_storyboards', '分镜') + ASSET_GATE_HINT + CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_shot_frame'),
@@ -1264,9 +1277,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(★必须与 quote_shot_frame 传的那个一致,否则 400 IMAGE_MODEL_MISMATCH;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
+      ...SHOT_REGEN_ARG,
     },
-    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict })),
+    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict, customer_approved_more_regens }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict, customer_approved_more_regens })),
   )
 
   // ---------- 出视频(videos,大额) ----------
@@ -2081,7 +2095,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '再重新 quote 并编辑;**别连发**多条编辑想让它们叠加,每一条都只基于当时的源。' +
       '若在途那条正是你刚提交的同一次编辑(例如调用超时后重发),直接等它的结果,不必再发。' +
       '同一次编辑原样重发(指令、参考素材、区间、引擎都一样)不会 409,会挂到在途那条上、不重复扣费。' +
-      CONFIRM_HINT + VIDEO_QC_HINT,
+      SHOT_REGEN_HINT('重出视频最多 3 次(与 regenerate_shot_video 合计)') + CONFIRM_HINT + VIDEO_QC_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_edit_video_shot'),
@@ -2095,6 +2109,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       replace_user_footage: z.boolean().optional().describe(
         '本镜是实拍素材镜(upload_shot_footage 传过)时,显式允许以它为源做编辑并用 AI 产物覆盖它。' +
         '不传则被守卫拒(409,带中文出路)。想保留素材就别传,改用 clear_shot_footage 换回 AI 生成。'),
+      ...SHOT_REGEN_ARG,
     },
     async ({ storyboard_id, ...rest }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/edit/generate`, rest)),
@@ -2226,7 +2241,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '先等在途那条完成、看过结果,再重新 quote 并重生——否则拿到的视频是旧内容(旧提示词或旧首尾帧)出的,会误以为改动没效果。' +
       '\n★成功但返回里带 **`reused_in_flight: true`** = 同样的内容已经在生成(重发/双击/批量出视频已派发),' +
       '这次没有新建、没有新扣费,返回的就是在途那一条,看它的进度即可,不必再发。' +
-      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT + VIDEO_QC_HINT,
+      SHOT_REGEN_HINT('重出视频最多 3 次(与 edit_video_shot 合计)') + REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT + VIDEO_QC_HINT,
     {
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_regenerate_shot_video'),
@@ -2234,13 +2249,15 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       prompt: z.string().optional().describe('可选:覆盖该镜视频 prompt'),
       replace_user_footage: z.boolean().optional().describe(
         '本镜是实拍素材镜时,显式允许用 AI 重生的视频覆盖它(不传则被守卫拒 409)。'),
+      ...SHOT_REGEN_ARG,
     },
-    async ({ storyboard_id, quote_id, review_token, acknowledge_review, auto_acknowledge, prompt, replace_user_footage }) =>
+    async ({ storyboard_id, quote_id, review_token, acknowledge_review, auto_acknowledge, prompt, replace_user_footage, customer_approved_more_regens }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/regen/generate`, {
         quote_id,
         review_token,
         acknowledge_review,
         auto_acknowledge,
+        customer_approved_more_regens,
         ...(prompt ? { prompt } : {}),
         ...(replace_user_footage !== undefined ? { replace_user_footage } : {}),
       })),
@@ -2866,7 +2883,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'warnings(所选模型近期繁忙/失败偏多)、substitutions(本档首选模型暂不可用、退到后备组合的原因)。' +
       '某档 available=false 表示该档模型当前都不可用(unavailable_reason 说明),别推荐它。' +
       'estimate=null 表示价格服务暂时取不到实时单价——如实告诉客户「暂时估不出」,别自己编数字。' +
-      'not_included 列出不在预估里的花费(文本步、配音配乐、质检重出),一并讲给客户;质检重出这部分正是「自动追加」兜底的。' +
+      'estimate 已含文本步(剧本改写、拆镜、分镜补全,按每镜约 360 点估,breakdown 的 text 项)。' +
+      'not_included 列出不在预估里的花费(配音配乐、质检重出与审核拒绝后的重出),一并讲给客户;质检重出不进上界,由「自动追加」额度兜底。' +
+      '★建议预算:每档 recommended_budget = 该档 estimate.total.upper × 1.2;菜单的 recommended_overrun_pct=30 是建议的追加档位。' +
+      '向客户**默认建议**「预算 = recommended_budget、追加 30%」(budget_advice 是现成的说法),说明这只是建议,预算与追加比例由客户决定(追加可选 0/10/20/30/50)。' +
       'availability 是全部模型对该题材的可用性(专业客户自选模型时用,unavailable 的不能选)。' +
       '★专业客户自选模型:带 custom(图片模型+视频引擎+分辨率)再调一次,返回体多一个 custom(可用性+实时预估);把 custom.estimate 讲给客户,确认时把 custom.estimate.total.upper 作为 expected_total_upper 原样带回。' +
       '★「历史上多少剧会用到追加」平台目前不提供:**不许**自己估一个比例或数字给客户;客户问追加会不会用到,只说明追加额度用于兜底质检重出、审核拒绝后的重出,用不到不扣。' +
@@ -2893,6 +2913,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'confirm_production_plan',
     '★开场最后一步:把客户**明确同意**的整份方案写进本剧(免费)。写入图片模型/视频引擎/分辨率/预算,并记录题材、执行模式、自动追加上限与确认快照。' +
       '调用前必须把汇总完整讲给客户:所选套餐与效果、全剧预估(通常值与上界)、执行模式、预算、追加比例,以及「追加只在预算用完后才动用、到硬上限会停下来问」——客户点头才传 customer_confirmed:true。' +
+      '★预算与追加默认建议 budget_points=该档 recommended_budget(上界×1.2)、overrun_pct=30(质检重出由追加兜底);客户另定就按客户的数传。' +
+      '托管环节同一镜重出帧最多 3 轮、重出视频最多 3 次,到上限回 409 AUTOPILOT_SHOT_REGEN_LIMIT,要停下问客户。' +
       '★确认后平台在每次收费派发前复核:①本剧模型对本剧题材仍可用,否则 409 MODEL_UNAVAILABLE;②报价上界+已花 ≤ 预算×(1+追加%),否则 402 BUDGET_WOULD_EXCEED(都未扣费)。' +
       '被拦就停下问客户,别自己换模型、别自己调预算。' +
       '★执行模式会改变 agent 与审查闸的行为(托管灰度 AUTOPILOT_DRAMAS 内的剧):一键 auto 全部环节托管、混合 custom 按 stage_control 逐环节托管、专业 pro 每步客户把控。' +
@@ -2928,8 +2950,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         script: z.enum(['customer', 'agent']), storyboards: z.enum(['customer', 'agent']), assets: z.enum(['customer', 'agent']),
         frames: z.enum(['customer', 'agent']), videos: z.enum(['customer', 'agent']), compose: z.enum(['customer', 'agent']),
       }).optional().describe('execution_mode=custom 时必填:每个环节 customer(客户把控)或 agent(托管)'),
-      budget_points: z.number().int().positive().optional().describe('预算(点)。auto / custom 必填(客户授权 agent 自主花费的上限);建议不低于所选套餐的 estimate.total.upper'),
-      overrun_pct: z.union([z.literal(0), z.literal(10), z.literal(20), z.literal(30), z.literal(50)]).optional().describe('自动追加上限(%),默认 0。硬上限 = 预算 × (1 + 本值/100)'),
+      budget_points: z.number().int().positive().optional().describe('预算(点)。auto / custom 必填(客户授权 agent 自主花费的上限);默认建议所选档的 recommended_budget(预估上界×1.2),由客户决定'),
+      overrun_pct: z.union([z.literal(0), z.literal(10), z.literal(20), z.literal(30), z.literal(50)]).optional().describe('自动追加上限(%),不传按 0。硬上限 = 预算 × (1 + 本值/100)。默认建议 30(菜单 recommended_overrun_pct,兜底质检重出),由客户决定'),
       max_fix_rounds: z.number().int().min(0).max(5).optional().describe('托管环节每层最多自修几轮(默认 3);到上限仍有问题就暂停、汇总问客户'),
       episodes: z.number().int().min(1).max(200),
       minutes_per_episode: z.number().positive().max(30),

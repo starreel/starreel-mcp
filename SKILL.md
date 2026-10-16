@@ -136,6 +136,13 @@ Right after `create_drama`, before any paid step:
    package's `effect`, live `estimate` (typical and upper bound), `warnings`,
    `substitutions` and the `not_included` list. `estimate: null` means live
    prices are unreachable — say so, don't invent numbers.
+   The estimate already includes the text steps (script rewrite, shot
+   breakdown, storyboard completion; `breakdown` item `text`, about 360 points
+   per shot). QC re-takes are **not** in the upper bound — the overrun
+   allowance covers them. Each package carries `recommended_budget`
+   (upper bound × 1.2) and the menu carries `recommended_overrun_pct` (30) and
+   `budget_advice`: by default suggest budget = `recommended_budget` and a 30 %
+   overrun cap, and say it is only a suggestion — the customer decides.
    For a professional customer picking their own models, call it again with
    `custom` (image model + video engine + resolution): the response gains a
    `custom` preview (availability + live estimate) to relay before confirming.
@@ -146,8 +153,10 @@ Right after `create_drama`, before any paid step:
    if unused.
 3. Let the customer pick an execution mode (`pro` — they control every step;
    `auto` — one-click; `custom` — they pick which stages to delegate), a budget
-   (`budget_points`, required for auto/custom) and an automatic overrun cap
-   (0 / 10 / 20 / 30 / 50 %).
+   (`budget_points`, required for auto/custom; default suggestion is the
+   package's `recommended_budget`) and an automatic overrun cap
+   (0 / 10 / 20 / 30 / 50 %; default suggestion 30 %). If the customer picks
+   other numbers, use theirs.
 4. Summarize everything; only after the customer explicitly agrees call
    `confirm_production_plan` with `customer_confirmed: true`, passing the
    chosen package's `combo` back as `expected_combo` and its
@@ -179,17 +188,26 @@ In a **delegated stage** (`auto` = all stages; `custom` = stages whose
   says: errors that are all in `auto_ack_codes` (heuristics) → pass
   `auto_acknowledge: true` to the next paid step; anything else → fix and
   re-review, at most `max_fix_rounds` rounds (default 3, counted server-side);
+- per-shot re-takes are capped server-side: the same shot can be re-generated
+  at most 3 frame rounds (`generate_shot_frame`) and 3 video re-runs
+  (`regenerate_shot_video` + `edit_video_shot` combined). Hitting the cap returns
+  `409 AUTOPILOT_SHOT_REGEN_LIMIT` (nothing dispatched or charged) — don't route
+  around it with another tool; ask the customer. If they approve more, quote as
+  usual and pass `customer_approved_more_regens: true` on the generate call (one
+  more full allowance); if they accept the shot as is, move on and pass
+  `acknowledge_review: true` on the next paid step to record their decision;
 - decisions follow `default_decisions` (adopt only `must` suggestions that keep
   the customer's lines, apply precheck proposals, first BGM candidate,
   auto-assigned voices, never delete characters); `never_auto_actions`
   (`mode=replace`, deleting assets, overwriting customer uploads,
   `allow_era_ref_conflict`, voice cloning, `confirm_delivery_acceptance`) always
   need the customer;
-- `402` / `409` / `400 AUTOPILOT_MUST_ASK` / non-empty `pending_questions` →
+- `402` / `409` (incl. `AUTOPILOT_SHOT_REGEN_LIMIT`) / `400 AUTOPILOT_MUST_ASK` / non-empty `pending_questions` →
   pause and ask everything in `get_autopilot_log` → `pending_questions` **at
   once**. The log is written by the server; your own claims don't count.
 - When done, present `get_autopilot_log` → `report`: spend, fix rounds per
-  layer, what was auto-acknowledged, leftover defects.
+  layer, per-shot re-takes (`shot_regens`), what was auto-acknowledged,
+  leftover defects.
 `403 PRODUCTION_PLAN_NOT_OPEN` means the drama isn't in the rollout yet —
 follow the normal step-by-step flow.
 
