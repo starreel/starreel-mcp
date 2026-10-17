@@ -2765,6 +2765,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '两种用法:①不填 orient/placement/font_size = 角色名卡(画面侧边单列竖排人物名,适合群像出场镜);' +
       '②填了其中任意一个 = 通用版式字卡,name 可以是**整句台词或旁白**(按标点自动切列、按最高列拟合字号)。' +
       'placement="auto" 会按背景亮度与粗糙度自动挑位置(躲开人脸/亮部);orient="auto" 在背景太花时自动回退横排。' +
+      '③position="subtitle" = 叙事字卡,与对白字幕同位同样式,可配 start_ms 从镜中段出现(无对白的镜最合适,避免与对白字幕重叠)。改完调 compose_episode 重新终拼生效(rerender_episode 沿用已存时间轴,带不上)。' +
       '★别自己下载视频叠字再上传——那会绕开渲染机字体与印章素材,预览/成片不一致。',
     {
       storyboard_id: z.number().int().positive(),
@@ -2778,14 +2779,20 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         .describe('选位方式。不填=贴 side 那一边的固定位;auto=按背景亮度/粗糙度滑窗选位,躲开人和亮部'),
       font_size: z.number().int().positive().optional()
         .describe('字号上限(默认 72);实际字号按最高列拟合,不会超过它'),
+      start_ms: z.number().int().min(0).max(60000).nullable().optional()
+        .describe('镜内起点毫秒(相对本镜开头),默认 0;字卡显示到 duration_ms 或镜尾'),
+      position: z.enum(['subtitle']).nullable().optional()
+        .describe('subtitle = 叙事字卡:与对白字幕同位同样式(底部居中),name 里用换行写多行(如双语两行);不画印章、不走选位;不传=保留原值,传 null=清除(回到侧边/版式字卡)'),
     },
-    async ({ storyboard_id, name, seal, side, duration_ms, orient, placement, font_size }) =>
+    async ({ storyboard_id, name, seal, side, duration_ms, orient, placement, font_size, start_ms, position }) =>
       jsonResult(await client.producePut(`/storyboards/${storyboard_id}/name-card`, {
         name, ...(seal !== undefined ? { seal } : {}), ...(side !== undefined ? { side } : {}),
         ...(duration_ms !== undefined ? { duration_ms } : {}),
         ...(orient !== undefined ? { orient } : {}),
         ...(placement !== undefined ? { placement } : {}),
         ...(font_size !== undefined ? { font_size } : {}),
+        ...(start_ms !== undefined ? { start_ms } : {}),
+        ...(position !== undefined ? { position } : {}),
       })),
   )
   server.tool(
@@ -3204,6 +3211,32 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async ({ episode_id, ...rest }) =>
       jsonResult(await client.producePut(`/episodes/${episode_id}/era-contract`, rest)),
+  )
+  server.tool(
+    'get_drama_logo',
+    '读本剧的成片台标设置(图片地址 / 宽度 / 位置 / 边距 / 不透明度)。免费。null = 没设台标。',
+    { drama_id: z.number().int().positive() },
+    async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/logo`)),
+  )
+  server.tool(
+    'set_drama_logo',
+    '设置本剧成片的图片台标(角标 logo),终拼时叠在全片字幕之上、整片可见。免费、不重出视频。'
+      + '先 upload_image 上传台标(建议透明底 PNG)拿到 URL 再传 src。尺寸/边距按 720p 高度基准、渲染时按成片高度等比缩放'
+      + '(例:1080×1920 竖屏要宽约 260px → width≈98)。改完 compose_episode / rerender_episode 生效。传 logo:null 清除台标。',
+    {
+      drama_id: z.number().int().positive(),
+      src: z.string().url().optional().describe('台标图片 URL(http/https,upload_image 返回的地址)'),
+      width: z.number().int().min(8).max(400).optional().describe('宽度 px(720p 基准),默认 90;高按原图比例'),
+      opacity: z.number().min(0).max(1).optional().describe('不透明度 0–1,默认 0.85'),
+      gravity: z.enum(['NorthEast', 'NorthWest', 'SouthEast', 'SouthWest']).optional().describe('角落:NorthEast 右上(默认)/ NorthWest 左上 / SouthEast 右下 / SouthWest 左下'),
+      margin_x: z.number().int().min(0).max(200).optional().describe('距左右边 px(720p 基准),默认 14'),
+      margin_y: z.number().int().min(0).max(200).optional().describe('距上下边 px(720p 基准),默认 14'),
+      logo: z.null().optional().describe('传 null 清除台标(此时别传 src)'),
+    },
+    async ({ drama_id, ...fields }) => {
+      const payload = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined))
+      return jsonResult(await client.producePut(`/dramas/${drama_id}/logo`, payload))
+    },
   )
   server.tool(
     'get_era_contract',

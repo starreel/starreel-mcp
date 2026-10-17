@@ -308,7 +308,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '10 成片与交付',
-    tools: ['compose_episode', 'get_final_cut', 'get_export', 'rerender_episode', 'get_deliverables', 'generate_deliverables', 'render_multi_aspect', 'generate_effects', 'generate_transitions', 'generate_episode_poster', 'generate_drama_poster', 'generate_cover', 'translate_subtitles', 'get_pipeline_status'],
+    tools: ['compose_episode', 'get_final_cut', 'get_export', 'rerender_episode', 'get_deliverables', 'generate_deliverables', 'render_multi_aspect', 'generate_effects', 'generate_transitions', 'set_drama_logo', 'get_drama_logo', 'generate_episode_poster', 'generate_drama_poster', 'generate_cover', 'translate_subtitles', 'get_pipeline_status'],
     billing: '免费',
     note: '终拼免费(ffmpeg+COS);成片前用 `get_pipeline_status` 确认没有缺镜;配乐晚于成片(bgm_stale)重新 compose 即可。',
   },

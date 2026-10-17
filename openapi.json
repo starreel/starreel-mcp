@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.196",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.196 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.200",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.200 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -2242,6 +2242,146 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/dramas/{drama_id}/logo": {
+      "get": {
+        "operationId": "get_drama_logo",
+        "summary": "读本剧的成片台标设置(图片地址 / 宽度 / 位置 / 边距 / 不透明度)",
+        "description": "读本剧的成片台标设置(图片地址 / 宽度 / 位置 / 边距 / 不透明度)。免费。null = 没设台标。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "put": {
+        "operationId": "set_drama_logo",
+        "summary": "设置本剧成片的图片台标(角标 logo),终拼时叠在全片字幕之上、整片可见",
+        "description": "设置本剧成片的图片台标(角标 logo),终拼时叠在全片字幕之上、整片可见。免费、不重出视频。先 upload_image 上传台标(建议透明底 PNG)拿到 URL 再传 src。尺寸/边距按 720p 高度基准、渲染时按成片高度等比缩放(例:1080×1920 竖屏要宽约 260px → width≈98)。改完 compose_episode / rerender_episode 生效。传 logo:null 清除台标。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "src": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 8,
+                    "maximum": 400
+                  },
+                  "opacity": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "gravity": {
+                    "type": "string",
+                    "enum": [
+                      "NorthEast",
+                      "NorthWest",
+                      "SouthEast",
+                      "SouthWest"
+                    ]
+                  },
+                  "margin_x": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 200
+                  },
+                  "margin_y": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 200
+                  },
+                  "logo": {
+                    "type": "null"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -13285,7 +13425,7 @@
       "put": {
         "operationId": "set_shot_name_card",
         "summary": "给某一镜加/改/清「版式字卡」(终拼时烧进成片,含预览一致的书法字体与朱红印章)",
-        "description": "给某一镜加/改/清「版式字卡」(终拼时烧进成片,含预览一致的书法字体与朱红印章)。name 传空字符串=清除本镜字卡。免费(纯数据,填了就显示)。两种用法:①不填 orient/placement/font_size = 角色名卡(画面侧边单列竖排人物名,适合群像出场镜);②填了其中任意一个 = 通用版式字卡,name 可以是**整句台词或旁白**(按标点自动切列、按最高列拟合字号)。placement=\"auto\" 会按背景亮度与粗糙度自动挑位置(躲开人脸/亮部);orient=\"auto\" 在背景太花时自动回退横排。★别自己下载视频叠字再上传——那会绕开渲染机字体与印章素材,预览/成片不一致。",
+        "description": "给某一镜加/改/清「版式字卡」(终拼时烧进成片,含预览一致的书法字体与朱红印章)。name 传空字符串=清除本镜字卡。免费(纯数据,填了就显示)。两种用法:①不填 orient/placement/font_size = 角色名卡(画面侧边单列竖排人物名,适合群像出场镜);②填了其中任意一个 = 通用版式字卡,name 可以是**整句台词或旁白**(按标点自动切列、按最高列拟合字号)。placement=\"auto\" 会按背景亮度与粗糙度自动挑位置(躲开人脸/亮部);orient=\"auto\" 在背景太花时自动回退横排。③position=\"subtitle\" = 叙事字卡,与对白字幕同位同样式,可配 start_ms 从镜中段出现(无对白的镜最合适,避免与对白字幕重叠)。改完调 compose_episode 重新终拼生效(rerender_episode 沿用已存时间轴,带不上)。★别自己下载视频叠字再上传——那会绕开渲染机字体与印章素材,预览/成片不一致。",
         "tags": [
           "storyboards"
         ],
@@ -13343,6 +13483,31 @@
                   "font_size": {
                     "type": "integer",
                     "exclusiveMinimum": 0
+                  },
+                  "start_ms": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 60000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "subtitle"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
