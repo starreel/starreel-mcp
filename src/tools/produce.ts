@@ -2436,7 +2436,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       atmosphere: z.string().optional().describe('氛围'),
       director_note: z.string().optional().describe('导演注释'),
       shot_intent: z.string().optional().describe('这镜为什么存在(叙事意图)'),
-      duration: z.number().positive().optional().describe('本镜时长(秒,可带小数如 2.5)。上限=本剧视频引擎的单镜上限,超出直接拒并告知上限(更长内容用 split_shot 拆镜)。有台词时平台按语速律只抬不降,抬了会在回执 speech_duration_note 里说。★改时长不会自动重出视频:已有视频仍是旧长度,要厂商按新时长出就 regenerate_shot_video(报价按新时长算)。★别拿加长治「动作太慢」——同样的动作摊到更长时间里只会更慢,见 qa_tools「动作太慢」'),
+      duration: z.number().positive().optional().describe('本镜时长(秒,可带小数如 2.5)。上限=本剧视频引擎的单镜上限,超出直接拒并告知上限(更长内容用 split_shot 拆镜)。有台词时平台按语速律只抬不降,抬了会在回执 speech_duration_note 里说。★改时长不会自动重出视频:已有视频仍是旧长度,要厂商按新时长出就 regenerate_shot_video(报价按新时长算)。★别拿加长治「动作太慢」——同样的动作摊到更长时间里只会更慢,见 qa_tools「动作太慢」。★改短后若本镜动作起止姿态里的秒数时间轴超出新时长,回执带 pose_timeline_advisory:那段时间轴出视频时已自动不送,把新分秒动作写进 video_prompt'),
       speed_factor: z.number().positive().nullable().optional().describe('成片变速:<1 慢镜、>1 快放、null 清除(0.5–2.0,越界被钳到范围内)。只在终拼/剪映导出时变速播放(画面 setpts + 声音 atempo,音高不变),**不重出视频、不扣费**,但会改变本镜在成片里占的时长。适合做慢镜/升格氛围;治不了「动作没演出来」——那是视频内容本身,要改 video_prompt 重出;也治不了一镜塞太多动作(action_overload)——那要拆镜重出。有台词的镜慎用(人声也跟着变快变慢)'),
       video_engine: z.enum(VIDEO_ENGINES).nullable().optional().describe('本镜视频引擎(**存为镜头设置**,之后这一镜的单镜出视频 / 整集批量 / 重生都按它;null 清除=跟随剧 video_engine)。' +
         '与整剧的区别:只改这一镜。设了引擎的镜**不进场景组**(组的规划按剧引擎做),会单独出,失去与相邻镜一次成片的连贯性——别为个别镜随手设。' +
@@ -2482,6 +2482,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'first_frame_prompt=开始时什么样 / last_frame_prompt=结束时什么样),供直接微调后用 update_shot 写回。免费。' +
       '★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——' +
       '出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。' +
+      '★pose_timeline_stale 非 null = 本镜动作起止姿态里的秒数时间轴超出了当前时长(多见于改短 duration 后),出视频时那一端已自动不送;新时间轴写进 video_prompt。' +
       '★同时回 expression_hint(本镜作者指定的面部表情,null=未指定、由平台按台词反推),改它用 update_shot。' +
       'expression_inferred 是拆镜 AI 在剧本没写神态时按本镜内容推断的表情(只读;null=没推断,或本镜台词/动作/氛围/描述/强度改过、推断已过期不再使用);它优先级低于 expression_hint——' +
       '推断不合意就用 update_shot 写 expression_hint 覆盖它。' +
