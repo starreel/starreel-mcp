@@ -85,6 +85,8 @@ const REVIEW_GATE_HINT = (tool: string, layer: string) =>
   `\n★【${layer}审查硬闸·免费】本步前必须先调 ${tool}:把返回的 findings 逐条原样告诉客户` +
   `(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。` +
   `未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。` +
+  `单镜工具(generate_shot_frame / regenerate_shot_video)只核本镜与相邻镜:改了别的镜不用复审;本镜、相邻镜或共享资产变了才 400——` +
+  `这时带 base_review_token=<旧 token> 调审查工具做增量复审,只重审变更镜,质检也只看变更镜。` +
   `有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——` +
   `带病推进大概率产出废片且照常扣费${ALWAYS_ASK('acknowledge_review 只代表客户本人同意,')};` +
   `托管环节只有白名单内的启发式 error 能带 auto_acknowledge:true 放行(平台判,不在白名单回 400 AUTOPILOT_MUST_ASK:must_ask_customer=true 才暂停问客户,false = 按 action 自修复审)。` +
@@ -93,10 +95,16 @@ const REVIEW_GATE_HINT = (tool: string, layer: string) =>
 
 /** 五个审查工具共用:平台审查之外,外部 agent 亲自看素材的质检(2026-10-14 用户拍板)。 */
 const AGENT_QC_HINT =
+  '\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):' +
+  '只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;' +
+  '共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。' +
   '\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。' +
   '平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。' +
   '逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。' +
   'agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。'
+
+/** 增量复审(缺口 #16):上一张本层 token,已交质检且 pass 时只重审变更镜。 */
+const BASE_REVIEW_ARG = z.string().optional().describe('增量复审:上一张本层 review_token(已交 agent 质检且 verdict=pass)。带上只重审变更镜及其相邻镜,素材与质检只覆盖它们;不满足条件自动退回整集')
 
 /** 资产层 token:出镜头图同时要分镜层(review_token)与资产层两张,资产层这张单独一个参数。 */
 const ASSET_REVIEW_ARG = {
@@ -242,7 +250,7 @@ export const WORKFLOW_HINT =
   '★★【单镜路径同样受审查闸】:generate_shot_frame 同样要带分镜层 review_token,regenerate_shot_video 同样要带镜头图片层 review_token——' +
   '别指望用逐镜工具绕开审查(实测有整集 25 镜全靠单镜出帧、一道闸都没碰到的做法,成片返工全是真扣费)。' +
   '出完帧**不会**让分镜层 token 失效(指纹只看分镜内容);只有改了分镜内容——update_shot / 导入 / 增删镜 / 改角色绑定——才要复审一次(免费、秒级)。' +
-  '出完一镜的帧会让**镜头图片层** token 失效,下一镜 regenerate_shot_video 前 review_frames 一次即可。' +
+  '出完一镜的帧只让本镜与相邻镜的**镜头图片层** token 失效;要对它们 regenerate_shot_video 时带 base_review_token 增量 review_frames 即可。' +
   '★★【原声剧先锁声线,再批量出视频】use_clip_audio=true(默认)时每镜嗓音由视频厂商各自采样,不锁必漂,事后统一要逐镜重出。' +
   '有客户授权音源→clone_voice+set_character_voice,在 generate_videos 之前;没有→每个说话角色先用单镜工具 quote_regenerate_shot_video→regenerate_shot_video 出一镜台词较长的' +
   '(generate_videos 没有按镜参数、只批量补缺视频的镜;单镜重生对还没有视频的镜同样可用),' +
@@ -1055,8 +1063,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '照着这两个去 update_shot 改掉即可,不用逐字猜。' +
       '★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。' +
       '★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。' + AGENT_QC_HINT,
-    { episode_id: z.number().int().positive() },
-    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/storyboards`)),
+    { episode_id: z.number().int().positive(), base_review_token: BASE_REVIEW_ARG },
+    async ({ episode_id, base_review_token }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/storyboards`, base_review_token ? { base_review_token } : undefined)),
   )
   server.tool(
     'review_frames',
@@ -1067,8 +1075,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接,或发起的衔接重生没落地 / 衔接后首帧又被重生)/' +
       'seam_broken(接过但没接上,或上一镜尾帧在衔接之后又重生过),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,' +
       '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。' + AGENT_QC_HINT,
-    { episode_id: z.number().int().positive() },
-    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/frames`)),
+    { episode_id: z.number().int().positive(), base_review_token: BASE_REVIEW_ARG },
+    async ({ episode_id, base_review_token }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/frames`, base_review_token ? { base_review_token } : undefined)),
   )
   server.tool(
     'review_assets',
@@ -1079,8 +1087,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '把返回的 review_token 作为 **asset_review_token**,连同分镜层的 review_token 一起传(两张都要)。' +
       '只看资产本身:出完镜头图不会让它失效;换了定妆图/场景图/道具图会失效,复审即可(免费、秒级)。' +
       'findings 逐条讲给客户(code=问题类型、names=哪个角色/场景/道具、shots=影响的镜号、action=该调哪个工具修)。' + AGENT_QC_HINT,
-    { episode_id: z.number().int().positive() },
-    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/assets`)),
+    { episode_id: z.number().int().positive(), base_review_token: BASE_REVIEW_ARG },
+    async ({ episode_id, base_review_token }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/assets`, base_review_token ? { base_review_token } : undefined)),
   )
   server.tool(
     'review_videos',
@@ -1088,7 +1096,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '首帧换过而视频还是旧帧出的(video_stale);疑似片尾硬切、无台词镜意外人声(warning);' +
       '配音剧:台词镜缺配音、会开口的角色没音色、缺旁白角色;原声剧:出片时没挂上当前声线的镜、没锁声线的角色;缺配乐(warning)。' +
       '★出完视频、配音(generate_tts)、配乐后都调一次;compose_episode 之前必须审过,带返回的 review_token。' +
-      '更细的检查(要解码画面/音轨)另有 scan_intra_shot_cuts / scan_dialogue_coverage / audit_silent_shot_audio;拼完成片再跑 review_final_cut。' + AGENT_QC_HINT,
+      '更细的检查(要解码画面/音轨)另有 scan_intra_shot_cuts / scan_dialogue_coverage / audit_silent_shot_audio;拼完成片再跑 review_final_cut。' +
+      '★返回带 post_production_advisory = 剧本标注「后期」的叙事必需特效还没处理(平台不会合成):原样告诉客户,用 get_post_production_checklist 看清单。' + AGENT_QC_HINT,
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/videos`)),
   )
@@ -1330,7 +1339,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '把某一集所有镜头视频拼成一条成片(终拼)。**免费**(纯拼接,无需报价确认),后台异步。' +
       '发起前有终拼预检:缺视频的镜或仍在生成中的视频任务会 400 硬阻断并列出问题镜(blockers),' +
       '补齐后重试;确要拼部分成片传 force=true(缺视频镜被跳过,成片缺镜,留痕)。' +
-      '响应里的 advisories(时长偏差/孤儿任务/缺TTS)只提醒不阻断,建议逐条处理后再拼。发起后用 get_final_cut 轮询。' +
+      '响应里的 advisories(时长偏差/孤儿任务/缺TTS/post_production_pending 后期特效未完成)只提醒不阻断,建议逐条处理后再拼。发起后用 get_final_cut 轮询。' +
       REVIEW_GATE_HINT('review_videos', '视频与配音') +
       '\n★【完成后质检·免费】成片出来后跑 review_final_cut(缺镜/字幕放不下/身份锚/跳轴/错别字,proofread=false 则不扣费),' +
       '结论讲给客户;客户确认后才 confirm_delivery_acceptance' + ALWAYS_ASK('交付验收') + '。force 只越过终拼预检,不越过审查闸。',
@@ -2570,6 +2579,32 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) =>
       jsonResult(await client.produceGet(`/episodes/${episode_id}/dialogue-repair-status`)),
+  )
+  server.tool(
+    'get_post_production_checklist',
+    '读本集的**后期特效清单**(免费)。剧本里 [VFX: …] 标注、分镜提示词里写「后期 / postproduction / composited later」的项,' +
+      '**平台不会自动合成**——出图出视频按约束把它们留空,终拼也不补,不处理成片就缺这些叙事元素。' +
+      '逐项给:镜号 shot_number、时间 start_s~end_s、内容 content、来源 source(vfx_tag 分镜标注 / prompt 提示词 / script_unassigned 改写稿里有但没落到任何镜)、' +
+      'narrative_required(叙事必需;画质类如调色为 false)、status(pending / done_external / waived)。' +
+      '★拼成片前看一遍,把 narrative_required 的 pending 项讲给客户,问他:外部后期做(做完后 mark_post_production_item 标 done_external)、' +
+      '改分镜让平台直接画出来(update_shot 改提示词后重出该镜)、或放弃(标 waived)。review_videos / compose_episode 会对未处理项给 advisory。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) =>
+      jsonResult(await client.produceGet(`/episodes/${episode_id}/post-production-checklist`)),
+  )
+  server.tool(
+    'mark_post_production_item',
+    '给后期特效清单里的一项打标记(免费):status=done_external(客户已在平台外完成)/ waived(客户决定不做)/ pending(撤销标记)。' +
+      'key 取自 get_post_production_checklist;分镜或提示词改过后 key 会变,400 时重读清单。' + ALWAYS_ASK('标记后期项') +
+      '——标记只是记账,不会改成片;客户说外部做完了,成片要用外部那一版就走 register_external_delivery。',
+    {
+      episode_id: z.number().int().positive(),
+      key: z.string().min(1).describe('清单项的 key'),
+      status: z.enum(['done_external', 'waived', 'pending']),
+      note: z.string().max(500).optional().describe('备注,如外部完成的工具/版本'),
+    },
+    async ({ episode_id, key, status, note }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/post-production-checklist/mark`, { key, status, ...(note ? { note } : {}) })),
   )
   server.tool(
     'get_shot_name_card',

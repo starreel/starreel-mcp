@@ -702,6 +702,19 @@ content that will be rejected.
     lets it through). Relay your QC findings to the user verbatim. Listing a
     `ref` you never opened is signing off on the user's money.
 
+    **Edited a shot or two? Re-review incrementally, not the whole episode.**
+    The single-shot tools (`generate_shot_frame`, `regenerate_shot_video`) only
+    check the target shot and its two neighbours, so edits elsewhere do not
+    invalidate the token for them. When they do get rejected (the shot, a
+    neighbour or a shared asset changed), call the same `review_storyboards` /
+    `review_frames` / `review_assets` with `base_review_token` set to the
+    previous token of that layer (its QC report must already be in with
+    `verdict: "pass"`). Only the changed shots and their neighbours are listed
+    in `agent_qc.materials` and `findings` (`incremental.applied: true`), and
+    your report only has to cover those. If shared assets changed or the base
+    is not eligible, the server falls back to a full review and says why in
+    `incremental.reason`.
+
     **Script QC is an assessment with suggestions the user decides on.** At the
     script layer the materials include the user's own draft (`script:original`)
     as well as the rewrite (`script`). Assess the user's draft itself first —
