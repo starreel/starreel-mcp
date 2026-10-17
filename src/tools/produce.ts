@@ -174,9 +174,9 @@ export const WORKFLOW_HINT =
   '★visual_lock/art_bible 只写画面级/世界级锁(镜头语言·环境·美术基调·禁入元素),**绝不为具体角色钉服装/发型/外观细节**——' +
   '角色外观的唯一真相源是 extract_assets 产出的人物档案(要改走 update_character);两处都写必然互相矛盾,' +
   '定妆图跟档案、设定图跟视觉锁,一致性闸按定妆图拒收 → 设定图/镜头帧**结构性连拒**,重掷多少次都过不了、纯白花钱。' +
-  '★★【时代契约·免费·非现代题材出图前必设】setting_brief 里的世界观是**自由文本**,只能提供背景、压不住画面;' +
+  '★★【时代契约·免费·非当代或超现实题材出图前必设】setting_brief 里的世界观是**自由文本**,只能提供背景、压不住画面;' +
   '真正能压过视觉锁的是**结构化时代契约**:用 set_era_contract 设本集档位' +
-  '(modern/republican/historical/fantasy),get_era_contract 读现值。**不设就是空着**——' +
+  '(modern/republican/historical/fantasy/surreal),get_era_contract 读现值。**不设就是空着**——' +
   '平台只能靠提示词正文堆字对抗,现代物件混进古代画面、场景图画成别的时代,基本都由这里空着导致。' +
   '★仙侠/奇幻/仙境类**必须填 fantasy,别填 historical**:后者要求考据写实,会把发光灵气、悬浮地貌、' +
   '非人化形一并判成「不合时代」,把画面往写实古代拽。某一场要破例(如奇幻世界里一场现代回忆)' +
@@ -883,7 +883,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '两者均暂停本次自动尾帧回写与续接，先复核视频；字段缺席不代表做过检测，也不要直接重试收费生成。' +
       '★not_required=旁白/片尾卡镜:帧与视频由成片层渲染,本镜不需要生成——数补齐进度时把它当已完成,别重试。' +
       'fail_reason(sensitive/text_sensitive/copyright/face_mismatch/account_overdue/quota_full/authorizing/' +
-      'insufficient_credits/transient/repeat_rejected/diagnosis_required/pair_collateral/model_unavailable)、retryable(true=可重试;false=先按fail_hint处理,勿原样重试)、fail_hint(人读文案)。' +
+      'insufficient_credits/transient/repeat_rejected/diagnosis_required/pair_collateral/model_unavailable/requote_required/needs_content_fix/contract_rejected/unknown)、retryable(true=可重试;false=先按fail_hint处理,勿原样重试)、fail_hint(人读文案)。' +
+      '★视频失败的镜还带 video_charge_status(charged=已扣 video_charged_points 点/no_charge_recorded=本地流水未记扣费/pending=扣费结论未出;没有该字段=扣费状态未知)。只有 charged 是确定结论;no_charge_recorded 不等于已退款,别替平台承诺,要确认扣没扣用 get_drama_bill。★requote_required=报价条件已变、本镜未派发未扣费:先 quote_videos 重新报价(免费)再发起。' +
       '★model_unavailable=所选图片/视频模型的厂商已暂停或暂不可用:fail_hint 里列了当前可用的替代模型(扣没扣费以错误文案为准,别替平台向用户承诺已退款),' +
       '问用户后用 update_project_settings 改 video_engine/image_model(或只对本镜用 regenerate_shot_video 的 model / generate_shot_frame 的 image_model)再生成,原样重试只会再失败。' +
       '★diagnosis_required=同输入同细因连败或已有候选等待判决:先查看已有候选及审计依据。审计故障先重审同一候选,原因未知先复核,不得直接改剧本或重复生成。' +
@@ -1236,7 +1237,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准)/' +
         'gemini-3.1-flash-image(Nano Banana 2·71点)/gemini-3-pro-image(Nano Banana Pro·更精细·175点)/' +
         'gemini-3.1-flash-lite-image(Nano Banana 2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream 5.0)'),
-      allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
+      allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定角色定妆参考与时代设定冲突时,出图会被拦下(未扣费):客户上传的定妆图及其派生图报 400 ERA_USER_REF_CONFLICT,平台生成的定妆图报 era_identity_ref_blocked。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
     },
     async ({ episode_id, quote_id, frame_type, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge, allow_era_ref_conflict }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/frames/generate`, {
@@ -1285,7 +1286,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
       image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(★必须与 quote_shot_frame 传的那个一致,否则 400 IMAGE_MODEL_MISMATCH;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
-      allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定客户上传的定妆图(或由它派生的身体/发型/设定图)与时代设定冲突时,出图会被拦下(400 ERA_USER_REF_CONFLICT,未扣费)。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
+      allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定角色定妆参考与时代设定冲突时,出图会被拦下(未扣费):客户上传的定妆图及其派生图报 400 ERA_USER_REF_CONFLICT,平台生成的定妆图报 era_identity_ref_blocked。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
       ...SHOT_REGEN_ARG,
     },
     async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict, customer_approved_more_regens }) =>
@@ -1855,7 +1856,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '后续镜之间背景也会一路漂。它与定妆图是一对:定妆图锚人、场景图锚景。' +
       '★出得不对不要重调本工具(它只补缺图的场景、已有图的一律跳过):' +
       '`get_scene_prompt` 读正文 → `update_scene` 改 image_prompt → `regenerate_scene_image` 单场重出。' +
-      '★非现代题材先设 `set_era_contract`,否则基板会画成别的时代,下游整场的镜头帧跟着错。' +
+      '★非当代或超现实题材先设 `set_era_contract`,否则基板会画成别的时代,下游整场的镜头帧跟着错。' +
       '★进度看 `get_pipeline_status` 的 generate_scene_images 步。' + CONFIRM_HINT + ASSET_QC_HINT,
     { drama_id: z.number().int().positive(), quote_id: z.string().describe('来自 quote_scene_images') },
     async ({ drama_id, quote_id }) =>
@@ -2386,7 +2387,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_shot',
-    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、角色绑定(character_ids)、画外音标记(character_presence)与服装绑定(active_wardrobe_id / appearance_wardrobes)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
+    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、镜间转场(transition_type / transition_duration_ms)、角色绑定(character_ids)、画外音标记(character_presence)与服装绑定(active_wardrobe_id / appearance_wardrobes)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
       '**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);' +
       '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids / active_wardrobe_id / appearance_wardrobes)。' +
       '★★【换衣服改这里,不是改文字】出图穿什么由**服装绑定**决定:单人镜用 active_wardrobe_id(整镜一件),' +
@@ -2447,6 +2448,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       shot_intent: z.string().optional().describe('这镜为什么存在(叙事意图)'),
       duration: z.number().positive().optional().describe('本镜时长(秒,可带小数如 2.5)。上限=本剧视频引擎的单镜上限,超出直接拒并告知上限(更长内容用 split_shot 拆镜)。有台词时平台按语速律只抬不降,抬了会在回执 speech_duration_note 里说。★改时长不会自动重出视频:已有视频仍是旧长度,要厂商按新时长出就 regenerate_shot_video(报价按新时长算)。★别拿加长治「动作太慢」——同样的动作摊到更长时间里只会更慢,见 qa_tools「动作太慢」。★改短后若本镜动作起止姿态里的秒数时间轴超出新时长,回执带 pose_timeline_advisory:那段时间轴出视频时已自动不送,把新分秒动作写进 video_prompt'),
       speed_factor: z.number().positive().nullable().optional().describe('成片变速:<1 慢镜、>1 快放、null 清除(0.5–2.0,越界被钳到范围内)。只在终拼/剪映导出时变速播放(画面 setpts + 声音 atempo,音高不变),**不重出视频、不扣费**,但会改变本镜在成片里占的时长。适合做慢镜/升格氛围;治不了「动作没演出来」——那是视频内容本身,要改 video_prompt 重出;也治不了一镜塞太多动作(action_overload)——那要拆镜重出。有台词的镜慎用(人声也跟着变快变慢)'),
+      transition_type: z.enum(['cut', 'fade', 'wipe_left', 'flash_white', 'flash_black', 'zoom_punch', 'whip_pan', 'glass_shatter', 'invert_flash']).nullable().optional().describe('进入本镜的镜间转场(与上一镜的接缝):cut 硬切 / fade 交叉溶解 / flash_white 闪白 / flash_black 闪黑 / wipe_left 擦切 / zoom_punch / whip_pan 甩镜 等;null = 回到剧级默认(同场景默认硬切)。只在终拼生效,**不重出视频、不扣费**;改完调 compose_episode 重新终拼才生效(rerender_episode 沿用已存时间轴,带不上新转场)。叠化会吃掉前镜尾巴同等时长,有对白的接缝用短时长'),
+      transition_duration_ms: z.number().int().min(0).max(2000).nullable().optional().describe('转场时长(毫秒,0–2000)。经验:换场叠化 500、同场 300;闪白/闪黑 130 左右;null = 用剧级默认时长'),
       video_engine: z.enum(VIDEO_ENGINES).nullable().optional().describe('本镜视频引擎(**存为镜头设置**,之后这一镜的单镜出视频 / 整集批量 / 重生都按它;null 清除=跟随剧 video_engine)。' +
         '与整剧的区别:只改这一镜。设了引擎的镜**不进场景组**(组的规划按剧引擎做),会单独出,失去与相邻镜一次成片的连贯性——别为个别镜随手设。' +
         '须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p)且容得下本镜时长(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400。' +
@@ -3163,7 +3166,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       image_prompt: z.string().optional()
         .describe('这一场**空景图**的提示词正文(全量覆盖本场现值)。★先 get_scene_prompt 读现值再改;★写空景——这张是场景基板,画面里不该有人物(人物由镜头帧那层注入)。出图时平台会在正文之上再拼画风块、空景约束与时代锁,不必你写'),
       era_contract: z.object({
-        era: z.string().describe('modern / republican / historical / fantasy(也收中文「现代 / 民国 / 古代 / 仙侠」)'),
+        era: z.string().describe('modern / republican / historical / fantasy / surreal(也收中文「现代 / 民国 / 古代 / 仙侠 / 超现实」)'),
         positive: z.array(z.string()).optional().describe('本场额外的正向约束(可留空,平台自带该档基线)'),
         negative: z.array(z.string()).optional().describe('本场额外的禁止项(可留空)'),
       }).nullable().optional()
@@ -3178,19 +3181,22 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '设**本集**的时代契约(免费,纯文本写库)。★这是唯一压得过视觉锁的时代机制——'
       + '古装/民国/仙侠类项目**出图前必设**,不设的话平台只能靠提示词正文堆字对抗,'
       + '时代错乱(现代物件混进古代画面、仙境被画成写实古代)基本都是这里空着导致的。\n'
-      + '四档怎么选:\n'
+      + '五档怎么选:\n'
       + '· modern —— 现代/当代都市。不确定时用这档。\n'
       + '· republican —— 民国、二十世纪早期。\n'
       + '· historical —— 可考据的历史朝代;这档会要求画面向**考据写实**靠拢。\n'
       + '· fantasy —— ★仙侠/奇幻/仙境:修真世界、妖灵化形一类**非写实**的东方奇幻。'
       + '这类项目**别填 historical**——那档要求考据写实,会把发光灵气、悬浮地貌、非人化形'
       + '一并判成「不合时代」,把画面往写实古代拽。\n'
+      + '· surreal —— ★现代 + 超现实:当代都市里有作者设定的超现实元素(超现实人体、都市异象)。'
+      + '基线同 modern;把超现实设定逐条写进 positive,它们被当作世界观正典、审计不判时代冲突;'
+      + '其中描述人物身体的设定适用于画面里每个人(含无参考的路人与人群),描述环境的只作用于世界。这类项目**别填 fantasy**——那档写死东方仙侠并禁当代服装。\n'
       + '★设完不会自动重出已生成的图:要让画面跟上,得再调 generate_frames / regenerate_scene_image。'
       + '★某一场要破例,用 update_scene 的 era_contract 单独覆写(场级压过集级)。',
     {
       episode_id: z.number().int().positive(),
       era: z.string().nullable()
-        .describe('modern / republican / historical / fantasy(也收中文「现代 / 民国 / 古代 / 仙侠」)。传 null 清空本集契约'),
+        .describe('modern / republican / historical / fantasy / surreal(也收中文「现代 / 民国 / 古代 / 仙侠 / 超现实」)。传 null 清空本集契约'),
       positive: z.array(z.string()).optional()
         .describe('额外的正向约束(可留空,平台自带该档基线)。写世界观独有的东西,别重复该档已有的常识'),
       negative: z.array(z.string()).optional()
@@ -3201,7 +3207,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_era_contract',
-    '读本集的时代契约现值 + 各场的场级覆写清单 + 四个可选档位的用途说明。免费。'
+    '读本集的时代契约现值 + 各场的场级覆写清单 + 五个可选档位的用途说明。免费。'
       + '改之前先读一次:能看清「集级设的是哪档、哪几场被单独覆写过」,避免整集统一的时代被逐场填乱。'
       + '★era_contract 为 null 就是**没设**——古装/仙侠项目看到 null 应当先 set_era_contract 再出图。',
     { episode_id: z.number().int().positive() },

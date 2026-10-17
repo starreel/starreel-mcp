@@ -232,17 +232,21 @@ Don't ask the user at every step. Sort work into three tiers:
    video output and final composition; customers may still generate, save and
    select music assets. Music already mixed into native clip audio needs
    separate handling. Quiet pacing suppresses generic climax/valley advice.
-   **Set the structured era contract for anything non-contemporary.**
+   **Set the structured era contract for anything non-contemporary or surreal.**
    `setting_brief` is free text: it supplies background but cannot hold the
    frame. The one mechanism that outranks the visual lock is the structured
    contract — `set_era_contract` per episode (`get_era_contract` reads it back),
-   one of `modern` / `republican` / `historical` / `fantasy`. Leave it empty and
+   one of `modern` / `republican` / `historical` / `fantasy` / `surreal`. Leave it empty and
    the platform can only fight drift with prose in the prompt body; contemporary
    objects bleeding into period frames almost always traces back to an empty
    contract. **Xianxia / mythic-otherworld projects must use `fantasy`, not
    `historical`** — the latter demands period-accurate realism and will judge
    glowing energy, floating landforms and non-human forms as "wrong era",
-   dragging the look toward literal historical drama. A single scene can break
+   dragging the look toward literal historical drama. **A contemporary world
+   with author-defined surreal elements (surreal bodies, urban anomalies) must
+   use `surreal`, not `fantasy`** — list each element in `positive`; they are
+   treated as world canon, body traits apply to every person in frame including
+   crowds, environmental traits apply to the world only. A single scene can break
    away via `update_scene`'s `era_contract` (scene level outranks episode level).
    **When the era check conflicts with a customer-uploaded portrait** (the upload
    itself, or the body / hair / sheet images derived from it), frame generation
