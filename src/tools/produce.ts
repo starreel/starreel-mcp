@@ -1338,6 +1338,66 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict, customer_approved_more_regens })),
   )
 
+  // ---------- 镜头图局部返修(只修一小块,其余像素原样保留;按剧灰度) ----------
+  const LOCAL_EDIT_ARGS = {
+    storyboard_id: z.number().int().positive(),
+    frame_type: z.enum(['first_frame', 'last_frame']).optional().describe('默认 first_frame'),
+    base_image_url: z.string().describe('★该镜**当前**这一帧的地址(get_storyboards 的 first_frame_image / last_frame_image 原样传)。帧换过会 409 BASE_FRAME_CHANGED,防止改的是旧图'),
+    regions: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).describe('修改区:归一化矩形(0~1,相对画面宽高,x/y 是左上角),1~8 块,合计不超过画面 40%(超过请走 generate_shot_frame 整张重画)。框紧一点:框外像素平台保证不变,框越大越容易连带改到已确认的细节'),
+    instruction: z.string().describe('这块要改成什么,一句话说清(≤500 字),例如「嘴闭上、表情平静」「去掉发丝边缘的白边」'),
+    edit_kind: z.enum(['face', 'mouth', 'hair', 'costume', 'hand', 'edge_cleanup', 'object_remove', 'other']).describe('修改类型。face / mouth = 修脸类:必须带 character_id;face / mouth / hair / costume 生成后会过身份审计'),
+    character_id: z.number().int().positive().optional().describe('修脸类(face / mouth)必填:改的是哪个角色的脸。平台只送这个角色的定妆图当身份锚。hair / costume 可选'),
+    candidates: z.number().int().min(1).max(4).optional().describe('出几个候选,默认 2,最多 4。每个候选单独计费'),
+  }
+  server.tool(
+    'quote_local_frame_edit',
+    '报价:**局部修改某一镜的某一帧**(修脸、闭嘴、去毛边、擦掉多出来的东西)要多少点。零扣费。' +
+      '客户只想改画面的一小块时用它,别拿外部图像工具改完再 upload_shot_frame——外部工具会连带改动已确认的其他细节、绕开身份锚与审计、来源链也断了;' +
+      '要整张重画才用 quote_shot_frame / generate_shot_frame。' +
+      '平台把修改区按羽化蒙版贴回原图:框外像素原样保留,只有框内被改。' +
+      '★计费:每个候选按一次出图扣(unit_points × candidates;张数固定,estimated_points 就是实扣,typical_points 与它相等)。' +
+      '**被平台判据拒掉的候选(贴回有接缝、没改到、身份审计不过)一律不退点**——报价时就要把这一点和点数一起讲给客户。厂商出图失败由平台自动退。' +
+      '★只在灰度剧开放,未开放回 403 LOCAL_FRAME_EDIT_UNAVAILABLE(这时只能 generate_shot_frame 整张重画)。' +
+      '修脸类不带 character_id 回 400 CHARACTER_REQUIRED;角色没有定妆图回 400 CHARACTER_NO_PORTRAIT。',
+    LOCAL_EDIT_ARGS,
+    async ({ storyboard_id, ...rest }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/local-edit/quote`, rest)),
+  )
+  server.tool(
+    'local_frame_edit',
+    '确认后**局部修改某一镜的某一帧**(异步,扣费)。参数必须与 quote_local_frame_edit 那次完全相同(区域 / 指令 / 类型 / 角色 / 候选数 / 底图任一项变了 → 409 QUOTE_PARAMS_CHANGED,重新报价即可,免费)。' +
+      '返回 edit_id,之后用 get_local_frame_edit 轮询。' +
+      '★**不会自动替换当前帧**:候选出完先给客户看(composited_url),客户选定后调 adopt_local_frame_edit 才写进这一镜、并把本镜视频标为待重生;不采用,当前帧就不变。' +
+      '★被判据拒掉的候选照常计费、不退点。' + REVIEW_GATE_HINT('review_storyboards', '分镜') + ASSET_GATE_HINT + CONFIRM_HINT,
+    { ...LOCAL_EDIT_ARGS, quote_id: z.string().describe('来自 quote_local_frame_edit'), ...REVIEW_ARGS, ...ASSET_REVIEW_ARG },
+    async ({ storyboard_id, ...rest }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/local-edit/generate`, rest)),
+  )
+  server.tool(
+    'get_local_frame_edit',
+    '查一次局部返修的进度与结果(免费)。status=running 继续等;completed 后逐个候选看:' +
+      'composited_url(贴回原图后的成品,给客户看的就是它)、verdict(pass=可直接用;warn=能用但要人看——REGION_SEAM_WARN 边界可能有接缝 / EDIT_NOT_APPLIED 基本没改到 / IDENTITY_AUDIT_UNAVAILABLE 身份没审成;' +
+      'reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_AUDIT_REJECTED 不像本人)、metrics、identity_audit。' +
+      '下载 composited_url 亲眼看过、讲给客户,客户选定后用 adopt_local_frame_edit。被拒候选不退点。',
+    { storyboard_id: z.number().int().positive(), edit_id: z.string().describe('来自 local_frame_edit') },
+    async ({ storyboard_id, edit_id }) =>
+      jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/frame/local-edit/${encodeURIComponent(edit_id)}`)),
+  )
+  server.tool(
+    'adopt_local_frame_edit',
+    '采用某个局部返修候选:把它写成这一镜的当前帧(免费)。与上传帧同一套后续处理:本镜视频标为待重生、相邻接缝跟着修。' +
+      '★只在客户看过并选定后调用。返修之后这一帧若已换过 → 409 BASE_FRAME_CHANGED(对当前帧重新发起);' +
+      'verdict=reject 的候选默认拒绝采用(409 CANDIDATE_REJECTED),客户看过坚持要用才带 accept_rejected:true。',
+    {
+      storyboard_id: z.number().int().positive(),
+      edit_id: z.string().describe('来自 local_frame_edit'),
+      generation_id: z.number().int().positive().describe('要采用的候选(get_local_frame_edit 里的 generation_id)'),
+      accept_rejected: z.boolean().optional().describe('默认不传。verdict=reject 的候选客户看过仍坚持要用时才传 true'),
+    },
+    async ({ storyboard_id, edit_id, generation_id, accept_rejected }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/local-edit/${encodeURIComponent(edit_id)}/adopt`, { generation_id, accept_rejected })),
+  )
+
   // ---------- 出视频(videos,大额) ----------
   server.tool(
     'quote_videos',

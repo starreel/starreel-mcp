@@ -641,6 +641,19 @@ content that will be rejected.
    `upload_shot_frame` is for art the customer already owns — the one exception is
    a **local touch-up of this shot's own platform candidate** (option 2 below).
 
+   **Only a small part of the frame is wrong?** (a face, an open mouth, a fringe of
+   halo pixels, a stray object) — use `quote_local_frame_edit` → `local_frame_edit`
+   instead of redrawing the whole frame or fixing it in an outside tool. Box the area
+   with normalized `regions` (≤ 40% of the frame) and say what it should become; the
+   platform pastes only that area back onto the original, so everything outside the
+   box stays pixel-identical. Face/mouth edits need `character_id` (only that
+   character's portrait is sent as the identity anchor) and are re-audited for
+   identity. Results are **candidates, not the new frame**: show `composited_url`
+   from `get_local_frame_edit` to the customer, then `adopt_local_frame_edit` the one
+   they pick. Each candidate is charged; candidates the platform rejects are **not
+   refunded** — tell the customer that with the quote. Rolled out per drama: a 403
+   `LOCAL_FRAME_EDIT_UNAVAILABLE` means fall back to `generate_shot_frame`.
+
    **When a shot frame fails, offer the customer three choices** (both
    `get_frame_candidates` and `get_frame_retry_diagnosis` return them as
    `recovery_options`, ordered free → free → paid; `needs_attention=false` means

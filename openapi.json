@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.207",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.207 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.208",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.208 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -13865,6 +13865,420 @@
                 },
                 "required": [
                   "quote_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/frame/local-edit/{edit_id}": {
+      "get": {
+        "operationId": "get_local_frame_edit",
+        "summary": "查一次局部返修的进度与结果(免费)",
+        "description": "查一次局部返修的进度与结果(免费)。status=running 继续等;completed 后逐个候选看:composited_url(贴回原图后的成品,给客户看的就是它)、verdict(pass=可直接用;warn=能用但要人看——REGION_SEAM_WARN 边界可能有接缝 / EDIT_NOT_APPLIED 基本没改到 / IDENTITY_AUDIT_UNAVAILABLE 身份没审成;reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_AUDIT_REJECTED 不像本人)、metrics、identity_audit。下载 composited_url 亲眼看过、讲给客户,客户选定后用 adopt_local_frame_edit。被拒候选不退点。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "edit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "来自 local_frame_edit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/frame/local-edit/{edit_id}/adopt": {
+      "post": {
+        "operationId": "adopt_local_frame_edit",
+        "summary": "采用某个局部返修候选:把它写成这一镜的当前帧(免费)",
+        "description": "采用某个局部返修候选:把它写成这一镜的当前帧(免费)。与上传帧同一套后续处理:本镜视频标为待重生、相邻接缝跟着修。★只在客户看过并选定后调用。返修之后这一帧若已换过 → 409 BASE_FRAME_CHANGED(对当前帧重新发起);verdict=reject 的候选默认拒绝采用(409 CANDIDATE_REJECTED),客户看过坚持要用才带 accept_rejected:true。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "edit_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "来自 local_frame_edit"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "generation_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "description": "要采用的候选(get_local_frame_edit 里的 generation_id)"
+                  },
+                  "accept_rejected": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "generation_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/frame/local-edit/generate": {
+      "post": {
+        "operationId": "local_frame_edit",
+        "summary": "确认后**局部修改某一镜的某一帧**(异步,扣费)",
+        "description": "确认后**局部修改某一镜的某一帧**(异步,扣费)。参数必须与 quote_local_frame_edit 那次完全相同(区域 / 指令 / 类型 / 角色 / 候选数 / 底图任一项变了 → 409 QUOTE_PARAMS_CHANGED,重新报价即可,免费)。返回 edit_id,之后用 get_local_frame_edit 轮询。★**不会自动替换当前帧**:候选出完先给客户看(composited_url),客户选定后调 adopt_local_frame_edit 才写进这一镜、并把本镜视频标为待重生;不采用,当前帧就不变。★被判据拒掉的候选照常计费、不退点。\n★【分镜审查硬闸·免费】本步前必须先调 review_storyboards:把返回的 findings 逐条原样告诉客户(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。单镜工具(generate_shot_frame / regenerate_shot_video)只核本镜与相邻镜:改了别的镜不用复审;本镜、相邻镜或共享资产变了才 400——这时带 base_review_token=<旧 token> 调审查工具做增量复审,只重审变更镜,质检也只看变更镜。有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——带病推进大概率产出废片且照常扣费(acknowledge_review 只代表客户本人同意,任何执行模式都须客户明确同意,托管也不例外);托管环节只有白名单内的启发式 error 能带 auto_acknowledge:true 放行(平台判,不在白名单回 400 AUTOPILOT_MUST_ASK:must_ask_customer=true 才暂停问客户,false = 按 action 自修复审)。★灰度剧还要你(agent)亲自质检:按 review_storyboards 返回的 agent_qc 逐件看素材、逐条答清单,调 submit_qc_report 提交后这张 token 才能用(没交 → 400 agent_qc_required;报告有问题 → 与 error 同样默认拦)。\n★【资产层硬闸·免费】还要先跑 review_assets(角色形象图/场景图/道具图),把它的 review_token 作为 asset_review_token 传进来(与分镜层的 review_token 并存,两张都要;灰度剧缺了会 400 并点名 review_assets)。出完帧不会让资产 token 失效。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "frame_type": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame"
+                    ]
+                  },
+                  "base_image_url": {
+                    "type": "string",
+                    "description": "★该镜**当前**这一帧的地址(get_storyboards 的 first_frame_image / last_frame_image 原样传)。帧换过会 409 BASE_FRAME_CHANGED,防止改的是旧图"
+                  },
+                  "regions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "w": {
+                          "type": "number"
+                        },
+                        "h": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "w",
+                        "h"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "修改区:归一化矩形(0~1,相对画面宽高,x/y 是左上角),1~8 块,合计不超过画面 40%(超过请走 generate_shot_frame 整张重画)。框紧一点:框外像素平台保证不变,框越大越容易连带改到已确认的细节"
+                  },
+                  "instruction": {
+                    "type": "string",
+                    "description": "这块要改成什么,一句话说清(≤500 字),例如「嘴闭上、表情平静」「去掉发丝边缘的白边」"
+                  },
+                  "edit_kind": {
+                    "type": "string",
+                    "enum": [
+                      "face",
+                      "mouth",
+                      "hair",
+                      "costume",
+                      "hand",
+                      "edge_cleanup",
+                      "object_remove",
+                      "other"
+                    ],
+                    "description": "修改类型。face / mouth = 修脸类:必须带 character_id;face / mouth / hair / costume 生成后会过身份审计"
+                  },
+                  "character_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "candidates": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4
+                  },
+                  "quote_id": {
+                    "type": "string",
+                    "description": "来自 quote_local_frame_edit"
+                  },
+                  "review_token": {
+                    "type": "string"
+                  },
+                  "acknowledge_review": {
+                    "type": "boolean"
+                  },
+                  "auto_acknowledge": {
+                    "type": "boolean"
+                  },
+                  "asset_review_token": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "base_image_url",
+                  "regions",
+                  "instruction",
+                  "edit_kind",
+                  "quote_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/frame/local-edit/quote": {
+      "post": {
+        "operationId": "quote_local_frame_edit",
+        "summary": "报价:**局部修改某一镜的某一帧**(修脸、闭嘴、去毛边、擦掉多出来的东西)要多少点",
+        "description": "报价:**局部修改某一镜的某一帧**(修脸、闭嘴、去毛边、擦掉多出来的东西)要多少点。零扣费。客户只想改画面的一小块时用它,别拿外部图像工具改完再 upload_shot_frame——外部工具会连带改动已确认的其他细节、绕开身份锚与审计、来源链也断了;要整张重画才用 quote_shot_frame / generate_shot_frame。平台把修改区按羽化蒙版贴回原图:框外像素原样保留,只有框内被改。★计费:每个候选按一次出图扣(unit_points × candidates;张数固定,estimated_points 就是实扣,typical_points 与它相等)。**被平台判据拒掉的候选(贴回有接缝、没改到、身份审计不过)一律不退点**——报价时就要把这一点和点数一起讲给客户。厂商出图失败由平台自动退。★只在灰度剧开放,未开放回 403 LOCAL_FRAME_EDIT_UNAVAILABLE(这时只能 generate_shot_frame 整张重画)。修脸类不带 character_id 回 400 CHARACTER_REQUIRED;角色没有定妆图回 400 CHARACTER_NO_PORTRAIT。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "frame_type": {
+                    "type": "string",
+                    "enum": [
+                      "first_frame",
+                      "last_frame"
+                    ]
+                  },
+                  "base_image_url": {
+                    "type": "string",
+                    "description": "★该镜**当前**这一帧的地址(get_storyboards 的 first_frame_image / last_frame_image 原样传)。帧换过会 409 BASE_FRAME_CHANGED,防止改的是旧图"
+                  },
+                  "regions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "w": {
+                          "type": "number"
+                        },
+                        "h": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "x",
+                        "y",
+                        "w",
+                        "h"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "修改区:归一化矩形(0~1,相对画面宽高,x/y 是左上角),1~8 块,合计不超过画面 40%(超过请走 generate_shot_frame 整张重画)。框紧一点:框外像素平台保证不变,框越大越容易连带改到已确认的细节"
+                  },
+                  "instruction": {
+                    "type": "string",
+                    "description": "这块要改成什么,一句话说清(≤500 字),例如「嘴闭上、表情平静」「去掉发丝边缘的白边」"
+                  },
+                  "edit_kind": {
+                    "type": "string",
+                    "enum": [
+                      "face",
+                      "mouth",
+                      "hair",
+                      "costume",
+                      "hand",
+                      "edge_cleanup",
+                      "object_remove",
+                      "other"
+                    ],
+                    "description": "修改类型。face / mouth = 修脸类:必须带 character_id;face / mouth / hair / costume 生成后会过身份审计"
+                  },
+                  "character_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "candidates": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4
+                  }
+                },
+                "required": [
+                  "base_image_url",
+                  "regions",
+                  "instruction",
+                  "edit_kind"
                 ]
               }
             }

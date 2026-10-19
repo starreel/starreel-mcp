@@ -108,7 +108,7 @@ export const ENTRY_POINTS: EntryPoint[] = [
       'upload_shot_frame(只用于客户自有真实素材)',
       'upload_shot_footage(客户自有整段视频当某镜成片:录屏/产品实拍/已有片段;登记后该镜不再 AI 出图出视频,终拼原样用,时长按素材回写;清除用 clear_shot_footage)',
     ],
-    avoid: '要「改某一镜画面」走 `generate_shot_frame`(平台自动带该镜身份锚·场景道具参考·画风锚);别在外部工具画好再 `upload_shot_frame`——外部图没有任何锚,人物/服装/画风必漂。',
+    avoid: '要「改某一镜画面」走 `generate_shot_frame`(平台自动带该镜身份锚·场景道具参考·画风锚);只改一小块(修脸/闭嘴/去毛边/擦掉多余物件)走 `quote_local_frame_edit` → `local_frame_edit`(框外像素原样保留);别在外部工具画好再 `upload_shot_frame`——外部图没有任何锚,人物/服装/画风必漂。',
     flow: 'upload_image · set_character_portrait · upload_scene_image · upload_prop_sheet · upload_shot_frame(仅客户自有素材;要改画面走 generate_shot_frame) · upload_shot_footage(整段实拍/录屏当某镜成片)',
   },
   {
@@ -280,7 +280,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '7 出帧(镜头图)',
-    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'tail_frame_plan(免费,首帧出完必调)', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'chain_frames(先 dry_run:true 看计划与预估)', 'chain_shot_from_prev(免费,单道接缝)', 'quote_chain_shot_from', 'chain_shot_from', 'quote_align_prev_shot', 'align_prev_shot', 'upload_shot_frame'],
+    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'tail_frame_plan(免费,首帧出完必调)', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'quote_local_frame_edit', 'local_frame_edit(局部返修·只改框内,灰度剧)', 'get_local_frame_edit', 'adopt_local_frame_edit', 'chain_frames(先 dry_run:true 看计划与预估)', 'chain_shot_from_prev(免费,单道接缝)', 'quote_chain_shot_from', 'chain_shot_from', 'quote_align_prev_shot', 'align_prev_shot', 'upload_shot_frame'],
     billing: '报价确认后扣点',
     gate: 'review_frames(镜头图审查;免费;generate_videos 前必过)',
     note: '★出帧是**两趟**:generate_frames 默认只出首帧,首帧出完必须调一次免费的 `tail_frame_plan` ' +
@@ -351,7 +351,8 @@ export const QA_TOOLS: QaTool[] = [
   ] },
   { symptom: '动作发生在裁剪窗口之外', run: 'recommend_trim_window', then: ['trim_shot'] },
   { symptom: '转场 / 接缝看着不对(跳、重影、接不上)', run: 'preview_seams(免费;get_seam_previews 轮询,逐道缝看短片与对照图,别反复导出整片)', then: ['recommend_trim_window → trim_shot(动作没接上)', 'update_shot(transition_type / transition_duration_ms 改转场,免费;之后 compose_episode 重拼才生效)', 'preview_seams(改完只传那道缝的 seams 序号复查——叠化/插镜/遮挡这类补救常带出新问题)'] },
-  { symptom: '画面多出一个人 / 多出一件道具', run: 'get_storyboards(先看该镜实际用的首帧)', then: ['generate_shot_frame(首帧本身就有→重生首帧再重生视频)', 'split_shot(帧干净、片中长出来→拆成 3~5 秒短镜)'] },
+  { symptom: '画面多出一个人 / 多出一件道具', run: 'get_storyboards(先看该镜实际用的首帧)', then: ['local_frame_edit(首帧本身就有、其余都对→edit_kind=object_remove 只擦那一块;灰度剧)', 'generate_shot_frame(首帧本身就有→重生首帧再重生视频)', 'split_shot(帧干净、片中长出来→拆成 3~5 秒短镜)'] },
+  { symptom: '镜头图只有一小块不对(脸不像 / 嘴张着 / 边缘毛边 / 手指畸形),其余已经确认', run: 'quote_local_frame_edit(框出那一块,报价免费)', then: ['local_frame_edit(框外像素原样保留;修脸带 character_id)', 'get_local_frame_edit(看 composited_url 与 verdict)', 'adopt_local_frame_edit(客户选定后才写帧)'] },
   { symptom: '出图 / 出视频前想知道哪些镜会被厂商拒', run: 'run_precheck', then: ['update_shot', 'generate_shot_frame'] },
   { symptom: '要跑全集 / 想知道整部剧有多少问题、该先修哪几集', run: 'run_drama_precheck', then: ['run_precheck(对 attention 里那几集拿逐条明细)', 'plan_precheck_fix', 'update_shot'] },
   { symptom: '场景图(空景基板)不对 / 重出还是同一类图', run: 'get_scene_prompt', then: ['update_scene(改 image_prompt 正文——只改地点/时段是让平台重拼,拧不过来)', 'quote_regenerate_scene_image(先报价)', 'regenerate_scene_image(单场重出,覆盖旧图)', 'upload_scene_image(客户自有实拍/外部精修图)', 'quote_scene_lighting_ref → generate_scene_lighting_ref(换图后补打光参考图,先报价)', 'generate_shot_frame(下游镜头帧不会自动跟着重出)'] },
