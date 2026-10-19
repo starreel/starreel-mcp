@@ -48,6 +48,9 @@ create_drama → set_script(raw) → rewrite_script(AI draft, user may edit)
   → seams(chain_frames dry_run → confirm → run → get_jobs until its reframe images finish;
     per-shot fixes via chain_shot_from*)
   → [review_frames] → videos → generate_tts(voiceover) → [review_videos]
+  → pre-compose checks(assets changed? get_stale_portrait_frames / get_asset_versions
+    → scan_intra_shot_cuts → per shot recommend_trim_window → trim_shot
+    → audit_seams dry_run, run only after the customer accepts token billing)
   → compose_episode → final cut (.mp4 link) → review_final_cut
 ```
 
@@ -1535,6 +1538,21 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
 - **Cut QA (all free)**: `scan_intra_shot_cuts` (vendor cutting inside a shot —
   run this first on any "切太快" report), `recommend_trim_window` (action ends up
   outside the kept window)
+- **Pre-compose checks — after `review_videos` passes, before `compose_episode`**:
+  don't locate problems by exporting the whole cut again and again or trying
+  transitions by hand. In order: ① if portraits / turnarounds / scene images /
+  frames changed in this episode, `get_stale_portrait_frames(episode_id)` lists
+  shots whose in-use frames still rest on old assets, and
+  `get_asset_versions(storyboard_id)` shows which version a shot uses (both free;
+  `unknown` ≠ stale; regenerating is paid — the customer decides);
+  ② `scan_intra_shot_cuts(episode_id)`; ③ per shot `recommend_trim_window`
+  (frozen tail, effective action window; scene-group shots return
+  `applicable=false`) → `trim_shot`; ④ `audit_seams(episode_id)` for continuity
+  between adjacent shots — the default `dry_run` is free, running it is billed by
+  text tokens, so only pass `dry_run:false` + `confirm_usage_billing:true` after the
+  customer accepts; ⑤ `compose_episode`. When the cut shows a problem, come back to
+  these tools to find the shot instead of re-exporting. Advisory only, not a gate;
+  trims and seam audits don't invalidate the `review_videos` token.
 
 Full reference: https://api.shortreelai.com/docs/mcp
 

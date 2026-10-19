@@ -126,6 +126,20 @@ const VIDEO_QC_HINT =
   '\n★【完成后质检·免费】出完等它落库(get_storyboards 看 video_status / get_pipeline_status),再调 review_videos 审视频与配音层' +
   '(缺视频 / 旧帧出的视频 / 片尾硬切 / 意外人声 / 配音缺失 / 音色未分配 / 原声声线过期),修完复审;' +
   '再按 agent_qc 亲自逐镜看视频、听配音(动作到位、不变脸、台词念全、嗓音对),submit_qc_report 提交;compose_episode 要带它的 review_token。'
+/**
+ * 成片前自检:review_videos 之后、compose_episode 之前(2026-10-19 外部 agent 复盘:五个工具全在却一个没调,
+ * 靠反复导出整片、手工试转场定位问题)。只是提示,不加闸;trim_shot / audit_seams 不进视频层指纹,做完不用复审。
+ */
+export const PRE_COMPOSE_CHECK_HINT =
+  '★★【成片前自检·review_videos 通过后、compose_episode 之前】别靠反复导出整片、手工试转场来找问题——逐镜与接缝的问题有专门工具,拼之前按序过一遍:' +
+  '①这一集换过定妆图 / 设定图 / 场景图 / 镜头帧 → 先 get_stale_portrait_frames(episode_id,免费)看哪些镜的在用帧还基于旧资产,' +
+  '拿不准该用哪一版的镜再 get_asset_versions(storyboard_id,免费)逐镜看版本与依赖(unknown 是证据不足、不是已过期;重出要付费,清单讲给客户由客户定);' +
+  '②scan_intra_shot_cuts(episode_id,免费)查厂商在单镜内自行硬切的镜;' +
+  '③逐镜 recommend_trim_window(storyboard_id,免费)看冻结尾段与有效动作区间(组内镜返回 applicable=false,跳过),有推荐就 trim_shot 应用(免费);' +
+  '④audit_seams(episode_id)查相邻镜接缝的剪辑连续性:默认 dry_run 只列待审范围(免费),真执行按实际文本 token 计费,' +
+  '讲给客户、客户明确接受后才带 dry_run:false + confirm_usage_billing:true,结果看 get_storyboards 的 seam_review;' +
+  '⑤再 compose_episode。拼完成片发现跳切 / 拖尾 / 接不上,回到这几个工具按镜定位后只修那几镜,别整片反复导出试错。' +
+  '这些都是提示性检查,不过闸;裁剪与接缝审核不让 review_videos 的 token 失效。'
 
 /** 三个被闸的收费工具共用的参数(zod 形状,展开进各自 schema)。 */
 const REVIEW_ARGS = {
@@ -245,6 +259,7 @@ export const WORKFLOW_HINT =
   '★★【④⑤两道新硬闸 + agent 亲自质检】④资产层:定妆图/设定图/场景图/道具图出完 → review_assets' +
   '(在 generate_frames / generate_shot_frame 之前,它的 token 作为 asset_review_token、与分镜层 review_token 一起传);' +
   '⑤视频与配音层:视频/配音/配乐出完 → review_videos(在 compose_episode 之前);成片出来后跑 review_final_cut。' +
+  PRE_COMPOSE_CHECK_HINT +
   '★每一层审查之后你还要**亲自质检**:按返回的 agent_qc 逐件看素材(图下载看、视频抽帧看、文本通读),逐条答清单,' +
   'submit_qc_report 提交;灰度剧没交报告那张 review_token 进不了下一步,报告有问题与 error 同样默认拦。平台判有没有,你判像不像、对不对。' +
   '★★【单镜路径同样受审查闸】:generate_shot_frame 同样要带分镜层 review_token,regenerate_shot_video 同样要带镜头图片层 review_token——' +
@@ -1097,6 +1112,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '首帧换过而视频还是旧帧出的(video_stale);疑似片尾硬切、无台词镜意外人声(warning);' +
       '配音剧:台词镜缺配音、会开口的角色没音色、缺旁白角色;原声剧:出片时没挂上当前声线的镜、没锁声线的角色;缺配乐(warning)。' +
       '★出完视频、配音(generate_tts)、配乐后都调一次;compose_episode 之前必须审过,带返回的 review_token。' +
+      '\n' + PRE_COMPOSE_CHECK_HINT + '返回体的 pre_compose_checks 是同一份清单(结构化,逐项 tool/scope/when/cost)。\n' +
       '更细的检查(要解码画面/音轨)另有 scan_intra_shot_cuts / scan_dialogue_coverage / audit_silent_shot_audio;拼完成片再跑 review_final_cut。' +
       '★返回带 post_production_advisory = 剧本标注「后期」的叙事必需特效还没处理(平台不会合成):原样告诉客户,用 get_post_production_checklist 看清单。' + AGENT_QC_HINT,
     { episode_id: z.number().int().positive() },
@@ -1342,6 +1358,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '补齐后重试;确要拼部分成片传 force=true(缺视频镜被跳过,成片缺镜,留痕)。' +
       '响应里的 advisories(时长偏差/孤儿任务/缺TTS/post_production_pending 后期特效未完成)只提醒不阻断,建议逐条处理后再拼。发起后用 get_final_cut 轮询。' +
       REVIEW_GATE_HINT('review_videos', '视频与配音') +
+      '\n' + PRE_COMPOSE_CHECK_HINT +
       '\n★【完成后质检·免费】成片出来后跑 review_final_cut(缺镜/字幕放不下/身份锚/跳轴/错别字,proofread=false 则不扣费),' +
       '结论讲给客户;客户确认后才 confirm_delivery_acceptance' + ALWAYS_ASK('交付验收') + '。force 只越过终拼预检,不越过审查闸。',
     {
