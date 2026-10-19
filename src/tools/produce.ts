@@ -101,7 +101,9 @@ const AGENT_QC_HINT =
   '\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。' +
   '平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。' +
   '逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。' +
-  'agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。'
+  'agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。' +
+  '\n★【客户验收项】review_frames / review_videos 会把客户登记的具体要求(add_acceptance_criteria)追加进 checklist(id 以 req: 开头),附 acceptance_criteria:' +
+  '平台通用审查不知道这些要求,通过了不代表满足——逐条亲眼核对后在 submit_qc_report 里答,结论讲给客户,由客户 confirm_acceptance_criterion 确认。'
 
 /** 增量复审(缺口 #16):上一张本层 token,已交质检且 pass 时只重审变更镜。 */
 const BASE_REVIEW_ARG = z.string().optional().describe('增量复审:上一张本层 review_token(已交 agent 质检且 verdict=pass)。带上只重审变更镜及其相邻镜,素材与质检只覆盖它们;不满足条件自动退回整集')
@@ -873,9 +875,33 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_asset_versions',
-    '只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。',
+    '只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。' +
+      'video_lock 是客户锁定的已验收视频(lock_shot_video):locked=true 时这条按沿用算有效,frames_changed_since_lock=true 表示锁定后帧又改过但不需要重出。',
     { storyboard_id: z.number().int().positive() },
     async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/asset-versions`)),
+  )
+  server.tool(
+    'lock_shot_video',
+    '锁定某镜当前在用的视频为客户已验收版本(免费,不生成、不改素材)。用于客户明确说「这一镜就用这条」之后,首尾帧/场景/角色又被改过的情形:' +
+      '锁定后资产变动不再把这镜判过期——review_videos 不报 video_stale(改报 warning video_locked_frames_changed)、get_asset_versions 里这条 acceptance_locked=true 仍算当前有效(漂移原因照实列在 drift_while_locked)、' +
+      '原声剧声线 stale_shots 不列它、终拼预检不报编辑后未重生;regenerate_shot_video / edit_video_shot / repaint / reskin / 上传或清除实拍 / 整集 generate_videos 会替换它时一律 409 VIDEO_LOCKED。' +
+      '锁里冻结视频行 id 与它当时的生成输入(首尾帧 URL、prompt、参考清单)。只能锁当前在用的那条(传 generation_id 时必须正好是它,否则 409 NOT_CURRENT_VIDEO;本镜没视频 409 NO_VIDEO)。' +
+      '视频被别的路径换掉后锁自动失效(get_asset_versions 的 video_lock.broken=true)。★只有客户明确确认沿用才锁,不得把生成完成或模型判断当客户验收;要重出须客户同意后先 unlock_shot_video。',
+    {
+      storyboard_id: z.number().int().positive(),
+      generation_id: z.number().int().positive().optional().describe('可选:核对要锁的视频行(来自 get_asset_versions 的 versions[].id),不是当前在用的会 409'),
+      note: z.string().max(500).optional().describe('可选:客户确认的原话或场合,留痕'),
+    },
+    async ({ storyboard_id, generation_id, note }) => jsonResult(await client.producePost(
+      `/storyboards/${storyboard_id}/video-lock`,
+      { ...(generation_id ? { generation_id } : {}), ...(note ? { note } : {}) },
+    )),
+  )
+  server.tool(
+    'unlock_shot_video',
+    '解除某镜的已验收视频锁(免费)。解锁后立刻恢复原判:帧改过的镜重新报 video_stale,可以 regenerate_shot_video 重出。★只在客户同意放弃锁定版本、要换新视频时调用。返回 was_locked。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.produceDelete(`/storyboards/${storyboard_id}/video-lock`)),
   )
   server.tool(
     'get_asset_binding_repair_plan',
@@ -2625,6 +2651,76 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async ({ episode_id, key, status, note }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/post-production-checklist/mark`, { key, status, ...(note ? { note } : {}) })),
+  )
+  // ---------- 客户验收项(客户在这一镜 / 这一集的具体要求;review_frames / review_videos 逐条交你核对) ----------
+  const ACCEPTANCE_CATEGORY = z.enum(['identity', 'wardrobe', 'prop_color', 'lip_sync', 'artifact'])
+    .describe('可选类别:identity 身份(脸像不像)/ wardrobe 服装 / prop_color 道具颜色 / lip_sync 嘴型 / artifact 画面瑕疵(毛边、穿帮等)')
+  const ACCEPTANCE_STAGES = z.array(z.enum(['frames', 'videos'])).min(1)
+    .describe('在哪一层核对:frames 镜头图片层(review_frames)/ videos 视频层(review_videos);不填 = 两层都核对')
+  server.tool(
+    'get_acceptance_criteria',
+    '读本集的**客户验收项**(免费):客户对某一镜或整集提的具体要求,每项三个状态分开存——' +
+      'auto_review(平台自动审查,按层;not_covered=平台没有能判这一类的判据,no_related_finding 不等于满足要求)、' +
+      'agent_qc(你在 submit_qc_report 里逐条核对的结论,按层)、client(客户本人确认)。' +
+      '★平台审查通过、你的通用质检通过,都不代表客户的具体要求通过——交付前对照这里逐条讲给客户。orphan=true 表示绑的镜已删除(改绑或删除)。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/acceptance-criteria`)),
+  )
+  server.tool(
+    'add_acceptance_criteria',
+    '登记客户验收项(免费):客户对某一镜或整集提出**具体要求**(身份、服装、道具颜色、嘴型、画面瑕疵等)时,按客户原话登记成一条,' +
+      '之后 review_frames / review_videos 会把它追加进 agent_qc.checklist(id 以 req: 开头)让你逐条核对,结论单独记账。' +
+      '★一条只写一项要求;镜头级用 shot_number(当前镜号)或 storyboard_id,不填 = 整集。登记后已拿到的本层 review_token 会失效,需复审。' +
+      '★只登记客户说过的要求,别替客户编。',
+    {
+      episode_id: z.number().int().positive(),
+      items: z.array(z.object({
+        text: z.string().min(2).max(500).describe('客户的具体要求(尽量用客户原话)'),
+        category: ACCEPTANCE_CATEGORY.optional(),
+        shot_number: z.number().int().positive().optional().describe('镜头级:当前镜号'),
+        storyboard_id: z.number().int().positive().optional().describe('镜头级:分镜 id(与 shot_number 二选一)'),
+        stages: ACCEPTANCE_STAGES.optional(),
+      })).min(1).max(100),
+    },
+    async ({ episode_id, items }) => jsonResult(await client.producePost(`/episodes/${episode_id}/acceptance-criteria`, { items })),
+  )
+  server.tool(
+    'update_acceptance_criterion',
+    '改一条客户验收项(免费)。改文字 / 类别 / 镜头 / 适用层后,这条的三个状态清回初始(要求变了,旧结论不算数),需重新 review 核对。' +
+      '删除用 delete_acceptance_criterion。item_id 取自 get_acceptance_criteria。' + ALWAYS_ASK('修改客户验收项'),
+    {
+      episode_id: z.number().int().positive(),
+      item_id: z.string().min(1),
+      text: z.string().min(2).max(500).optional(),
+      category: ACCEPTANCE_CATEGORY.nullable().optional().describe('传 null 清掉类别'),
+      shot_number: z.number().int().positive().optional(),
+      storyboard_id: z.number().int().positive().optional(),
+      scope: z.literal('episode').optional().describe("'episode' = 改成整集项(解绑镜头)"),
+      stages: ACCEPTANCE_STAGES.optional(),
+    },
+    async ({ episode_id, item_id, ...patch }) =>
+      jsonResult(await client.producePut(`/episodes/${episode_id}/acceptance-criteria/${encodeURIComponent(item_id)}`, patch)),
+  )
+  server.tool(
+    'delete_acceptance_criterion',
+    '删除一条客户验收项(免费,删了这条的三个状态一并没了)。item_id 取自 get_acceptance_criteria。' + ALWAYS_ASK('删除客户验收项'),
+    { episode_id: z.number().int().positive(), item_id: z.string().min(1) },
+    async ({ episode_id, item_id }) =>
+      jsonResult(await client.produceDelete(`/episodes/${episode_id}/acceptance-criteria/${encodeURIComponent(item_id)}`)),
+  )
+  server.tool(
+    'confirm_acceptance_criterion',
+    '记录**客户本人**对一条验收项的确认(免费):accepted 满足 / rejected 不满足 / pending 撤销。只写客户确认,不改平台自动审查与你的质检结论。' +
+      '★必须是客户明确表态之后才调,并带 confirm_client_statement:true;你不能替客户确认,托管也不例外。',
+    {
+      episode_id: z.number().int().positive(),
+      item_id: z.string().min(1),
+      status: z.enum(['accepted', 'rejected', 'pending']),
+      confirm_client_statement: z.boolean().optional().describe('true = 这是客户本人的明确表态(accepted / rejected 必填)'),
+      note: z.string().max(500).optional().describe('客户原话或补充说明'),
+    },
+    async ({ episode_id, item_id, ...body }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/acceptance-criteria/${encodeURIComponent(item_id)}/client-verdict`, body)),
   )
   server.tool(
     'get_shot_name_card',

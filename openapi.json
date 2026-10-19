@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.201",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.201 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.202",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.202 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -4012,6 +4012,422 @@
         }
       }
     },
+    "/episodes/{episode_id}/acceptance-criteria": {
+      "get": {
+        "operationId": "get_acceptance_criteria",
+        "summary": "读本集的**客户验收项**(免费):客户对某一镜或整集提的具体要求,每项三个状态分开存——auto_review(平台自动审查,按层;not_covered=平台没有能判这一类的判据,no_related_finding 不等于满足要求)、",
+        "description": "读本集的**客户验收项**(免费):客户对某一镜或整集提的具体要求,每项三个状态分开存——auto_review(平台自动审查,按层;not_covered=平台没有能判这一类的判据,no_related_finding 不等于满足要求)、agent_qc(你在 submit_qc_report 里逐条核对的结论,按层)、client(客户本人确认)。★平台审查通过、你的通用质检通过,都不代表客户的具体要求通过——交付前对照这里逐条讲给客户。orphan=true 表示绑的镜已删除(改绑或删除)。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "post": {
+        "operationId": "add_acceptance_criteria",
+        "summary": "登记客户验收项(免费):客户对某一镜或整集提出**具体要求**(身份、服装、道具颜色、嘴型、画面瑕疵等)时,按客户原话登记成一条,之后 review_frames / review_videos 会把它追加进 agent_qc",
+        "description": "登记客户验收项(免费):客户对某一镜或整集提出**具体要求**(身份、服装、道具颜色、嘴型、画面瑕疵等)时,按客户原话登记成一条,之后 review_frames / review_videos 会把它追加进 agent_qc.checklist(id 以 req: 开头)让你逐条核对,结论单独记账。★一条只写一项要求;镜头级用 shot_number(当前镜号)或 storyboard_id,不填 = 整集。登记后已拿到的本层 review_token 会失效,需复审。★只登记客户说过的要求,别替客户编。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "minLength": 2,
+                          "maxLength": 500,
+                          "description": "客户的具体要求(尽量用客户原话)"
+                        },
+                        "category": {
+                          "type": "string",
+                          "enum": [
+                            "identity",
+                            "wardrobe",
+                            "prop_color",
+                            "lip_sync",
+                            "artifact"
+                          ],
+                          "description": "可选类别:identity 身份(脸像不像)/ wardrobe 服装 / prop_color 道具颜色 / lip_sync 嘴型 / artifact 画面瑕疵(毛边、穿帮等)"
+                        },
+                        "shot_number": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "description": "镜头级:当前镜号"
+                        },
+                        "storyboard_id": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "description": "镜头级:分镜 id(与 shot_number 二选一)"
+                        },
+                        "stages": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "frames",
+                              "videos"
+                            ]
+                          },
+                          "minItems": 1,
+                          "description": "在哪一层核对:frames 镜头图片层(review_frames)/ videos 视频层(review_videos);不填 = 两层都核对"
+                        }
+                      },
+                      "required": [
+                        "text"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1,
+                    "maxItems": 100
+                  }
+                },
+                "required": [
+                  "items"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/acceptance-criteria/{item_id}": {
+      "put": {
+        "operationId": "update_acceptance_criterion",
+        "summary": "改一条客户验收项(免费)",
+        "description": "改一条客户验收项(免费)。改文字 / 类别 / 镜头 / 适用层后,这条的三个状态清回初始(要求变了,旧结论不算数),需重新 review 核对。删除用 delete_acceptance_criterion。item_id 取自 get_acceptance_criteria。(修改客户验收项任何执行模式都须客户明确同意,托管也不例外)",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 500
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "identity",
+                          "wardrobe",
+                          "prop_color",
+                          "lip_sync",
+                          "artifact"
+                        ],
+                        "description": "可选类别:identity 身份(脸像不像)/ wardrobe 服装 / prop_color 道具颜色 / lip_sync 嘴型 / artifact 画面瑕疵(毛边、穿帮等)"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "可选类别:identity 身份(脸像不像)/ wardrobe 服装 / prop_color 道具颜色 / lip_sync 嘴型 / artifact 画面瑕疵(毛边、穿帮等)"
+                  },
+                  "shot_number": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "storyboard_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "scope": {
+                    "type": "string",
+                    "const": "episode"
+                  },
+                  "stages": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "frames",
+                        "videos"
+                      ]
+                    },
+                    "minItems": 1,
+                    "description": "在哪一层核对:frames 镜头图片层(review_frames)/ videos 视频层(review_videos);不填 = 两层都核对"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_acceptance_criterion",
+        "summary": "删除一条客户验收项(免费,删了这条的三个状态一并没了)",
+        "description": "删除一条客户验收项(免费,删了这条的三个状态一并没了)。item_id 取自 get_acceptance_criteria。(删除客户验收项任何执行模式都须客户明确同意,托管也不例外)",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/episodes/{episode_id}/acceptance-criteria/{item_id}/client-verdict": {
+      "post": {
+        "operationId": "confirm_acceptance_criterion",
+        "summary": "记录**客户本人**对一条验收项的确认(免费):accepted 满足 / rejected 不满足 / pending 撤销",
+        "description": "记录**客户本人**对一条验收项的确认(免费):accepted 满足 / rejected 不满足 / pending 撤销。只写客户确认,不改平台自动审查与你的质检结论。★必须是客户明确表态之后才调,并带 confirm_client_statement:true;你不能替客户确认,托管也不例外。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "accepted",
+                      "rejected",
+                      "pending"
+                    ]
+                  },
+                  "confirm_client_statement": {
+                    "type": "boolean"
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/episodes/{episode_id}/asset-binding-repair-plan": {
       "get": {
         "operationId": "get_asset_binding_repair_plan",
@@ -7767,7 +8183,7 @@
       "post": {
         "operationId": "review_assets",
         "summary": "【资产层硬闸·免费】审查本集**出镜**用到的角色形象图、场景图、道具图——覆盖与质量:出镜角色缺定妆图 / 缺设定图 / 还在生成 / 生成失败 / 设定图被一致性闸拒收(hint 带拒收理由);场景缺空景基板;分镜引用的道具缺道具图 /",
-        "description": "【资产层硬闸·免费】审查本集**出镜**用到的角色形象图、场景图、道具图——覆盖与质量:出镜角色缺定妆图 / 缺设定图 / 还在生成 / 生成失败 / 设定图被一致性闸拒收(hint 带拒收理由);场景缺空景基板;分镜引用的道具缺道具图 / 被拒;道具图与本镜时代形制冲突;缺色彩脚本(warning)。★出完定妆图、设定图、场景图、道具图后都调一次;generate_frames / generate_shot_frame 之前必须审过——把返回的 review_token 作为 **asset_review_token**,连同分镜层的 review_token 一起传(两张都要)。只看资产本身:出完镜头图不会让它失效;换了定妆图/场景图/道具图会失效,复审即可(免费、秒级)。findings 逐条讲给客户(code=问题类型、names=哪个角色/场景/道具、shots=影响的镜号、action=该调哪个工具修)。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。",
+        "description": "【资产层硬闸·免费】审查本集**出镜**用到的角色形象图、场景图、道具图——覆盖与质量:出镜角色缺定妆图 / 缺设定图 / 还在生成 / 生成失败 / 设定图被一致性闸拒收(hint 带拒收理由);场景缺空景基板;分镜引用的道具缺道具图 / 被拒;道具图与本镜时代形制冲突;缺色彩脚本(warning)。★出完定妆图、设定图、场景图、道具图后都调一次;generate_frames / generate_shot_frame 之前必须审过——把返回的 review_token 作为 **asset_review_token**,连同分镜层的 review_token 一起传(两张都要)。只看资产本身:出完镜头图不会让它失效;换了定妆图/场景图/道具图会失效,复审即可(免费、秒级)。findings 逐条讲给客户(code=问题类型、names=哪个角色/场景/道具、shots=影响的镜号、action=该调哪个工具修)。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。\n★【客户验收项】review_frames / review_videos 会把客户登记的具体要求(add_acceptance_criteria)追加进 checklist(id 以 req: 开头),附 acceptance_criteria:平台通用审查不知道这些要求,通过了不代表满足——逐条亲眼核对后在 submit_qc_report 里答,结论讲给客户,由客户 confirm_acceptance_criterion 确认。",
         "tags": [
           "episodes"
         ],
@@ -7829,7 +8245,7 @@
       "post": {
         "operationId": "review_frames",
         "summary": "【第③道硬闸·免费】审查镜头图片层:角色身份锚覆盖(缺定妆图的角色在镜头里必漂)、出图失败率、孤儿角色变体、场景图被人物污染",
-        "description": "【第③道硬闸·免费】审查镜头图片层:角色身份锚覆盖(缺定妆图的角色在镜头里必漂)、出图失败率、孤儿角色变体、场景图被人物污染。★generate_videos 之前必须先跑本工具——出视频是全链最贵的一步,拿着漂移的首帧整集出视频是最典型的废片形态。按 findings.action 修完(多为 generate_character_portraits / generate_shot_frame 单镜重生)再复审。★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接,或发起的衔接重生没落地 / 衔接后首帧又被重生)/seam_broken(接过但没接上,或上一镜尾帧在衔接之后又重生过),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。",
+        "description": "【第③道硬闸·免费】审查镜头图片层:角色身份锚覆盖(缺定妆图的角色在镜头里必漂)、出图失败率、孤儿角色变体、场景图被人物污染。★generate_videos 之前必须先跑本工具——出视频是全链最贵的一步,拿着漂移的首帧整集出视频是最典型的废片形态。按 findings.action 修完(多为 generate_character_portraits / generate_shot_frame 单镜重生)再复审。★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接,或发起的衔接重生没落地 / 衔接后首帧又被重生)/seam_broken(接过但没接上,或上一镜尾帧在衔接之后又重生过),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。\n★【客户验收项】review_frames / review_videos 会把客户登记的具体要求(add_acceptance_criteria)追加进 checklist(id 以 req: 开头),附 acceptance_criteria:平台通用审查不知道这些要求,通过了不代表满足——逐条亲眼核对后在 submit_qc_report 里答,结论讲给客户,由客户 confirm_acceptance_criterion 确认。",
         "tags": [
           "episodes"
         ],
@@ -8075,7 +8491,7 @@
       "post": {
         "operationId": "review_script",
         "summary": "【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念",
-        "description": "【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念。★extract_assets 与 generate_storyboards 之前必须先跑本工具——人物档案和分镜都从改写稿派生,稿子里的问题会被逐层放大到定妆图/出图/出视频,等成片才发现就是整集重来。把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。\n★【剧本评估与建议】materials 里有客户原稿(script:original)和改写稿(script):先评估客户给的稿子本身(主线、动机、冲突、节奏、漏洞、能不能拍),再核对改写稿;每个问题在 submit_qc_report 的 suggestions 里给出具体改法(能直接改字的给 before/after)。提交后把评估和建议逐条讲给客户,让客户选:采纳其中几条 / 全部直接执行 / 不改直接往下做(选哪条路按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log);托管环节默认只执行 priority=must 且不改客户原台词的,其余写进交付报告。",
+        "description": "【第①道硬闸·免费】审查 AI 改写稿:对白行长度、情绪转折完整性、开场钩子、末场悬念。★extract_assets 与 generate_storyboards 之前必须先跑本工具——人物档案和分镜都从改写稿派生,稿子里的问题会被逐层放大到定妆图/出图/出视频,等成片才发现就是整集重来。把 findings 逐条告诉客户、按 action 修完(改稿走 edit_rewritten_script)后复审,再拿 review_token 往下走。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。\n★【客户验收项】review_frames / review_videos 会把客户登记的具体要求(add_acceptance_criteria)追加进 checklist(id 以 req: 开头),附 acceptance_criteria:平台通用审查不知道这些要求,通过了不代表满足——逐条亲眼核对后在 submit_qc_report 里答,结论讲给客户,由客户 confirm_acceptance_criterion 确认。\n★【剧本评估与建议】materials 里有客户原稿(script:original)和改写稿(script):先评估客户给的稿子本身(主线、动机、冲突、节奏、漏洞、能不能拍),再核对改写稿;每个问题在 submit_qc_report 的 suggestions 里给出具体改法(能直接改字的给 before/after)。提交后把评估和建议逐条讲给客户,让客户选:采纳其中几条 / 全部直接执行 / 不改直接往下做(选哪条路按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log);托管环节默认只执行 priority=must 且不改客户原台词的,其余写进交付报告。",
         "tags": [
           "episodes"
         ],
@@ -8122,7 +8538,7 @@
       "post": {
         "operationId": "review_storyboards",
         "summary": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记",
-        "description": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),照着这两个去 update_shot 改掉即可,不用逐字猜。★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。",
+        "description": "【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),照着这两个去 update_shot 改掉即可,不用逐字猜。★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。\n★【客户验收项】review_frames / review_videos 会把客户登记的具体要求(add_acceptance_criteria)追加进 checklist(id 以 req: 开头),附 acceptance_criteria:平台通用审查不知道这些要求,通过了不代表满足——逐条亲眼核对后在 submit_qc_report 里答,结论讲给客户,由客户 confirm_acceptance_criterion 确认。",
         "tags": [
           "episodes"
         ],
@@ -8184,7 +8600,7 @@
       "post": {
         "operationId": "review_videos",
         "summary": "【视频与配音层硬闸·免费】审查本集视频与配音——覆盖与质量:缺视频 / 还在生成 / 生成失败 / 被厂商拒;首帧换过而视频还是旧帧出的(video_stale);疑似片尾硬切、无台词镜意外人声(warning);配音剧:台词镜缺配音、会开",
-        "description": "【视频与配音层硬闸·免费】审查本集视频与配音——覆盖与质量:缺视频 / 还在生成 / 生成失败 / 被厂商拒;首帧换过而视频还是旧帧出的(video_stale);疑似片尾硬切、无台词镜意外人声(warning);配音剧:台词镜缺配音、会开口的角色没音色、缺旁白角色;原声剧:出片时没挂上当前声线的镜、没锁声线的角色;缺配乐(warning)。★出完视频、配音(generate_tts)、配乐后都调一次;compose_episode 之前必须审过,带返回的 review_token。\n★★【成片前自检·review_videos 通过后、compose_episode 之前】别靠反复导出整片、手工试转场来找问题——逐镜与接缝的问题有专门工具,拼之前按序过一遍:①这一集换过定妆图 / 设定图 / 场景图 / 镜头帧 → 先 get_stale_portrait_frames(episode_id,免费)看哪些镜的在用帧还基于旧资产,拿不准该用哪一版的镜再 get_asset_versions(storyboard_id,免费)逐镜看版本与依赖(unknown 是证据不足、不是已过期;重出要付费,清单讲给客户由客户定);②scan_intra_shot_cuts(episode_id,免费)查厂商在单镜内自行硬切的镜;③逐镜 recommend_trim_window(storyboard_id,免费)看冻结尾段与有效动作区间(组内镜返回 applicable=false,跳过),有推荐就 trim_shot 应用(免费);④audit_seams(episode_id)查相邻镜接缝的剪辑连续性:默认 dry_run 只列待审范围(免费),真执行按实际文本 token 计费,讲给客户、客户明确接受后才带 dry_run:false + confirm_usage_billing:true,结果看 get_storyboards 的 seam_review;⑤再 compose_episode。拼完成片发现跳切 / 拖尾 / 接不上,回到这几个工具按镜定位后只修那几镜,别整片反复导出试错。这些都是提示性检查,不过闸;裁剪与接缝审核不让 review_videos 的 token 失效。返回体的 pre_compose_checks 是同一份清单(结构化,逐项 tool/scope/when/cost)。\n更细的检查(要解码画面/音轨)另有 scan_intra_shot_cuts / scan_dialogue_coverage / audit_silent_shot_audio;拼完成片再跑 review_final_cut。★返回带 post_production_advisory = 剧本标注「后期」的叙事必需特效还没处理(平台不会合成):原样告诉客户,用 get_post_production_checklist 看清单。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。",
+        "description": "【视频与配音层硬闸·免费】审查本集视频与配音——覆盖与质量:缺视频 / 还在生成 / 生成失败 / 被厂商拒;首帧换过而视频还是旧帧出的(video_stale);疑似片尾硬切、无台词镜意外人声(warning);配音剧:台词镜缺配音、会开口的角色没音色、缺旁白角色;原声剧:出片时没挂上当前声线的镜、没锁声线的角色;缺配乐(warning)。★出完视频、配音(generate_tts)、配乐后都调一次;compose_episode 之前必须审过,带返回的 review_token。\n★★【成片前自检·review_videos 通过后、compose_episode 之前】别靠反复导出整片、手工试转场来找问题——逐镜与接缝的问题有专门工具,拼之前按序过一遍:①这一集换过定妆图 / 设定图 / 场景图 / 镜头帧 → 先 get_stale_portrait_frames(episode_id,免费)看哪些镜的在用帧还基于旧资产,拿不准该用哪一版的镜再 get_asset_versions(storyboard_id,免费)逐镜看版本与依赖(unknown 是证据不足、不是已过期;重出要付费,清单讲给客户由客户定);②scan_intra_shot_cuts(episode_id,免费)查厂商在单镜内自行硬切的镜;③逐镜 recommend_trim_window(storyboard_id,免费)看冻结尾段与有效动作区间(组内镜返回 applicable=false,跳过),有推荐就 trim_shot 应用(免费);④audit_seams(episode_id)查相邻镜接缝的剪辑连续性:默认 dry_run 只列待审范围(免费),真执行按实际文本 token 计费,讲给客户、客户明确接受后才带 dry_run:false + confirm_usage_billing:true,结果看 get_storyboards 的 seam_review;⑤再 compose_episode。拼完成片发现跳切 / 拖尾 / 接不上,回到这几个工具按镜定位后只修那几镜,别整片反复导出试错。这些都是提示性检查,不过闸;裁剪与接缝审核不让 review_videos 的 token 失效。返回体的 pre_compose_checks 是同一份清单(结构化,逐项 tool/scope/when/cost)。\n更细的检查(要解码画面/音轨)另有 scan_intra_shot_cuts / scan_dialogue_coverage / audit_silent_shot_audio;拼完成片再跑 review_final_cut。★返回带 post_production_advisory = 剧本标注「后期」的叙事必需特效还没处理(平台不会合成):原样告诉客户,用 get_post_production_checklist 看清单。\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;共享资产变了、base 没质检通过时自动退回整集(incremental.reason 说明原因)。改一两镜后别整集重审。\n★【agent 亲自质检·免费】返回的 agent_qc 里有本层清单(checklist)和本集要看的素材(materials,每件一个 ref,图/视频给链接)。平台只判「有没有、在不在、被没被拒」,「像不像、对不对、好不好」要你自己看:图片下载打开看、视频至少抽开头/中间/结尾帧、文本用 tool 通读。逐条回答清单(ok / issue / na,issue 写明哪件什么问题),看过的每个 ref 都列进 inspected,调 submit_qc_report 提交;质检结论原样讲给客户。agent_qc.required=true 时没提交报告这张 review_token 进不了下一步(400 agent_qc_required),报告有问题与平台 error 同样默认拦。\n★【客户验收项】review_frames / review_videos 会把客户登记的具体要求(add_acceptance_criteria)追加进 checklist(id 以 req: 开头),附 acceptance_criteria:平台通用审查不知道这些要求,通过了不代表满足——逐条亲眼核对后在 submit_qc_report 里答,结论讲给客户,由客户 confirm_acceptance_criterion 确认。",
         "tags": [
           "episodes"
         ],
@@ -12449,7 +12865,7 @@
       "get": {
         "operationId": "get_asset_versions",
         "summary": "只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实",
-        "description": "只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。",
+        "description": "只读查询一个镜头的全部图片/视频版本、历史查看链接、依赖 ID 与版本哈希，以及已生成→与当前输入一致→审核有效→已采用四项独立事实。历史缺少依赖记录时显示未知，不补造快照。免费。video_lock 是客户锁定的已验收视频(lock_shot_video):locked=true 时这条按沿用算有效,frames_changed_since_lock=true 表示锁定后帧又改过但不需要重出。",
         "tags": [
           "storyboards"
         ],
@@ -14434,6 +14850,118 @@
               "type": "integer",
               "exclusiveMinimum": 0,
               "description": "repaint_shot_video / reskin_shot_video 返回的 id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/video-lock": {
+      "post": {
+        "operationId": "lock_shot_video",
+        "summary": "锁定某镜当前在用的视频为客户已验收版本(免费,不生成、不改素材)",
+        "description": "锁定某镜当前在用的视频为客户已验收版本(免费,不生成、不改素材)。用于客户明确说「这一镜就用这条」之后,首尾帧/场景/角色又被改过的情形:锁定后资产变动不再把这镜判过期——review_videos 不报 video_stale(改报 warning video_locked_frames_changed)、get_asset_versions 里这条 acceptance_locked=true 仍算当前有效(漂移原因照实列在 drift_while_locked)、原声剧声线 stale_shots 不列它、终拼预检不报编辑后未重生;regenerate_shot_video / edit_video_shot / repaint / reskin / 上传或清除实拍 / 整集 generate_videos 会替换它时一律 409 VIDEO_LOCKED。锁里冻结视频行 id 与它当时的生成输入(首尾帧 URL、prompt、参考清单)。只能锁当前在用的那条(传 generation_id 时必须正好是它,否则 409 NOT_CURRENT_VIDEO;本镜没视频 409 NO_VIDEO)。视频被别的路径换掉后锁自动失效(get_asset_versions 的 video_lock.broken=true)。★只有客户明确确认沿用才锁,不得把生成完成或模型判断当客户验收;要重出须客户同意后先 unlock_shot_video。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "generation_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "unlock_shot_video",
+        "summary": "解除某镜的已验收视频锁(免费)",
+        "description": "解除某镜的已验收视频锁(免费)。解锁后立刻恢复原判:帧改过的镜重新报 video_stale,可以 regenerate_shot_video 重出。★只在客户同意放弃锁定版本、要换新视频时调用。返回 was_locked。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
             }
           }
         ],

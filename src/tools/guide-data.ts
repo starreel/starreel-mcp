@@ -330,7 +330,9 @@ export const REVIEW_GATE_RULE =
   '一键 / 混合模式的托管环节里,白名单内的启发式 error 带 auto_acknowledge:true 放行(平台判、写决策日志),其余自修后复审,修不好就汇总问客户(get_autopilot_log)。' +
   '`review_all` 是整集体检、不发 token。' +
   '★每一层审查之后你(agent)还要**亲自质检**:按返回的 agent_qc 清单逐件看素材(图下载看、视频抽帧看、文本通读),' +
-  '调 submit_qc_report 提交报告;灰度剧没交报告 token 不能用,报告有问题与 error 同样默认拦。平台判有没有,你判像不像、对不对。'
+  '调 submit_qc_report 提交报告;灰度剧没交报告 token 不能用,报告有问题与 error 同样默认拦。平台判有没有,你判像不像、对不对。' +
+  '★客户对某一镜/整集提了具体要求(身份、服装、道具颜色、嘴型、画面瑕疵等)→ add_acceptance_criteria 登记;review_frames / review_videos 会把它追加进 agent_qc.checklist(req: 开头)逐条核对,'
+  + '平台自动审查、你的结论、客户确认三个状态分开记(get_acceptance_criteria);客户确认用 confirm_acceptance_criterion,只能在客户本人表态后调。'
 
 export interface QaTool { symptom: string; run: string; then: string[] }
 export const QA_TOOLS: QaTool[] = [
