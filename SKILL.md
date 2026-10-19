@@ -646,13 +646,14 @@ content that will be rejected.
    instead of redrawing the whole frame or fixing it in an outside tool. Box the area
    with normalized `regions` (≤ 40% of the frame) and say what it should become; the
    platform pastes only that area back onto the original, so everything outside the
-   box stays pixel-identical. Face/mouth edits need `character_id` (only that
-   character's portrait is sent as the identity anchor) and are re-audited for
-   identity. Results are **candidates, not the new frame**: show `composited_url`
+   box stays pixel-identical. Face/mouth edits need `character_id`; the portrait is **not** sent
+   (with it the model redraws the portrait instead of the frame), the instruction
+   asks for the same person and the result is re-audited for identity. Results are **candidates, not the new frame**: show `composited_url`
    from `get_local_frame_edit` to the customer, then `adopt_local_frame_edit` the one
    they pick. Each candidate is charged; candidates the platform rejects are **not
-   refunded** — tell the customer that with the quote. Rolled out per drama: a 403
-   `LOCAL_FRAME_EDIT_UNAVAILABLE` means fall back to `generate_shot_frame`.
+   refunded** — tell the customer that with the quote. Rolled out per drama and per `edit_kind`:
+   a 403 `LOCAL_FRAME_EDIT_UNAVAILABLE` lists `open_kinds`; for any other kind fall
+   back to `generate_shot_frame`.
 
    **When a shot frame fails, offer the customer three choices** (both
    `get_frame_candidates` and `get_frame_retry_diagnosis` return them as

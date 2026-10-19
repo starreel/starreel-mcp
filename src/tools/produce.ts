@@ -1346,7 +1346,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     regions: z.array(z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() })).describe('修改区:归一化矩形(0~1,相对画面宽高,x/y 是左上角),1~8 块,合计不超过画面 40%(超过请走 generate_shot_frame 整张重画)。框紧一点:框外像素平台保证不变,框越大越容易连带改到已确认的细节'),
     instruction: z.string().describe('这块要改成什么,一句话说清(≤500 字),例如「嘴闭上、表情平静」「去掉发丝边缘的白边」'),
     edit_kind: z.enum(['face', 'mouth', 'hair', 'costume', 'hand', 'edge_cleanup', 'object_remove', 'other']).describe('修改类型。face / mouth = 修脸类:必须带 character_id;face / mouth / hair / costume 生成后会过身份审计'),
-    character_id: z.number().int().positive().optional().describe('修脸类(face / mouth)必填:改的是哪个角色的脸。平台只送这个角色的定妆图当身份锚。hair / costume 可选'),
+    character_id: z.number().int().positive().optional().describe('修脸类(face / mouth)必填:改的是哪个角色的脸,贴回后按他做身份审计。平台**不送定妆图**(送了模型会直接画成定妆图),只要求「同一个人」。hair / costume 可选'),
     candidates: z.number().int().min(1).max(4).optional().describe('出几个候选,默认 2,最多 4。每个候选单独计费'),
   }
   server.tool(
@@ -1357,8 +1357,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '平台把修改区按羽化蒙版贴回原图:框外像素原样保留,只有框内被改。' +
       '★计费:每个候选按一次出图扣(unit_points × candidates;张数固定,estimated_points 就是实扣,typical_points 与它相等)。' +
       '**被平台判据拒掉的候选(贴回有接缝、没改到、身份审计不过)一律不退点**——报价时就要把这一点和点数一起讲给客户。厂商出图失败由平台自动退。' +
-      '★只在灰度剧开放,未开放回 403 LOCAL_FRAME_EDIT_UNAVAILABLE(这时只能 generate_shot_frame 整张重画)。' +
-      '修脸类不带 character_id 回 400 CHARACTER_REQUIRED;角色没有定妆图回 400 CHARACTER_NO_PORTRAIT。',
+      '★按剧、按类型灰度开放:没开放回 403 LOCAL_FRAME_EDIT_UNAVAILABLE,响应里 open_kinds 列出已对所有剧开放的类型(如 object_remove);要改的类型不在里面就只能 generate_shot_frame 整张重画。' +
+      '修脸类不带 character_id 回 400 CHARACTER_REQUIRED;修脸不送定妆图(只送底图局部),贴回后靠身份审计判是不是同一个人。',
     LOCAL_EDIT_ARGS,
     async ({ storyboard_id, ...rest }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/local-edit/quote`, rest)),
@@ -1377,7 +1377,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'get_local_frame_edit',
     '查一次局部返修的进度与结果(免费)。status=running 继续等;completed 后逐个候选看:' +
       'composited_url(贴回原图后的成品,给客户看的就是它)、verdict(pass=可直接用;warn=能用但要人看——REGION_SEAM_WARN 边界可能有接缝 / EDIT_NOT_APPLIED 基本没改到 / IDENTITY_AUDIT_UNAVAILABLE 身份没审成;' +
-      'reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_AUDIT_REJECTED 不像本人)、metrics、identity_audit。' +
+      'reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_MISMATCH 修脸后与本人比对不像 / IDENTITY_AUDIT_REJECTED 帧审计不过)、metrics、identity_audit、identity_compare(修脸类的身份比对分数与阈值)。' +
       '下载 composited_url 亲眼看过、讲给客户,客户选定后用 adopt_local_frame_edit。被拒候选不退点。',
     { storyboard_id: z.number().int().positive(), edit_id: z.string().describe('来自 local_frame_edit') },
     async ({ storyboard_id, edit_id }) =>
