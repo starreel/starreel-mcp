@@ -1358,7 +1358,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★计费:每个候选按一次出图扣(unit_points × candidates;张数固定,estimated_points 就是实扣,typical_points 与它相等)。' +
       '**被平台判据拒掉的候选(贴回有接缝、没改到、身份审计不过)一律不退点**——报价时就要把这一点和点数一起讲给客户。厂商出图失败由平台自动退。' +
       '★按剧、按类型灰度开放:没开放回 403 LOCAL_FRAME_EDIT_UNAVAILABLE,响应里 open_kinds 列出已对所有剧开放的类型(如 object_remove);要改的类型不在里面就只能 generate_shot_frame 整张重画。' +
-      '修脸类不带 character_id 回 400 CHARACTER_REQUIRED;修脸不送定妆图(只送底图局部),贴回后靠身份审计判是不是同一个人。',
+      '修脸类不带 character_id 回 400 CHARACTER_REQUIRED;修脸不送定妆图(只送底图局部),贴回后比对人脸判是不是同一个人(判不像的拒、拿不准的交人看,都照常计费)。',
     LOCAL_EDIT_ARGS,
     async ({ storyboard_id, ...rest }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/local-edit/quote`, rest)),
@@ -1376,9 +1376,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'get_local_frame_edit',
     '查一次局部返修的进度与结果(免费)。status=running 继续等;completed 后逐个候选看:' +
-      'composited_url(贴回原图后的成品,给客户看的就是它)、verdict(pass=可直接用;warn=能用但要人看——REGION_SEAM_WARN 边界可能有接缝 / EDIT_NOT_APPLIED 基本没改到 / IDENTITY_AUDIT_UNAVAILABLE 身份没审成;' +
-      'reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_AUDIT_REJECTED 帧审计不过)、metrics、identity_audit、identity_compare(修脸类身份比对:只作参考,分偏低记 IDENTITY_COMPARE_LOW 降为 warn)。★修脸结果一定要亲眼看是不是同一个人——平台的身份比对分不开长相接近的人。' +
-      '下载 composited_url 亲眼看过、讲给客户,客户选定后用 adopt_local_frame_edit。被拒候选不退点。',
+      'composited_url(贴回原图后的成品,给客户看的就是它)、verdict(pass=可直接用;warn=能用但要人看——REGION_SEAM_WARN 边界可能有接缝 / EDIT_NOT_APPLIED 基本没改到 / IDENTITY_NEEDS_REVIEW 修脸后人脸比对分在灰区、平台不自动放行 / IDENTITY_NOT_JUDGEABLE 侧脸·低头·脸太小等判不了 / IDENTITY_COMPARE_LOW 旧版身份比对分偏低 / IDENTITY_AUDIT_UNAVAILABLE 身份没审成;' +
+      'reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_MISMATCH 修脸后人脸比对判定换了人 / IDENTITY_AUDIT_REJECTED 帧审计不过,可能是原帧本身的构图问题)、reason_text(每条原因的中文说明,原样讲给客户)、metrics、identity_audit、' +
+      'identity_compare(修脸类身份比对:method=face_embedding 时按人脸特征向量判——与修改前同一张脸相似度 ≥0.75 放行、<0.60 判不像、中间交人看,vlm_reference 只记录;没有 method 字段的是旧版,只作参考)。★修脸结果仍要亲眼看是不是同一个人——侧脸、低头、小脸时平台判不了。' +
+      '下载 composited_url 亲眼看过、讲给客户,客户选定后用 adopt_local_frame_edit。被拒候选不退点(包括原帧本身问题导致帧审计不过的)。',
     { storyboard_id: z.number().int().positive(), edit_id: z.string().describe('来自 local_frame_edit') },
     async ({ storyboard_id, edit_id }) =>
       jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/frame/local-edit/${encodeURIComponent(edit_id)}`)),

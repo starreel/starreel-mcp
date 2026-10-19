@@ -648,7 +648,10 @@ content that will be rejected.
    platform pastes only that area back onto the original, so everything outside the
    box stays pixel-identical. Face/mouth edits need `character_id`; the portrait is **not** sent
    (with it the model redraws the portrait instead of the frame), the instruction
-   asks for the same person and the result is re-audited for identity. Results are **candidates, not the new frame**: show `composited_url`
+   asks for the same person and the pasted-back face is compared with the original (and the portrait):
+   a clear mismatch is rejected (`IDENTITY_MISMATCH`), an uncertain or unjudgeable one (side view,
+   looking down, small face) comes back as `warn` for a human look — relay each candidate's `reason_text`
+   to the customer as is, and still look at face edits yourself. Results are **candidates, not the new frame**: show `composited_url`
    from `get_local_frame_edit` to the customer, then `adopt_local_frame_edit` the one
    they pick. Each candidate is charged; candidates the platform rejects are **not
    refunded** — tell the customer that with the quote. Rolled out per drama and per `edit_kind`:
