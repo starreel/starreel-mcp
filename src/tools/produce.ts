@@ -1377,7 +1377,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'get_local_frame_edit',
     '查一次局部返修的进度与结果(免费)。status=running 继续等;completed 后逐个候选看:' +
       'composited_url(贴回原图后的成品,给客户看的就是它)、verdict(pass=可直接用;warn=能用但要人看——REGION_SEAM_WARN 边界可能有接缝 / EDIT_NOT_APPLIED 基本没改到 / IDENTITY_AUDIT_UNAVAILABLE 身份没审成;' +
-      'reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_MISMATCH 修脸后与本人比对不像 / IDENTITY_AUDIT_REJECTED 帧审计不过)、metrics、identity_audit、identity_compare(修脸类的身份比对分数与阈值)。' +
+      'reject=不建议用——REGION_MISALIGNED 贴回错位 / IDENTITY_AUDIT_REJECTED 帧审计不过)、metrics、identity_audit、identity_compare(修脸类身份比对:只作参考,分偏低记 IDENTITY_COMPARE_LOW 降为 warn)。★修脸结果一定要亲眼看是不是同一个人——平台的身份比对分不开长相接近的人。' +
       '下载 composited_url 亲眼看过、讲给客户,客户选定后用 adopt_local_frame_edit。被拒候选不退点。',
     { storyboard_id: z.number().int().positive(), edit_id: z.string().describe('来自 local_frame_edit') },
     async ({ storyboard_id, edit_id }) =>
