@@ -3554,6 +3554,33 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async({episode_id,dry_run,confirm_usage_billing})=>jsonResult(await client.producePost(`/episodes/${episode_id}/audit-seams`,{dry_run:dry_run!==false,confirm_usage_billing:confirm_usage_billing===true})),
   )
+  server.tool(
+    'preview_seams',
+    '★查转场/接缝问题先跑这个，不要反复导出整片。免费零扣费（纯 ffmpeg，不调厂商，也不现场合成配音）。'
+      + '按集为每处相邻镜接缝渲染一段短片：前镜出点前 1 秒 + 后镜入点后 1 秒（转场长于 0.5 秒时两侧各取 2×转场），'
+      + '套用当前 trim 窗口与转场设置，与终拼同一套建轴和渲染逻辑，看到的就是 compose_episode 重拼会得到的接缝（只缩小画幅；不含配乐与字幕）。'
+      + '同时给出两侧边缘帧对照图，并附上 audit_seams 的现有结论。'
+      + '异步：本工具只起任务，用 get_seam_previews 轮询到 status=done。'
+      + 'seams 可选，只重渲指定序号的缝（改了某处 trim/转场后复查用）。'
+      + '★看完再决定怎么修：动作没接上先 recommend_trim_window → trim_shot；转场不合适改转场；'
+      + '叠化重影、放大插镜、遮挡这类补救手法本身常引入新问题，改完务必再跑一次本工具复查那道缝。',
+    {
+      episode_id: z.number().int().positive(),
+      seams: z.array(z.number().int().min(0)).optional().describe('只渲染这些接缝序号（0 = 第 1 镜与第 2 镜之间）；缺省 = 全部'),
+    },
+    async ({ episode_id, seams }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/seam-previews`, seams?.length ? { seams } : {})),
+  )
+  server.tool(
+    'get_seam_previews',
+    '查 preview_seams 的进度与结果。免费。status=running 时看 progress.done/total；'
+      + 'status=done 时 result.seams[] 每道缝给出：from_shot_id/to_shot_id、transition（有效转场）、'
+      + 'left/right（两侧在源视频上的入出点 src_in_ms/src_out_ms，已含 trim）、preview_url（短片）、'
+      + 'compare_image_url（左=前镜转场开始前最后一帧，右=后镜转场结束后第一帧）、audit（audit_seams 结论；not_enabled=本剧未开启）。'
+      + 'result.synth_skipped_shot_ids 非空表示这些镜配音尚未合成，预览按无配音处理。单镜集 seam_count=0。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/seam-previews`)),
+  )
 
   // ========== P2 · 连续性 / 场景组 / 多画幅 ==========
   server.tool(

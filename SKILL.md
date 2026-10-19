@@ -1566,7 +1566,12 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   `applicable=false`) → `trim_shot`; ④ `audit_seams(episode_id)` for continuity
   between adjacent shots — the default `dry_run` is free, running it is billed by
   text tokens, so only pass `dry_run:false` + `confirm_usage_billing:true` after the
-  customer accepts; ⑤ `compose_episode`. When the cut shows a problem, come back to
+  customer accepts; ⑤ `preview_seams` → `get_seam_previews` (free: one 2-second
+  clip per seam — 1 s before the out point + 1 s after the in point, current trims
+  and transitions applied through the same build/render path as the final cut —
+  plus an edge-frame comparison image and the `audit_seams` verdict; re-run it on
+  the seam you changed, since crossfades / inserts / overlays used as patches often
+  create new problems); ⑥ `compose_episode`. When the cut shows a problem, come back to
   these tools to find the shot instead of re-exporting. Advisory only, not a gate;
   trims and seam audits don't invalidate the `review_videos` token.
 
