@@ -236,6 +236,7 @@ export const WORKFLOW_HINT =
   'get_jobs 清空后再用 get_storyboards 核对 seam_state:晋升被拒的替换图不留在 get_jobs 里,那道缝会仍是 unchained(review_frames 也会报 seam_unchained),按它的 action 重接。' +
   '没落地就审,审的是旧首帧,token 在新首帧落地后作废。' +
   '逐镜/批量出帧的集平台多半没自动接过(get_storyboards 的 seam_state=unchained 就是),跳过它不报错——代价是镜与镜之间画面对不上,成片一处一个跳切。' +
+  '接完还担心拼起来跳(人物左右位置、运动方向、景别对不上),出视频前可选 audit_seam_directions(查主体跳边/运动反向/景别跳级)(先 dry_run 报价,按 token 扣费,提示性不拦),结论用 get_seam_directions 读、讲给客户挑着修。' +
   '★★【尾帧别跳·出帧是两趟】generate_frames 默认只出首帧。约三成的镜**末态≠首态**(大运镜/物体脱手/状态改变),这些镜需要一张独立尾帧,而判据在平台侧、你从分镜文本猜不出来——' +
   '所以首帧出完必须调一次免费的 tail_frame_plan 拿逐镜清单,再 frame_type=last_frame 补上(generate_frames 的响应体里 shots_needing_last_frame 就是这个数,不为 0 别直接去 review_frames)。' +
   '跳过不报错、不拦你——代价是那些镜出视频时只有首帧一个锚,末态由模型自由发挥:动作做不到位、大运镜结束又回到起点构图。生产实测 32 集里 30 集整集只出了首帧,其中 23 集一路出完了视频。' +
@@ -1116,7 +1117,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'generate_shot_frame 单镜重生)再复审。' +
       '★还会报**镜间接缝**(warning,不拦):code=seam_unchained(标了连续却从没做过首尾帧衔接,或发起的衔接重生没落地 / 衔接后首帧又被重生)/' +
       'seam_broken(接过但没接上,或上一镜尾帧在衔接之后又重生过),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,' +
-      '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。' + AGENT_QC_HINT,
+      '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。' +
+      '★有相邻镜时响应还带 seam_direction_advisory(提示性,不影响 review_token):相邻镜方向对照(主体跳边/运动反向/景别跳级)的已有结论;' +
+      '还没观察过的接缝要先 audit_seam_directions dry_run 报价,客户同意后再执行。' + AGENT_QC_HINT,
     { episode_id: z.number().int().positive(), base_review_token: BASE_REVIEW_ARG },
     async ({ episode_id, base_review_token }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/frames`, base_review_token ? { base_review_token } : undefined)),
   )
@@ -3580,6 +3583,35 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + 'result.synth_skipped_shot_ids 非空表示这些镜配音尚未合成，预览按无配音处理。单镜集 seam_count=0。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/seam-previews`)),
+  )
+
+  server.tool(
+    'audit_seam_directions',
+    '出视频前的接缝方向对照(提示性,不拦任何步骤):对每对相邻镜拿「上一镜尾帧(没有就首帧)↔ 本镜首帧」看五件事——'+
+      '同一主体在画面左右跳边(视线也反了会一并写明)、运动方向反了、景别跳级(同一主体大远景↔特写)。单镜都对、拼起来跳,多半是这几维。'+
+      '视线单独反向、主光方向会被观察但不报:生产回放里这两维误报率太高(宁漏不扰)。'+
+      '与 audit_seams 互补:那个比身份/服装/道具/物体状态,不管方向和位置。'+
+      '★何时调:首帧(和要的尾帧)都出完、chain_frames 跑过之后,review_frames / generate_videos 之前。'+
+      '换场、声明跳切、插入镜、字卡黑场的接缝自动跳过。'+
+      '★先 dry_run(默认,免费):回待观察接缝与 estimated_points(上界)/ typical_points(通常花费),两个都告诉客户,按实际文本 token 扣费;'+
+      '客户同意后传 dry_run=false + confirm_usage_billing=true。执行是异步的,立即返回;过一两分钟用 get_seam_directions 读结论。'+
+      '已观察过且两侧帧没换的接缝不重复扣费。',
+    {
+      episode_id:z.number().int().positive(),
+      dry_run:z.boolean().optional().describe('默认 true:只回计划与报价'),
+      confirm_usage_billing:z.boolean().optional().describe('仅客户看过报价、明确同意按实际文本 token 扣费后传 true'),
+    },
+    async({episode_id,dry_run,confirm_usage_billing})=>jsonResult(await client.producePost(`/episodes/${episode_id}/audit-seam-directions`,{dry_run:dry_run!==false,confirm_usage_billing:confirm_usage_billing===true})),
+  )
+
+  server.tool(
+    'get_seam_directions',
+    '(免费)读 audit_seam_directions 的结论:issues 每条带接缝镜号、问题(主体跳边、运动反向、景别跳级)与 fixes 修复建议'+
+      '(chain_shot_from mode=reframe 以上一镜尾帧为锚重出本镜首帧 / update_shot 写明朝向后 generate_shot_frame / 上一镜已出视频时 align_prev_shot / split_shot 插过渡景别)。'+
+      '结论是提示性的:讲给客户,由客户挑要修的;有意的反打、转身、冲击剪辑可忽略。not_audited>0 = 还有接缝没观察或帧已换过;running=true = 还在跑。'+
+      'review_frames 的 seam_direction_advisory 是同一份结论的摘要。本工具只看出视频前的静帧;视频出完后查接缝用 preview_seams(免费短片预览)。',
+    {episode_id:z.number().int().positive()},
+    async({episode_id})=>jsonResult(await client.produceGet(`/episodes/${episode_id}/seam-directions`)),
   )
 
   // ========== P2 · 连续性 / 场景组 / 多画幅 ==========

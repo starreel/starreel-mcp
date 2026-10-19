@@ -543,6 +543,12 @@ content that will be rejected.
    `review_frames` flags the two actionable states as `seam_unchained` / `seam_broken`
    (warnings — they do not block `generate_videos`, but this is the cheapest point to fix
    them: the video is generated from the first frame).
+   Joined seams can still jump when the same subject sits on opposite sides of the frame,
+   moves in opposite directions, or the shot size leaps several steps. Optional, before videos:
+   `audit_seam_directions` (`dry_run` first — quote, billed by text tokens; advisory,
+   never blocks) compares each previous last frame with the next first frame; read the
+   results with `get_seam_directions` (also summarised in `review_frames` as
+   `seam_direction_advisory`) and let the customer pick which seams to fix.
    **Image model**: images use a drama-level model (default **ChatGPT Image 2.5
    Flare** = `gpt-image-2.5-flare`), set via `create_drama` /
    `update_project_settings` field `image_model` for one consistent look across
