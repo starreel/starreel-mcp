@@ -187,6 +187,7 @@ export const ENTRY_POINTS: EntryPoint[] = [
       'trim_shot',
       'recommend_trim_window',
       'preview_seams / get_seam_previews(每道接缝一段 2 秒短片 + 边缘帧对照,与终拼同逻辑;查转场不必导整片;免费)',
+      'build_av_timing_contract / get_av_timing_contract(逐镜音画时长契约:实测源片时长/入出点/定格与低运动尾段/人声混入视频还是独立轨/终拼起止与转场;与终拼同逻辑;免费)',
       'regenerate_shot_video',
       'edit_video_shot(就地编辑;get_edit_capabilities 先看当前引擎支持什么)',
       'repaint_shot_video / reskin_shot_video(保留原片动作、整体换人换装;get_repaint_capabilities 先看本剧开没开)',
@@ -213,6 +214,7 @@ export const ENTRY_POINTS: EntryPoint[] = [
     use: ['export_handoff_pack', 'get_handoff_toolchain', 'save_handoff_toolchain'],
     note: '与 `compose_episode` 二选一。★人声在哪要**逐镜**看 voice_track.location——整集的 audio_contract.mode 只是声明,' +
       '不是逐镜真值(全画外旁白镜的旁白是平台在完成侧混进裸片的);逐句核对看 spoken_lines,有字幕不等于有声音。' +
+      '拼之前跑 build_av_timing_contract(免费):逐镜实测源片时长、平台终拼的入出点与转场占用、哪几镜旁白已混进视频(别再配音),拿它核对总时长。' +
       '完整流程见 local_postproduction 段。',
   },
   {
@@ -407,7 +409,7 @@ export const COMMON_REQUESTS: CommonRequest[] = [
   { customer_says: '镜头之间接不上 / 画面跳 / 衔接不顺', do: '`get_storyboards` 看 seam_state:unchained / broken 才要修(unknown 是系统没判、intended 是有意切换,都别动)。还没出视频:整集 `chain_frames`(先 dry_run),单道同景别 `chain_shot_from_prev`(免费)、景别有变化 `quote_chain_shot_from` → `chain_shot_from` mode=reframe。上一镜视频已出好、不想动本镜首帧:`quote_align_prev_shot` → `align_prev_shot`(重生上一镜视频)。改了首帧的镜视频要重生。' },
   { customer_says: '成片里话没说完 / 切太快', do: '先 `scan_dialogue_coverage` / `scan_intra_shot_cuts` 定病因,再按 qa_tools 的 then 修;别默认去加长镜头。' },
   { customer_says: '下载原图或视频到本地调色、用第三方 AI 后期', do: '`export_handoff_pack` purpose=local_color；只有图片传 media_type=images；按 local_postproduction.color_handoff 执行。' },
-  { customer_says: '我想自己剪', do: '`export_handoff_pack` + `get_handoff_toolchain`,不走 `compose_episode`。' },
+  { customer_says: '我想自己剪', do: '`export_handoff_pack` + `build_av_timing_contract`(音画时长契约) + `get_handoff_toolchain`,不走 `compose_episode`。' },
   { customer_says: '做动作片 / 打斗 / 技能展示 / 这条参考动作片我们能不能做', do: '先 `get_capabilities_guide` section=action_film:资产照常走 `rewrite_script` → `review_script` → `extract_assets`,分镜改用自己写的表(`import_storyboard_table`)而不是 AI 拆镜,首帧停在起势,拖沓尾段用 `trim_shot` 剪;平台不支持镜内分段变速。' },
   { customer_says: '要配音 / 不要视频原声', do: '`update_project_settings` use_clip_audio=false → `assign_voices` → `generate_tts` → `compose_episode`。' },
 ]

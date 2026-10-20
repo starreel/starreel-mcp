@@ -107,7 +107,7 @@ announces a condensed version as MCP `instructions` at connect time.
 | Customer explicitly accepted a shot's video, then its frames / scene / character changed (the platform now flags that video stale) | `lock_shot_video` (only after the customer confirms; locks the **current** video plus the inputs it was made from — frames, prompt, reference list). While locked: `review_videos` stops reporting `video_stale` for it (a `video_locked_frames_changed` warning instead), `get_asset_versions` shows `acceptance_locked`, native-voice `stale_shots` skip it, and every call that would replace it (`regenerate_shot_video`, `edit_video_shot`, repaint / reskin, footage upload / clear, a whole-episode `generate_videos` that would re-run its scene group) is refused with **409 VIDEO_LOCKED**. To replace it later, get the customer's OK and `unlock_shot_video` first. If the video is swapped by another path the lock lapses on its own (`video_lock.broken`) | regenerating an accepted shot just because it shows as stale; locking on your own judgement or because generation finished |
 | Wants an old image **permanently** deleted from storage (not just unlinked) | `preview_delete_asset` → show the customer exactly what it says (blocking references, history that will break, copies) → only after an explicit "confirm delete" → `delete_asset` with the `confirm_token`. Irreversible; only the drama owner; only files with trusted provenance (generated for this drama, or uploaded through the platform with a grant record) | deleting without showing the preview; retrying automatically; treating `list_unlinked_assets` as proof the file is unused |
 | Cross-era drama (scenes in different periods) — checking props fit their period | `get_props` → read each prop's `era_audit` (`form_consistent`, `conflicting_scopes`, `violations`); `audit_prop_era` to re-check after a new sheet. On a conflict: `update_prop` with a precise `era_lock` (dynasty + physical form) → `generate_prop_sheet`, or bind a different prop to those shots. `run_precheck` also lists shots whose bound prop conflicts (`prop-era-conflict`) | trusting the prop's name or description alone; regenerating shot frames before the prop sheet is fixed |
-| Wants to assemble the cut themselves | `export_handoff_pack` → `get_handoff_toolchain` → **`register_external_delivery`** when the cut is final | `compose_episode` (pick one); delivering a cut the platform has no record of |
+| Wants to assemble the cut themselves | `export_handoff_pack` → `build_av_timing_contract` → `get_handoff_toolchain` → **`register_external_delivery`** when the cut is final | `compose_episode` (pick one); delivering a cut the platform has no record of |
 | A multi-language release | `translate_subtitles` · `subtitle_secondary_lang` in project settings | — |
 
 ### Customer-supplied images
@@ -1547,7 +1547,12 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   `compose_episode` when you want the platform's finishing pipeline (pre-flight
   checks, A/V duration parity, loudness mastering). Call
   `get_capabilities_guide(section="local_postproduction")` for the full stage-by-stage
-  walkthrough. Three facts that will bite you: **where the voice lives is per-shot —
+  walkthrough. Before you assemble, run `build_av_timing_contract` →
+  `get_av_timing_contract` (free): per shot the measured source length, the
+  platform's in/out points, transition overlap and freeze padding, and whether the
+  voice is already mixed into the clip (`voice.in_final_cut=mixed_into_video` —
+  never dub it again) or on a separate track; check your total against it.
+  Three facts that will bite you: **where the voice lives is per-shot —
   read `shots[].voice_track.location`, never the episode-level
   `audio_contract.mode`** (that field is a declaration; fully-offscreen narration
   shots get their voice mixed into the raw clip on our side, so even a `mode="tts"`

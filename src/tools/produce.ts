@@ -3647,6 +3647,23 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
 
   server.tool(
+    'build_av_timing_contract',
+    '★外部 agent 自己拼片、或要核对「成片为什么是这个长度」时先跑这个，别按分镜写的秒数直接拼。免费零扣费（纯 ffprobe + 本地活动检测，不调厂商，也不现场合成配音）。按集给出「音画时长契约」：逐镜 source.duration_ms（ffprobe 实测源片时长，不是分镜秒数）与 excess_over_declared_ms（厂商多给的尾段）；trim.in_ms/out_ms（进成片的源片入出点，已含自动掐头与 trim_shot；无 trim 的镜 full_length=true）；action（有效动作区间与推荐裁剪窗口，复用 recommend_trim_window 的活动检测）；tail（freeze_pad_ms=渲染器克隆末帧补齐的定格时长，low_motion_in_cut_ms=动作结束后仍留在成片里的低运动尾段）；voice.in_final_cut（mixed_into_video=人声已混在视频音轨里，不许再配音；separate_track=独立对白轨，dialogue_track 给时间轴区间；pending_synthesis/missing/unknown/double_voice 见指令）；timeline（终拼时间轴起止、transition_in 重叠、transition_out_overlap_ms、exclusive 独占区间）。整集 summary 给总时长、转场重叠总和、各轨跨度与超出画面终点的轨。planned 与 compose_episode 同一套建轴；final_cut 读上次成片实际用的时间轴并实测成片时长（duration_check），drift_vs_planned 列出现在重拼会变的镜。异步：本工具只起任务，用 get_av_timing_contract 轮询到 status=done。include_activity=false 可跳过活动检测（快，但没有动作区间与低运动尾段）。',
+    {
+      episode_id: z.number().int().positive(),
+      include_activity: z.boolean().optional().describe('默认 true：逐镜跑活动检测（有效动作区间 / 低运动尾段）；false 只算时间轴与探测，快'),
+    },
+    async ({ episode_id, include_activity }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/av-timing-contract`, include_activity === false ? { include_activity: false } : {})),
+  )
+  server.tool(
+    'get_av_timing_contract',
+    '查 build_av_timing_contract 的进度与结果。免费。status=running 时看 progress（stage=build_timeline/activity/probe）；status=done 时 result.planned 是现在重拼会得到的逐镜契约，result.final_cut 是上次成片（contract=存档时间轴推出的契约，probed=成片实测，duration_check.matches=总时长在 100ms 容差内一致，drift_vs_planned=两者不同的镜；timeline_association≠verified 时存档时间轴已不是成片用的那份，contract 不提供）。★自己拼片按 shots[].timeline 排位、按 trim.in_ms/out_ms 截源片；voice.in_final_cut=mixed_into_video 的镜直接用视频原声，绝不再叠配音。result.synth_skipped_shot_ids 非空 = 这些镜配音尚未合成（成片时现场合成扣费），对白轨区间暂缺。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/av-timing-contract`)),
+  )
+
+  server.tool(
     'audit_seam_directions',
     '出视频前的接缝方向对照(提示性,不拦任何步骤):对每对相邻镜拿「上一镜尾帧(没有就首帧)↔ 本镜首帧」看五件事——'+
       '同一主体在画面左右跳边(视线也反了会一并写明)、运动方向反了、景别跳级(同一主体大远景↔特写)。单镜都对、拼起来跳,多半是这几维。'+
@@ -4097,6 +4114,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '首尾形变帧一起拼进去。\n' +
       '③ 字幕 cue、dialogue_audio.offset_ms、sfx[].offset_ms 的基准都是「该镜 trim 之后的第 0 毫秒」,' +
       '不是成片绝对时间。你加多少重叠转场都不用改它们——交给 compile_timeline.py 展开,别手算累加。\n' +
+      '\n拼之前先跑 build_av_timing_contract → get_av_timing_contract(免费):逐镜实测源片时长、平台终拼的入出点/转场占用/定格补帧、人声已混入视频还是独立轨,拿它核对你的时间轴总长。' +
       '\n想让平台代拼、要平台级质量闸(终拼预检/音画等长/响度母带),改用 compose_episode。',
     {
       episode_id: z.number().int().positive(),
