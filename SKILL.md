@@ -1561,7 +1561,18 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   gone and you should regenerate that shot rather than paper over it). Check per line
   with `shots[].spoken_lines[]`: subtitles are per-line but audio is per-shot, so
   **having subtitles never means having sound**; every shot must be cut to
-  `trim_head_ms`/`duration_ms` or you splice in frames the platform already QC'd out;
+  `trim_head_ms`/`duration_ms` or you splice in frames the platform already QC'd out.
+  Since `manifest_version` **0.2** those in/out points are projected from the
+  platform's own final-cut timeline (the same numbers `build_av_timing_contract`
+  reports, the same cut `compose_episode` renders) and `clip.url` is the file that
+  timeline actually uses (`clip.source_kind`); 0.1 packs computed their own trim and
+  did not match the platform cut. Honour `speed_factor` (retime the shot) and
+  `freeze_pad_ms` (clone the last frame) —
+  `duration_ms = (out_ms − in_ms) / speed_factor + freeze_pad_ms`; don't burn
+  subtitles again on `subtitles_burned_in=true` shots or apply the LUT on
+  `color_graded=true` shots; `trim_basis` other than `platform_timeline` means the
+  shot is untrimmed and `notes` say why. A saved toolchain that only accepts 0.1
+  will refuse a 0.2 manifest — run `save_handoff_toolchain` again;
   and all subtitle/dialogue/SFX offsets are relative to **each shot's own trimmed
   start**, not to the final timeline — add whatever overlapping transitions you like
   and let `compile_timeline.py` expand them, never hand-compute the shift.

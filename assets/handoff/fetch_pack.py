@@ -148,8 +148,9 @@ def main():
     # MCP 工具可能把 manifest 包在 data 里返回，两种都认
     m = m.get("data", m) if isinstance(m.get("data"), dict) else m
 
-    if m.get("manifest_version") != "0.1":
-        sys.exit(f"不认识的 manifest_version: {m.get('manifest_version')!r}，拒绝猜测")
+    # 0.2 = 入出点投影自平台终拼时间轴（新增 speed_factor / freeze_pad_ms / subtitles_burned_in 等）；0.1 仍认
+    if m.get("manifest_version") not in ("0.1", "0.2"):
+        sys.exit(f"不认识的 manifest_version: {m.get('manifest_version')!r}，拒绝猜测（工具链过旧请重新 save_handoff_toolchain）")
 
     out = a.outdir
     local_color = (m.get("postproduction") or {}).get("workflow") == "local_color"
@@ -181,7 +182,10 @@ def main():
         clip = sh.get("clip") or {}
         if clip.get("url"):
             rel = f"clips/shot_{tag}.mp4"
-            expected_hashes[rel] = (sh.get("provenance") or {}).get("generation_sha256")
+            prov = sh.get("provenance") or {}
+            # 0.2：按实际交付文件的摘要校验；发的是合成 / 口型 / 换轨片时没有落库摘要（null）= 不校验，
+            # 绝不拿原片摘要去比派生片。0.1 清单没有这个键，沿用原片摘要
+            expected_hashes[rel] = prov["delivered_sha256"] if "delivered_sha256" in prov else prov.get("generation_sha256")
             jobs.append((clip.pop("url"), rel))
             clip["file"] = rel
 
@@ -200,6 +204,10 @@ def main():
 
         # 内联 cues → 逐镜 SRT（时间码基准仍是「该镜 trim 后的第 0 毫秒」，不做任何平移）
         cues = ((sh.get("subtitle") or {}).get("cues")) or []
+        if cues and clip.get("subtitles_burned_in"):
+            # 旧版合成片已烧字幕：不出 SRT，否则装配时再烧一层
+            print(f"镜 {n}: 片里已烧字幕（subtitles_burned_in），跳过 SRT", file=sys.stderr)
+            cues = []
         if cues:
             rel = f"subs/shot_{tag}.srt"
             cnt = write_srt(os.path.join(out, rel), cues)

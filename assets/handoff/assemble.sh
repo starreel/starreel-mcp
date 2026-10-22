@@ -77,14 +77,33 @@ for i in $(seq 0 $((NSHOTS - 1))); do
   SRC="${PACK}/$(jq -r '.file' <<<"${S}")"
   SS=$(ms2s "$(jq -r '.trim_head_ms' <<<"${S}")")
   DUR=$(ms2s "$(jq -r '.duration_ms' <<<"${S}")")
+  # 0.2：源片取 TAKE 毫秒，按 SPEED 变速，不够长的部分克隆末帧补 PAD（与平台渲染器同一做法）
+  TAKE=$(ms2s "$(jq -r '.src_take_ms // .duration_ms' <<<"${S}")")
+  SPEED=$(jq -r '.speed_factor // 1' <<<"${S}")
+  # 原声可能比视频流长（厂商音频尾 / 口型片按容器时长取材）：输入按整段播放所需的源片时长读，
+  # 视频再单独截到 TAKE —— 输入 -t 会连音频一起截掉，后面 apad 补出来的只是静音
+  READ=$(awk -v d="$(jq -r '.duration_ms' <<<"${S}")" -v s="${SPEED}" -v t="$(jq -r '.src_take_ms // .duration_ms' <<<"${S}")" \
+    'BEGIN{r=d*s; if(r<t)r=t; printf "%.3f", r/1000}')
+  PAD=$(jq -r '.freeze_pad_ms // 0' <<<"${S}")
   BAKED=$(jq -r '.has_baked_audio' <<<"${S}")
+  # 已调色的合成片不再套查找表（双重调色）
+  SHOT_LUT="${LUT_FILE}"
+  [ "$(jq -r '.color_graded // false' <<<"${S}")" = "true" ] && SHOT_LUT=""
+  # 人声烤在片里（逐镜判定，不看整集 mode）且片子真有音轨 → 用片子原声
+  HAS_A=$(ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "${SRC}" | head -1)
   DST="${TMP}/shot_$(printf '%03d' "${N}").mkv"
 
   # 中间产物一律 mkv + pcm_s16le：aac 每段都带 ~21ms(1024 samples) 编码器 priming
   # delay，走 adelay/amix 时每镜音频会整体提前约半帧，重叠转场下误差还会叠加。
   # 只在阶段 4 最后一次编 aac。
   # 视频：先 trim 再统一到目标画布/帧率。scale+pad 保证不同源尺寸也能拼。
-  VF="scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${FPS}"
+  VF="trim=duration=${TAKE},setpts=PTS-STARTPTS,scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${FPS}"
+  AF="anull"
+  if [ "${SPEED}" != "1" ]; then
+    VF="${VF/setpts=PTS-STARTPTS,/setpts=(PTS-STARTPTS)/${SPEED},}"
+    AF="atempo=${SPEED}"
+  fi
+  [ "${PAD}" != "0" ] && VF="${VF},tpad=stop_mode=clone:stop_duration=$(ms2s "${PAD}")"
 
   # baked-cut（闪白/闪黑）：硬切 + 本镜片头快速过曝/压黑，**不重叠**。
   # 平台实测：这类效果走 xfade 会变成双重闪 + 130ms 重叠 + 口型/音频瞬断，
@@ -96,65 +115,53 @@ for i in $(seq 0 $((NSHOTS - 1))); do
     VF="${VF},fade=t=in:st=0:d=$(ms2s "${FMS}"):color=${FLASH}"
   fi
 
-  INPUTS=(-ss "${SS}" -t "${DUR}" -i "${SRC}")
-  if [ "${MODE}" = "clip" ] && [ "${BAKED}" = "true" ]; then
-    # 裸片自带人声：直接用它的音轨，绝不再叠对白（叠了就是双声）
-    if [ -n "${LUT_FILE}" ]; then
-      ffmpeg -hide_banner -loglevel error -y "${INPUTS[@]}" -i "${LUT_FILE}" \
-        -filter_complex "[0:v]${VF}[g];[g][1:v]haldclut[v]" \
-        -map "[v]" -map 0:a:0? \
-        -c:v libx264 -b:v "${VB}" -pix_fmt yuv420p -c:a pcm_s16le -ar 48000 -ac 2 \
-        -shortest "${DST}"
-    else
-      ffmpeg -hide_banner -loglevel error -y "${INPUTS[@]}" \
-        -vf "${VF}" -map 0:v:0 -map 0:a:0? \
-        -c:v libx264 -b:v "${VB}" -pix_fmt yuv420p -c:a pcm_s16le -ar 48000 -ac 2 \
-        -shortest "${DST}"
-    fi
+  # 静音底 + （人声烤在片里时）片子原声 + 对白 + 音效，全部按镜内 offset 落位。
+  # 输入索引是固定契约：0=静音底  1=视频  2..=对白/音效（按下面的追加顺序）
+  INPUTS=(-f lavfi -t "${DUR}" -i "anullsrc=r=48000:cl=stereo"
+          -ss "${SS}" -t "${READ}" -i "${SRC}")
+  FILTER=""; LABELS="[0:a]"; IDX=2; NCLIP=0
+
+  # 人声烤在片里（逐镜判定，不看整集 mode）：用片子原声，绝不再叠对白（叠了就是双声）；补帧段补静音
+  if [ "${BAKED}" = "true" ] && [ -n "${HAS_A}" ]; then
+    FILTER+="[1:a]${AF},apad[c];"; LABELS+="[c]"; NCLIP=1
+  fi
+
+  DLG=$(jq -c '.dialogue // empty' <<<"${S}")
+  if [ "${BAKED}" != "true" ] && [ -n "${DLG}" ] && [ "${DLG}" != "null" ]; then
+    DOFF=$(jq -r '.offset_ms // 0' <<<"${DLG}")
+    DGAIN=$(jq -r '.gain_db // 0' <<<"${DLG}")
+    INPUTS+=(-i "${PACK}/$(jq -r '.file' <<<"${DLG}")")
+    FILTER+="[${IDX}:a]adelay=${DOFF}|${DOFF},volume=${DGAIN}dB[d];"
+    LABELS+="[d]"; IDX=$((IDX + 1))
+  fi
+
+  NSFX=$(jq -r '.sfx | length' <<<"${S}")
+  for ((j = 0; j < NSFX; j++)); do
+    X=$(jq -c ".sfx[${j}]" <<<"${S}")
+    XOFF=$(jq -r '.offset_ms // 0' <<<"${X}")
+    XGAIN=$(jq -r '.gain_db // 0' <<<"${X}")
+    INPUTS+=(-i "${PACK}/$(jq -r '.file' <<<"${X}")")
+    FILTER+="[${IDX}:a]adelay=${XOFF}|${XOFF},volume=${XGAIN}dB[x${j}];"
+    LABELS+="[x${j}]"; IDX=$((IDX + 1))
+  done
+
+  # 混入静音底：amix 的 inputs = 底轨 + 片子原声 + 对白 + 音效，normalize=0 保住各自增益
+  NMIX=$((IDX - 1 + NCLIP))
+  FILTER+="${LABELS}amix=inputs=${NMIX}:normalize=0:dropout_transition=0[aout]"
+
+  if [ -n "${SHOT_LUT}" ]; then
+    INPUTS+=(-i "${SHOT_LUT}")
+    ffmpeg -hide_banner -loglevel error -y "${INPUTS[@]}" \
+      -filter_complex "${FILTER};[1:v]${VF}[g];[g][${IDX}:v]haldclut[v]" \
+      -map "[v]" -map "[aout]" -t "${DUR}" \
+      -c:v libx264 -b:v "${VB}" -pix_fmt yuv420p -c:a pcm_s16le -ar 48000 -ac 2 \
+      "${DST}"
   else
-    # TTS 模式：裸片无人声。静音底 + 对白 + 音效，全部按镜内 offset 落位。
-    # 输入索引是固定契约：0=静音底  1=视频  2..=对白/音效（按下面的追加顺序）
-    INPUTS=(-f lavfi -t "${DUR}" -i "anullsrc=r=48000:cl=stereo"
-            -ss "${SS}" -t "${DUR}" -i "${SRC}")
-    FILTER=""; LABELS="[0:a]"; IDX=2
-
-    DLG=$(jq -c '.dialogue // empty' <<<"${S}")
-    if [ -n "${DLG}" ] && [ "${DLG}" != "null" ]; then
-      DOFF=$(jq -r '.offset_ms // 0' <<<"${DLG}")
-      DGAIN=$(jq -r '.gain_db // 0' <<<"${DLG}")
-      INPUTS+=(-i "${PACK}/$(jq -r '.file' <<<"${DLG}")")
-      FILTER+="[${IDX}:a]adelay=${DOFF}|${DOFF},volume=${DGAIN}dB[d];"
-      LABELS+="[d]"; IDX=$((IDX + 1))
-    fi
-
-    NSFX=$(jq -r '.sfx | length' <<<"${S}")
-    for ((j = 0; j < NSFX; j++)); do
-      X=$(jq -c ".sfx[${j}]" <<<"${S}")
-      XOFF=$(jq -r '.offset_ms // 0' <<<"${X}")
-      XGAIN=$(jq -r '.gain_db // 0' <<<"${X}")
-      INPUTS+=(-i "${PACK}/$(jq -r '.file' <<<"${X}")")
-      FILTER+="[${IDX}:a]adelay=${XOFF}|${XOFF},volume=${XGAIN}dB[x${j}];"
-      LABELS+="[x${j}]"; IDX=$((IDX + 1))
-    done
-
-    # 混入静音底：amix 的 inputs = 底轨 + 对白 + 音效，normalize=0 保住各自增益
-    NMIX=$((IDX - 1))
-    FILTER+="${LABELS}amix=inputs=${NMIX}:normalize=0:dropout_transition=0[aout]"
-
-    if [ -n "${LUT_FILE}" ]; then
-      INPUTS+=(-i "${LUT_FILE}")
-      ffmpeg -hide_banner -loglevel error -y "${INPUTS[@]}" \
-        -filter_complex "${FILTER};[1:v]${VF}[g];[g][${IDX}:v]haldclut[v]" \
-        -map "[v]" -map "[aout]" -t "${DUR}" \
-        -c:v libx264 -b:v "${VB}" -pix_fmt yuv420p -c:a pcm_s16le -ar 48000 -ac 2 \
-        "${DST}"
-    else
-      ffmpeg -hide_banner -loglevel error -y "${INPUTS[@]}" \
-        -filter_complex "${FILTER}" \
-        -map 1:v:0 -vf "${VF}" -map "[aout]" -t "${DUR}" \
-        -c:v libx264 -b:v "${VB}" -pix_fmt yuv420p -c:a pcm_s16le -ar 48000 -ac 2 \
-        "${DST}"
-    fi
+    ffmpeg -hide_banner -loglevel error -y "${INPUTS[@]}" \
+      -filter_complex "${FILTER}" \
+      -map 1:v:0 -vf "${VF}" -map "[aout]" -t "${DUR}" \
+      -c:v libx264 -b:v "${VB}" -pix_fmt yuv420p -c:a pcm_s16le -ar 48000 -ac 2 \
+      "${DST}"
   fi
   echo "file '$(cd "$(dirname "${DST}")" && pwd)/$(basename "${DST}")'" >> "${TMP}/concat.txt"
 done

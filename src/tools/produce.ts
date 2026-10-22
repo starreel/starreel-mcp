@@ -4111,7 +4111,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★有字幕从来不等于有声音:字幕是逐句的,音频是逐镜的。`conflicts_with_contract=true` 的镜' +
       '以实测为准,notes 里已按镜号点名。\n' +
       '② 每镜必须按 trim_head_ms / duration_ms 裁剪再用;直接拼整条裸片会把平台已经 QC 掉的' +
-      '首尾形变帧一起拼进去。\n' +
+      '首尾形变帧一起拼进去。★manifest_version=0.2 起入出点投影自平台终拼时间轴(与 build_av_timing_contract、' +
+      '平台成片同一套),clip.url 是时间轴实际用的那个文件(clip.source_kind);0.1 时代交接包自算的 trim 与成片对不上。' +
+      'speed_factor≠1 要按倍率变速、freeze_pad_ms>0 要克隆末帧补齐(duration_ms=(out_ms−in_ms)/speed_factor+freeze_pad_ms),' +
+      '否则总长对不上;subtitles_burned_in=true 别再烧字幕,color_graded=true 别再套 LUT;' +
+      'trim_basis≠platform_timeline 的镜是整条不裁,notes 写了原因。工具链只认 0.1 的旧副本会拒收 0.2,重新 save_handoff_toolchain。\n' +
       '③ 字幕 cue、dialogue_audio.offset_ms、sfx[].offset_ms 的基准都是「该镜 trim 之后的第 0 毫秒」,' +
       '不是成片绝对时间。你加多少重叠转场都不用改它们——交给 compile_timeline.py 展开,别手算累加。\n' +
       '\n拼之前先跑 build_av_timing_contract → get_av_timing_contract(免费):逐镜实测源片时长、平台终拼的入出点/转场占用/定格补帧、人声已混入视频还是独立轨,拿它核对你的时间轴总长。' +

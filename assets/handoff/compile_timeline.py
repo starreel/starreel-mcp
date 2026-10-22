@@ -120,8 +120,8 @@ def write_srt(path, cues):
 # ── 编译 ───────────────────────────────────────────────────────────────────
 def compile_timeline(pack_dir, plan_path=None, outdir=None):
     manifest = json.load(open(os.path.join(pack_dir, "manifest.json"), encoding="utf-8"))
-    if manifest.get("manifest_version") != "0.1":
-        sys.exit(f"不认识的 manifest_version: {manifest.get('manifest_version')!r}，拒绝猜测")
+    if manifest.get("manifest_version") not in ("0.1", "0.2"):
+        sys.exit(f"不认识的 manifest_version: {manifest.get('manifest_version')!r}，拒绝猜测（工具链过旧请重新 save_handoff_toolchain）")
 
     overlaps, trans = {}, {}
     if plan_path:
@@ -185,6 +185,12 @@ def compile_timeline(pack_dir, plan_path=None, outdir=None):
             "trim_head_ms": int(sh["clip"].get("trim_head_ms", 0)),
             "trim_tail_ms": int(sh["clip"].get("trim_tail_ms", 0)),
             "duration_ms": dur,
+            # 0.2：源片实际取多少（变速 / 定格补帧时 ≠ duration_ms）；0.1 没有这些字段 = 常速整取
+            "src_take_ms": int(sh["clip"]["out_ms"]) - int(sh["clip"]["in_ms"])
+                           if sh["clip"].get("out_ms") is not None and sh["clip"].get("in_ms") is not None else dur,
+            "speed_factor": float(sh["clip"].get("speed_factor") or 1),
+            "freeze_pad_ms": int(sh["clip"].get("freeze_pad_ms") or 0),
+            "color_graded": bool(sh["clip"].get("color_graded")),
             "in_ms": in_ms,
             "overlap_ms": ov,
             "has_baked_audio": bool(sh["clip"].get("has_baked_audio")),
