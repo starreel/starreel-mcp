@@ -1482,6 +1482,17 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   `voice_gain_db` for the TTS dialogue + narration track); one music section's level, fades,
   where in the track it starts (`track_offset_ms`) and how late after its first shot it comes in
   (`start_shift_ms`) via `list_bgm_cues` → `update_bgm_cue`. Don't download the cut to re-mix it locally.
+- **Theme song with vocals** (free; settings only — `compose_episode` again): `get_theme_songs` →
+  `set_theme_songs` attaches an opening / ending / insert song to an episode (the customer's own
+  upload via `upload-url` kind=audio, or a `track_id`). Give the song's backing track as
+  `instrumental_url` and dialogue lines automatically swap the vocal for the backing track;
+  without it the whole song ducks by `duck_db` (default −18 dB) while someone speaks. Background
+  music yields inside the song's range. `enabled=false` = the drama isn't switched on yet.
+- **Poem / lyric text cards** (free; `compose_episode` again): `get_shot_verse_cards` →
+  `set_shot_verse_cards` — up to 6 vertical or horizontal cards per shot (left / right / center,
+  own fade-in/out and start time), a full-screen black closing card (`backdrop: "black"`) and
+  scrolling end credits (`motion: "scroll_up"`). Cards stay out of the dialogue-subtitle band.
+  Use only the text the customer supplied. Don't overlay text on a downloaded cut.
 - **Finish**: `compose_episode`, `get_final_cut`, `get_export`,
   `generate_episode_poster`, `generate_cover`
 - **What did this drama cost?** `get_drama_bill` — per kind `charged` / `refunded`

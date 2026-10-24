@@ -2973,6 +2973,66 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       })),
   )
   server.tool(
+    'get_shot_verse_cards',
+    '读这一镜的诗句/歌词字卡现值(免费)。set_shot_verse_cards 是**整组覆盖**,改之前先读。enabled=false 表示本剧尚未开通(存了也暂不进成片)。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) =>
+      jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/verse-cards`)),
+  )
+  server.tool(
+    'set_shot_verse_cards',
+    '给某一镜加/改/清「诗句·歌词字卡」(终拼时烧进成片;免费纯数据)。一镜最多 6 张,**整组覆盖**(先 get_shot_verse_cards 读现值再改),cards=[] 清空。国风电影感短片的三种标配都走它:①画面一侧/居中淡入的竖排或横排诗句、歌词(text 里换行=另起一列/一行,标点原样保留,可多张错开 start_ms 依次出现);②整屏黑底结语卡 backdrop=\"black\"(通常放末镜,orient=horizontal、position=center);③叠在画面上的片尾名单 motion=\"scroll_up\"(自下而上滚动,一行一个名字,空行分组)。字卡自动避开对白字幕所在的那条带,不会与台词重叠;字号放不下会自动缩小,不会顶出画面。改完调 compose_episode 重新终拼生效(rerender_episode 沿用已存时间轴,带不上)。get_shot_verse_cards 的 enabled=false 表示本剧尚未开通(存了也暂不进成片)。★别自己下载视频叠字再上传——那会绕开渲染机字体与字幕避让。★文字只写客户给的诗句/名单,别替客户编。',
+    {
+      storyboard_id: z.number().int().positive(),
+      cards: z.array(z.object({
+        text: z.string().min(1).describe('字卡文字;换行=另起一列(竖排)/一行(横排);≤300 字'),
+        orient: z.enum(['vertical', 'horizontal']).optional().describe('默认 vertical 竖排(从右往左);滚动名单自动横排'),
+        position: z.enum(['left', 'right', 'center']).optional().describe('默认 right;滚动名单默认 center'),
+        start_ms: z.number().int().min(0).max(60000).optional().describe('镜内起点毫秒(相对本镜开头),默认 0'),
+        duration_ms: z.number().int().min(500).max(60000).optional().describe('显示时长,默认 4000;超出本镜部分截掉'),
+        fade_in_ms: z.number().int().min(0).max(5000).optional().describe('淡入毫秒,默认 600'),
+        fade_out_ms: z.number().int().min(0).max(5000).optional().describe('淡出毫秒,默认 600'),
+        font_size: z.number().int().min(20).max(200).optional().describe('字号上限(输出像素),默认 64;放不下自动缩小'),
+        font: z.string().optional().describe('字体名,默认行书 Zhi Mang Xing;规整宋体填 Noto Serif CJK SC(渲染机已装的才生效)'),
+        backdrop: z.enum(['none', 'black']).optional().describe('black = 整屏黑底结语卡'),
+        motion: z.enum(['static', 'scroll_up']).optional().describe('scroll_up = 自下而上滚动的片尾名单'),
+      })).max(6).describe('整组字卡(顺序即渲染顺序);[] = 清空本镜字卡'),
+    },
+    async ({ storyboard_id, cards }) =>
+      jsonResult(await client.producePut(`/storyboards/${storyboard_id}/verse-cards`, { cards })),
+  )
+  server.tool(
+    'get_theme_songs',
+    '读某一集的主题曲设置(免费)。set_theme_songs 是**整组覆盖**,改之前先读。enabled=false 表示本剧尚未开通(存了也暂不进成片)。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) =>
+      jsonResult(await client.produceGet(`/episodes/${episode_id}/theme-songs`)),
+  )
+  server.tool(
+    'set_theme_songs',
+    '给某一集挂/改/清**带人声的主题曲**(片头曲、片尾曲或某几镜的插曲;免费纯数据,整组覆盖,songs=[] 清空;一集最多 3 首)。歌来源三选一:①客户自己的歌——先 upload-url(kind=audio)上传拿 public_url 当 audio_url;②平台作曲/曲库——带 track_id(get_mv_song、list 曲库返回的 id);③已有 https 地址。placement:opening=片头(从 0 开始,放到歌完或 sb_to 那镜结束)/ending=片尾(贴片尾,或从 sb_from 那镜开始)/range=sb_from~sb_to 镜头段落(两端必填)。人声不和台词打架:给了 instrumental_url(同一首歌的伴奏轨)默认 dialogue_mode=instrumental——有台词时人声渐隐、伴奏接上,说完换回;只有原曲则 dialogue_mode=duck——有台词时整首压低 duck_db(默认 -18dB)。主题曲播放区间里配乐自动让开(bgm_yield,默认 true),区间外照常。gain_db 默认 -8,track_offset_ms 跳过前奏。改完调 compose_episode 重新终拼生效;enabled=false 表示本剧尚未开通。★别自己下载成片混音再上传。',
+    {
+      episode_id: z.number().int().positive(),
+      songs: z.array(z.object({
+        audio_url: z.string().optional().describe('原曲(带人声)https 地址或 static/ 路径;与 track_id 二选一'),
+        track_id: z.number().int().positive().optional().describe('曲库/平台作曲的曲目 id(本人上传或公开的)'),
+        instrumental_url: z.string().optional().describe('同一首歌的伴奏轨(与原曲逐采样对齐);给了才能「台词段只留伴奏」'),
+        placement: z.enum(['opening', 'ending', 'range']),
+        sb_from: z.number().int().positive().optional().describe('起镜号(storyboard_number)'),
+        sb_to: z.number().int().positive().optional().describe('止镜号(含)'),
+        track_offset_ms: z.number().int().min(0).optional().describe('从曲内第几毫秒开始放(跳过前奏)'),
+        gain_db: z.number().min(-30).max(6).optional().describe('主题曲音量 dB,默认 -8'),
+        fade_in_ms: z.number().int().min(0).max(10000).optional().describe('默认 1000'),
+        fade_out_ms: z.number().int().min(0).max(10000).optional().describe('默认 2000'),
+        dialogue_mode: z.enum(['duck', 'instrumental']).optional().describe('有台词时:duck=整首压低;instrumental=切伴奏(需 instrumental_url)'),
+        duck_db: z.number().min(-40).max(0).optional().describe('duck 模式压低量 dB,默认 -18'),
+        bgm_yield: z.boolean().optional().describe('播放区间里配乐让开,默认 true'),
+      })).max(3).describe('整组主题曲;[] = 清空'),
+    },
+    async ({ episode_id, songs }) =>
+      jsonResult(await client.producePut(`/episodes/${episode_id}/theme-songs`, { songs })),
+  )
+  server.tool(
     'extract_segment_to_library',
     '把某一镜（或某集成片）的某个时间区间抽出来，存成可复用的素材，进我的素材库。免费（纯剪切，不走厂商）。' +
       '典型用法:闪回/回忆蒙太奇——画面全用已有镜头，边际成本为 0。' +

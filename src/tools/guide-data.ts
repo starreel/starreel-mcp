@@ -305,9 +305,9 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '9 音频',
-    tools: ['assign_voices', 'generate_tts(仅 use_clip_audio=false)', 'clone_voice', 'generate_bgm', 'get_bgm_plan', 'quote_bgm_candidates', 'select_bgm_candidate', 'get_bgm_status', 'generate_sfx', 'lipsync_shot', 'lipsync_episode', 'get_lipsync_status', 'set_shot_name_card'],
+    tools: ['assign_voices', 'generate_tts(仅 use_clip_audio=false)', 'clone_voice', 'generate_bgm', 'get_bgm_plan', 'quote_bgm_candidates', 'select_bgm_candidate', 'get_bgm_status', 'generate_sfx', 'lipsync_shot', 'lipsync_episode', 'get_lipsync_status', 'set_shot_name_card', 'set_shot_verse_cards(诗句/歌词字卡·黑底结语卡·滚动片尾名单)', 'set_theme_songs(带人声的片头/片尾/插曲,台词时压低或切伴奏)'],
     billing: '混合',
-    note: '默认视频原声跳过 TTS 三步(pipeline-status 里显示 not_required,不是没做完)。',
+    note: '默认视频原声跳过 TTS 三步(pipeline-status 里显示 not_required,不是没做完)。国风电影感短片的诗句字卡与主题曲在平台内完成(compose_episode 时烧录/混音),别下载成片外挂后期。',
   },
   {
     step: '10 成片与交付',
