@@ -94,6 +94,16 @@ const REVIEW_GATE_HINT = (tool: string, layer: string) =>
   `(没交 → 400 agent_qc_required;报告有问题 → 与 error 同样默认拦)。`
 
 /** 五个审查工具共用:平台审查之外,外部 agent 亲自看素材的质检(2026-10-14 用户拍板)。 */
+
+/** review_frames / quote_videos / generate_videos 共用：未接缝提示（与 chain_frames dry_run 同一份计划，只提示不拦）。 */
+const UNCHAINED_SEAM_HINT =
+  '★响应可能带**未接缝提示**(不影响 review_token / 报价 / 状态码):review_frames 与 generate_videos 是 unchained_seam_advisory,' +
+  'quote_videos 是 advisories 里 code=unchained_seams。seams 列的是 chain_frames 会接、却还没接上的相邻缝(from_shot→to_shot),' +
+  'status=no_stamp(从没接过)/ pending(发起过衔接、还没落地或审计未出结论)/ stale_anchor(上次承接的锚已失效:上一镜尾帧在衔接之后又被重生过,需要重接)' +
+  '/ join_failed(上次发起的衔接重生被拒 / 失败 / 落选,没落地)/ audit_failed(衔接落地但审计判不连续,看 get_storyboards 的 seam_failed_dims)' +
+  '/ first_frame_regenerated(接缝审过之后下镜首帧又被重出、没走承接路径,原衔接已不算数)/ not_linked(规划器判没接上、原因证据不足);都按计划重接即可;' +
+  'video_locked 是下镜已出视频的同类缝,chain_frames 不再改它们,只能逐镜 chain_shot_from_prev / chain_shot_from 换首帧后 regenerate_shot_video(都先报价)。' +
+  '出视频前看到 seams 就先 chain_frames(dry_run:true) 把计划与报价告诉客户,客户同意再执行,执行后重调 review_frames。'
 const AGENT_QC_HINT =
   '\n★【增量复审·省时省量】review_storyboards / review_frames / review_assets 可带 base_review_token(上一张已交质检且 verdict=pass 的本层 token):' +
   '只把变更镜及其相邻镜列进 agent_qc.materials、findings 只回这些镜(incremental.applied=true,另有 findings_hidden 计数),质检报告只需覆盖它们;' +
@@ -1119,7 +1129,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'seam_broken(接过但没接上,或上一镜尾帧在衔接之后又重生过),shots 是「与上一镜的缝有问题」的那一镜。出视频前修最便宜——视频按首帧生成,' +
       '首帧与上镜尾帧对不上,成片就是一次跳切。修法看 action(整集 chain_frames 先 dry_run;单道 chain_shot_from_prev / chain_shot_from)。' +
       '★有相邻镜时响应还带 seam_direction_advisory(提示性,不影响 review_token):相邻镜方向对照(主体跳边/运动反向/景别跳级)的已有结论;' +
-      '还没观察过的接缝要先 audit_seam_directions dry_run 报价,客户同意后再执行。' + AGENT_QC_HINT,
+      '还没观察过的接缝要先 audit_seam_directions dry_run 报价,客户同意后再执行。' + UNCHAINED_SEAM_HINT + AGENT_QC_HINT,
     { episode_id: z.number().int().positive(), base_review_token: BASE_REVIEW_ARG },
     async ({ episode_id, base_review_token }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/frames`, base_review_token ? { base_review_token } : undefined)),
   )
@@ -1417,7 +1427,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '且镜头时长不超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400(超长会被厂商截断,要么换引擎要么 split_shot)。' +
       '指定引擎的镜必须这次会出视频:已出视频的镜整集生成不会重出,给它指定引擎 ⇒ 400;' +
       '拆成逐镜的场景组只计没出视频的组员。' +
-      '只想重出个别已出过视频的镜,用 quote_regenerate_shot_video 的 model 更省。',
+      '只想重出个别已出过视频的镜,用 quote_regenerate_shot_video 的 model 更省。' + UNCHAINED_SEAM_HINT,
     {
       episode_id: z.number().int().positive(),
       shot_engines: z.record(z.string().regex(/^\d+$/), z.enum(VIDEO_ENGINES)).optional().describe(
@@ -1430,7 +1440,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'generate_videos',
     '确认后批量出视频:一条后台链跑完整集,余额不足会自动中止整链(防重复扣)。' +
       '要求本集已出首帧(未出会被拒)。用 get_storyboards 轮询 video_url 逐镜填充即完成。' +
-      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT + VIDEO_QC_HINT,
+      REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT + VIDEO_QC_HINT + UNCHAINED_SEAM_HINT,
     {
       episode_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_videos'),

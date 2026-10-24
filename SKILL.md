@@ -543,6 +543,20 @@ content that will be rejected.
    `review_frames` flags the two actionable states as `seam_unchained` / `seam_broken`
    (warnings — they do not block `generate_videos`, but this is the cheapest point to fix
    them: the video is generated from the first frame).
+   `review_frames` / `generate_videos` may also return `unchained_seam_advisory`
+   (`quote_videos`: an `advisories` entry with `code: "unchained_seams"`) — the seams the
+   `chain_frames` plan would join but that are not joined yet, each with a `status`:
+   `no_stamp` (never joined), `pending` (a join was dispatched but has not landed / no verdict
+   yet), `stale_anchor` (the previous join's anchor is gone — the upstream last frame was
+   regenerated after joining, so the seam must be re-joined), `join_failed` (the last joining
+   regeneration was rejected / failed / superseded and never landed), `audit_failed` (it landed
+   but the continuity audit judged it discontinuous — see `seam_failed_dims`),
+   `first_frame_regenerated` (the next shot's first frame was regenerated after the join was
+   reviewed, bypassing the joining path), `not_linked` (unchained per the planner, cause not
+   evidenced). Re-join all of them per the plan. `video_locked` lists seams whose
+   next shot already has a video: `chain_frames` leaves those alone, so fix them per shot
+   (`chain_shot_from_prev` / `chain_shot_from`, then `regenerate_shot_video`, quote first).
+   Advisory only — it never changes `review_token`, quotes or status codes.
    Joined seams can still jump when the same subject sits on opposite sides of the frame,
    moves in opposite directions, or the shot size leaps several steps. Optional, before videos:
    `audit_seam_directions` (`dry_run` first — quote, billed by text tokens; advisory,
