@@ -313,7 +313,7 @@ export const WORKFLOW_HINT =
   '⑤★镜长控制(所有引擎通用,WAN 上尤其明显):单镜保持 3~5 秒。镜头越长模型自由发挥空间越大——' +
   '实测一个 16 秒单镜(邻镜都是 3~5 秒)在片内换了 4 次场景、人物中途消失 4 秒后又从画面边缘长出来,' +
   '客户看到的就是「凭空多出一个人」。要长表演请拆成多个短镜再靠帧链衔接,别写 15 秒以上的单镜;' +
-  '【分辨率决策】草稿/迭代期:WAN 剧 480p(42点/秒最省)、其余 720p;成片交付:seedance 剧 720p(高清档停售)、hailuo-3 剧 1080p(=2K·112点/秒)、WAN 剧 1080p(168点/秒);hailuo-3 无独立 480p 档(选了也按 768P 计费);' +
+  '【分辨率决策】草稿/迭代期:WAN 剧 480p(42点/秒最省)、其余 720p;成片交付:seedance 剧 720p(要高清交付选 1080p,约 720p 的 2.5 倍)、hailuo-3 剧 1080p(=2K·112点/秒)、WAN 剧 1080p(168点/秒);hailuo-3 无独立 480p 档(选了也按 768P 计费);' +
   'create_drama/update_project_settings 的 video_engine/video_resolution 设,★都必须在出视频前定——切换不回溯已生成镜头,同剧混用会画风/身份漂移。' +
   '★图片生成慢≠失败:每张几十秒~数分钟、整集可能十几分钟,轮询 get_storyboards 看 frame_status——pending=还在生成(耐心等、别重复调 generate_frames 白花钱)、ready=完成、failed=才是真失败。' +
   '★改某一镜画面 / 换定妆图后要让新图生效,走**单镜重生 generate_shot_frame**(平台自动带该镜身份锚·场景道具参考·画风锚,保全片一致);' +
@@ -471,7 +471,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       description: z.string().optional(),
       aspect_ratio: z.enum(ASPECT_RATIOS).optional().describe('画幅比例(默认 9:16 竖屏短剧)。★drama级锁定:建剧即定、之后所有出图/出视频/成片都用它,别中途改(改了已生成内容画幅不一致、漂移)'),
       video_resolution: z.enum(VIDEO_RESOLUTIONS).optional().describe('视频分辨率(默认 720p;成本随分辨率上升)。按引擎选:' +
-        'seedance-2.5 在售 480p/720p(高清档停售);hailuo-3 选 720p(=768P 70点/秒)或 1080p(=2K 112点/秒),无独立 480p 档;' +
+        'seedance-2.5 在售 480p/720p/1080p(720p 212 点/秒,1080p 约其 2.5 倍,无 4K);hailuo-3 选 720p(=768P 70点/秒)或 1080p(=2K 112点/秒),无独立 480p 档;' +
         'wan3.0/prime 三档全售(42/84/168,prime 63/126/252 点/秒)。草稿迭代用低档,成片交付才上高清'),
       setting_brief: z
         .string()
