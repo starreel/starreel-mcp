@@ -1,0 +1,29 @@
+{
+  "title": "连接 StarReel",
+  "title_en": "Connect StarReel",
+  "description": "在 StarReel → 设置 → API Key 创建一把 produce 权限的密钥（srk_live_ 开头，只展示一次）粘贴到这里。密钥只保存在本机，用于调用你自己账户下的短剧产线，生成类操作会扣你账户的点数。",
+  "description_en": "Create an API key with the produce scope in StarReel → Settings → API Keys (starts with srk_live_, shown only once) and paste it here. The key stays on this device and calls the pipeline under your own account; generation steps spend your account points.",
+  "docUrl": "https://api.shortreelai.com/docs/mcp#workbuddy",
+  "docLabel": "如何获取 API Key",
+  "fields": [
+    {
+      "key": "STARREEL_API_KEY",
+      "label": "API Key",
+      "label_en": "API Key",
+      "type": "password",
+      "required": true,
+      "placeholder": "srk_live_...",
+      "description": "StarReel 设置页创建的 produce 权限密钥"
+    },
+    {
+      "key": "STARREEL_MCP_LANG",
+      "label": "工具说明语言",
+      "label_en": "Tool description language",
+      "type": "text",
+      "required": false,
+      "defaultValue": "zh-CN",
+      "placeholder": "zh-CN 或 en",
+      "description": "zh-CN（默认）或 en，只影响工具说明的语言"
+    }
+  ]
+}

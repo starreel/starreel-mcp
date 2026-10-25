@@ -133,6 +133,16 @@ const ASSET_QC_HINT =
   '再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;' +
   '道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;' +
   '出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。'
+/**
+ * 道具图就绪后平台自动跑的两笔小额视觉检查(后台 fire-and-forget,不需要也不该手动再触发)。
+ * 2026-10-26 客户实测:账单里冒出没提示过的检查费,且道具那笔曾被标成「产品画面分析」。
+ */
+const PROP_IMAGE_AUTO_CHECKS_HINT =
+  '\n★【出图后自动检查·按用量后付】道具图落库(AI 出图或上传)后,平台会自动做一次道具外形分析(看图补尺寸提示,账单名「道具外形分析」),' +
+  '灰度阀开时还会自动做一次道具时代审核(结果见 get_props 的 era_audit)。两笔都是小额视觉审核,事先告诉客户;别再手动 audit_prop_era 重复付费。'
+/** 角色外貌 / 道具描述改动后平台自动跑的设定一致性检查(防抖合并,同值保存不触发)。 */
+const SETTING_LINT_AUTO_HINT =
+  '约 5 分钟后会自动做一次设定一致性检查(文本后付,账单名「设定一致性检查」;同一部剧 5 分钟内多次改动合并成一次,同值保存不触发)'
 /** 视频与配音生成工具的「完成后质检」引导。 */
 const VIDEO_QC_HINT =
   '\n★【完成后质检·免费】出完等它落库(get_storyboards 看 video_status / get_pipeline_status),再调 review_videos 审视频与配音层' +
@@ -712,7 +722,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'get_autofill_status',
     '查本集后台补全批次(导入 auto_complete / autofill_storyboards 发起的 AI 一键填空)的进度:{ status: running|done|failed|idle, total, done, ok, fail }。免费。' +
       '★导入带自动补全后必须等 status=done 再 review_storyboards / generate_frames——补全逐镜改写字段,先审查的 review_token 会因内容变化失效。' +
-      '每镜数十秒,整集可能十几分钟;轮询间隔 ≥10 秒,别紧轮。status=failed 或 fail>0 时看 fail 数,少量失败的镜可直接 autofill_storyboards 重跑(只填空,不重复扣已填的)。',
+      '每镜数十秒,整集可能十几分钟;轮询间隔 ≥10 秒,别紧轮。status=failed 或 fail>0 时看 fail 数,少量失败的镜可直接 autofill_storyboards 重跑(只填空模式下已补过的镜跳过、不调 AI、不扣费;只有没补过的镜计费)。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/autofill-status`)),
   )
@@ -743,7 +753,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★分钟级后台任务;用 get_run_status 判断是否还在跑,别拿 60 秒当失败判据。' +
       REVIEW_GATE_HINT('review_script', '改写稿') + WORKFLOW_HINT +
       '\n★【完成后质检】提取完用 get_characters / get_scenes / get_props 核对档案(名字、外貌、时代)与客户剧本一致;' +
-      '定妆图/设定图/场景图/道具图出完后由 review_assets 统一审覆盖与质量。',
+      '定妆图/设定图/场景图/道具图出完后由 review_assets 统一审覆盖与质量。' + PROP_IMAGE_AUTO_CHECKS_HINT,
     { episode_id: z.number().int().positive(), ...REVIEW_ARGS },
     async ({ episode_id, review_token, acknowledge_review, auto_acknowledge }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/extract`, { review_token, acknowledge_review, auto_acknowledge })),
@@ -1112,8 +1122,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '【第②道硬闸·免费】审查分镜:禁区词(会被厂商审核拒、白扣费)、镜头时长分布、相邻构图重复、' +
       '同场景角色站位漂移、情绪曲线峰谷、关键镜标记。★generate_frames 之前必须先跑本工具——' +
       '分镜里的问题一旦整集出图就变成整集废图,单镜修不回来。按 findings.action 用 update_shot/split_shot 修完再复审。' +
-      '★code=forbidden_term 的 finding 带 `terms` 字段(命中的具体词,如「背景音乐」「强光」)与 `shots`(镜号),' +
-      '照着这两个去 update_shot 改掉即可,不用逐字猜。' +
+      '★code=forbidden_term 的 finding 一次列全所有命中(不再只报前几处),带 `hits`:[{shot 镜号, field 字段, term 命中词}],' +
+      'field 是 description / image_prompt / video_prompt / sound_effect 之一;先 get_shot_prompts 读该字段现值,再 update_shot 改掉那个词,不用逐字猜。' +
+      '★要表达用光(逆光/侧光/光线明暗)别写进画面描述或提示词,写进 update_shot 的 lighting 字段——它不在禁区词扫描范围,出视频与出图都读它。' +
       '★禁区词判**否定语义**:写「无背景音乐」「不要配乐」不算违规(那是在遵守约束),不必为此改稿。' +
       '★warnings 里的「动作过载」(action_overload,advisory 不拦):一镜塞了超过时长承载量的独立动作,出视频前用 split_shot 拆开或删动作——成片后靠慢放/叠化补救不了。多人各做一件事或本身连贯的一串可忽略。' + AGENT_QC_HINT,
     { episode_id: z.number().int().positive(), base_review_token: BASE_REVIEW_ARG },
@@ -1205,10 +1216,21 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'autofill_storyboards',
-    '(推荐)AI 一键给全集分镜补全空缺字段,默认**只填空缺、不覆盖已有**(overwrite=true 才覆盖)。提升分镜完整性,出图前做。后台异步,文本步后付。' +
-      '★平台开启契约自动补全时,也会尝试给**没有构图契约**的镜补上契约(是否开启以导入回执 contract_coverage 的 note 为准;可见人数/主体范围/景别,出图与审核都按它判;默认 overwrite:false 时已有契约不动,**overwrite:true 会连已有契约一起重写**)——导入时关了 auto_complete、回执 contract_coverage 的 note 指向本工具的,出图前调一次。本集已有补全在跑时本次**不排队**(防重复点击重复扣费),新导入的镜要等 get_autofill_status 到 done 后再调。',
-    { episode_id: z.number().int().positive(), overwrite: z.boolean().optional().describe('true=覆盖已有字段(默认 false 只填空缺)') },
-    async ({ episode_id, overwrite }) => jsonResult(await client.producePost(`/episodes/${episode_id}/storyboards/autofill`, overwrite ? { overwrite } : {})),
+    '(推荐)AI 一键给全集(或 storyboard_ids 指定的几镜)分镜补全空缺字段,默认**只填空缺、不覆盖已有**(overwrite=true 才覆盖)。提升分镜完整性,出图前做。后台异步,文本步后付(按实际调 AI 的镜计费)。' +
+      '★拆镜落库时平台已自动补过一轮:只填空模式下已没有空缺的镜(六个叙事文本字段都已有、有台词的镜声音方向也已有,契约阀开时契约也已有)直接跳过,不调 AI、不扣费;overwrite:true 才会整集重跑并逐镜计费。' +
+      '★补全写的是叙事/节奏类内部字段与构图契约,get_storyboards / get_shot_prompts 不返回这些字段,回读看不到变化属正常;它**不改**出图/视频提示词正文。' +
+      '★平台开启契约自动补全时,也会尝试给**没有构图契约**的镜补上契约(是否开启以导入回执 contract_coverage 的 note 为准;可见人数/主体范围/景别,出图与审核都按它判;默认 overwrite:false 时已有契约不动,**overwrite:true 会连已有契约一起重写**)——导入时关了 auto_complete、回执 contract_coverage 的 note 指向本工具的,出图前调一次。本集已有补全在跑时本次**不排队**(防重复点击重复扣费),新导入的镜要等 get_autofill_status 到 done 后再调。' +
+      '★想先小范围试跑看效果:传 storyboard_ids(1~50 个本集镜 id,用 get_storyboards 取),只补这些镜,其它镜不调 AI、不扣费;不传 = 整集。本集已有补全在跑时子集不启动,回执 started=false、reason=fill batch already running,等 get_autofill_status 到 done 再调。',
+    {
+      episode_id: z.number().int().positive(),
+      overwrite: z.boolean().optional().describe('true=覆盖已有字段(默认 false 只填空缺)'),
+      storyboard_ids: z.array(z.number().int().positive()).min(1).max(50).optional()
+        .describe('只补这些镜(本集镜 id,1~50 个),其它镜不调 AI、不扣费;不传 = 整集。含别集的镜 → 400'),
+    },
+    async ({ episode_id, overwrite, storyboard_ids }) => jsonResult(await client.producePost(`/episodes/${episode_id}/storyboards/autofill`, {
+      ...(overwrite ? { overwrite } : {}),
+      ...(storyboard_ids ? { storyboard_ids } : {}),
+    })),
   )
   server.tool(
     'enhance_shot_prompts',
@@ -2184,7 +2206,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'upload_prop_sheet',
-    '用客户自有图片作为某道具的设定图。自动上传+登记。免费。' + ASSET_QC_HINT,
+    '用客户自有图片作为某道具的设定图。自动上传+登记。上传本身免费。' + PROP_IMAGE_AUTO_CHECKS_HINT + ASSET_QC_HINT,
     { prop_id: z.number().int().positive(), file_path: z.string().describe('本地道具图路径') },
     async ({ prop_id, file_path }) => {
       const image_url = await client.uploadLocalFile(file_path, 'image')
@@ -2552,7 +2574,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
           '出场数据是旧格式时 409 APPEARANCES_NONCANONICAL(一字不写),单人镜改用 active_wardrobe_id。回执带 appearance_wardrobes(现值)与 appearance_wardrobes_effective:' +
           'false = 已落库但本剧尚未开启逐角色服装读取(灰度),出图暂不按它选——单人镜请改用 active_wardrobe_id'),
       title: z.string().optional().describe('镜头标题'),
-      description: z.string().optional().describe('画面描述'),
+      description: z.string().optional().describe('画面描述(现值用 get_shot_prompts 读)。★用光不要写进这里——写 lighting'),
+      lighting: z.string().optional().describe('本镜用光(如「逆光」「左侧窗光、脸一半在暗处」)。★用光写这里,不要写进画面描述(description)或提示词:' +
+        '那几个字段写光影词会被 review_storyboards 判 forbidden_term 拦下,这一条不在禁区词扫描范围。出视频时作为 [Lighting] 段送达,出图按它匹配场景光照变体。' +
+        '全量覆盖现值,现值用 get_shot_prompts 读;改完不会自动重出图/视频'),
       shot_type: z.string().optional().describe('景别(如 特写/中景/全景/远景)'),
       angle: z.string().optional().describe('机位角度'),
       camera_movement: z.string().optional().describe('运镜(推/拉/摇/移/跟/固定)'),
@@ -2612,6 +2637,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——' +
       '出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。' +
       '★pose_timeline_stale 非 null = 本镜动作起止姿态里的秒数时间轴超出了当前时长(多见于改短 duration 后),出视频时那一端已自动不送;新时间轴写进 video_prompt。' +
+      '★同时回 description(画面描述)与 lighting(本镜用光)现值——review_storyboards 的禁区词命中常在 description,改前先在这里读;用光写 lighting。' +
       '★同时回 expression_hint(本镜作者指定的面部表情,null=未指定、由平台按台词反推),改它用 update_shot。' +
       'expression_inferred 是拆镜 AI 在剧本没写神态时按本镜内容推断的表情(只读;null=没推断,或本镜台词/动作/氛围/描述/强度改过、推断已过期不再使用);它优先级低于 expression_hint——' +
       '推断不合意就用 update_shot 写 expression_hint 覆盖它。' +
@@ -3381,7 +3407,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   // ========== P1 · 资产精修(提取后改设定再出图)==========
   server.tool(
     'update_character',
-    '改角色设定(名字/外貌/年龄段/族裔/性别/性格/戏份/档案锁定)。改后需重出定妆图/相关图。免费。' +
+    '改角色设定(名字/外貌/年龄段/族裔/性别/性格/戏份/档案锁定)。改后需重出定妆图/相关图。' +
+      '本身免费;改了外貌(appearance 真的变了)' + SETTING_LINT_AUTO_HINT + ';只改 profile_locked 等其它字段不触发。' +
       '★profile_locked=1:客户确认外观后锁定档案,后续 AI 提取不再覆盖外貌/性格/描述——外貌锚着定妆图与人脸锁定,被覆盖=全片换脸;确认满意即锁,要再改先传 0 解锁。',
     {
       character_id: z.number().int().positive(),
@@ -3405,18 +3432,17 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_scene',
-    '改场景设定(名字/描述/地点/时段/氛围),以及**场景图的出图提示词正文**(image_prompt)。免费(纯文本写库)。' +
+    '改场景设定(地点/时段/物理地点归并键/时代契约),以及**场景图的出图提示词正文**(image_prompt)。免费(纯文本写库)。' +
+      '★场景名就是 location;氛围、描述写进 image_prompt。改 time_of_day 后 import_storyboard_table 按「地点+时段」绑场景就能对上。' +
       '★场景图不满意时,改 image_prompt 才是直接手段——只改地点/时段是让平台重拼,拧不过来;' +
       '改前先用 get_scene_prompt 读现值,改完用 regenerate_scene_image 重出这一场的图。' +
       '★场景图变了不会自动重出已生成的镜头帧:那些帧仍拿旧场景图当背景锚,要跟上得逐镜重出。',
     {
       scene_id: z.number().int().positive(),
-      name: z.string().optional(),
-      description: z.string().optional(),
-      location: z.string().optional(),
-      physical_location: z.string().optional(),
-      time_of_day: z.string().optional(),
-      mood: z.string().optional(),
+      location: z.string().optional().describe('场景地点(即场景名),如「内景 · 地点」'),
+      physical_location: z.string().min(1).max(120).optional()
+        .describe('物理地点归并键:同一地点的不同写法填同一个键,平台按它认作同一处。与 location 同传时以它为准'),
+      time_of_day: z.string().optional().describe('时段,写入后 get_scene_prompt 的 time 读回同值'),
       image_prompt: z.string().optional()
         .describe('这一场**空景图**的提示词正文(全量覆盖本场现值)。★先 get_scene_prompt 读现值再改;★写空景——这张是场景基板,画面里不该有人物(人物由镜头帧那层注入)。出图时平台会在正文之上再拼画风块、空景约束与时代锁,不必你写'),
       era_contract: z.object({
@@ -3569,7 +3595,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'generate_prop_sheet',
-    '给道具 AI 出设定图。图片步,按用量后付不欠费。' + ASSET_QC_HINT,
+    '给道具 AI 出设定图。图片步,按用量后付不欠费。' + PROP_IMAGE_AUTO_CHECKS_HINT + ASSET_QC_HINT,
     { prop_id: z.number().int().positive() },
     async ({ prop_id }) => jsonResult(await client.producePost(`/props/${prop_id}/generate-sheet`)),
   )
@@ -3587,7 +3613,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'audit_prop_era',
     '重审某个道具图的时代/形制(一次小额视觉审核,按用量后付)。依据该道具的 era_lock,以及它被绑定的各镜所在场景/分集的时代契约。' +
-      '跨时代剧(不同场景属于不同朝代/年代)出完或换完道具图后跑一次;结果同 get_props 里的 era_audit。' +
+      '★出完或换完道具图后平台已自动审一次(灰度阀开时),先等它落库、看 get_props 的 era_audit,别马上手动再审(重复付费)。' +
+      '本工具用于:改了 era_lock 或道具的镜头绑定之后重审,或 era_audit 迟迟为 null(自动审没跑)时补审;结果同 get_props 里的 era_audit。' +
       '道具还没有图、或既没写 era_lock 也没被绑到带时代契约的镜头上时返回 400(没有可比的依据)。' +
       '只有点名了具体冲突特征才判冲突;笼统的「不像那个年代」不算。',
     { prop_id: z.number().int().positive() },
@@ -3595,7 +3622,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'create_prop',
-    '往道具库加一个道具。extract_assets 会自动提取道具,这里供手动补建。跨时代剧建道具时就把 era_lock 填上(建完会自动触发出设定图,补填要重出才生效)。免费(建条目;填了 description 会自动触发出设定图、后付)。',
+    '往道具库加一个道具。extract_assets 会自动提取道具,这里供手动补建。跨时代剧建道具时就把 era_lock 填上(建完会自动触发出设定图,补填要重出才生效)。本身免费(建条目);填了 description 会自动触发出设定图(后付),填了 description/prompt 还会' + SETTING_LINT_AUTO_HINT + '。' + PROP_IMAGE_AUTO_CHECKS_HINT,
     {
       drama_id: z.number().int().positive(),
       name: z.string().min(1).describe('道具名'),
@@ -3616,8 +3643,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_prop',
-    '改道具(名称/类型/描述/prompt/尺寸/多视角参考图/时代锁)。跨时代剧务必填 era_lock，否则名字中性的道具年代随机。免费。' +
-      '★改了 era_lock 不会自动重出道具图——要 generate_prop_sheet 重出,重出后若 get_props 的 era_audit 为 null(还没审过新图),用 audit_prop_era 审一次。',
+    '改道具(名称/类型/描述/prompt/尺寸/多视角参考图/时代锁)。跨时代剧务必填 era_lock，否则名字中性的道具年代随机。' +
+      '本身免费;改了 description/prompt(真的变了)' + SETTING_LINT_AUTO_HINT + ';道具还没有图时改 description/prompt 会自动出设定图(后付)。' +
+      '★改了 era_lock 不会自动重出道具图——要 generate_prop_sheet 重出;新图落库后平台会自动做道具外形分析,灰度阀开时还会自动做时代审核,' +
+      '等一会儿再看 get_props 的 era_audit,别马上手动 audit_prop_era(会重复付费);只有 era_audit 迟迟为 null(自动审没跑)时才手动审一次。',
     {
       prop_id: z.number().int().positive(),
       name: z.string().optional(),

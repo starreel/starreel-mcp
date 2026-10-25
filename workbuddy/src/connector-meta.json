@@ -1,0 +1,27 @@
+{
+  "name": "StarReel",
+  "name_zh": "StarReel 星剧",
+  "name_en": "StarReel",
+  "description": "Turn a script into a finished, downloadable AI short-drama episode: rewrite, cast and scenes, storyboards, frames, video, voice-over and final cut.",
+  "description_zh": "把剧本做成可下载的 AI 短剧成片：剧本改写、角色与场景提取、分镜、镜头图、视频、配音到成片，全流程预付费、大额步骤先报价。",
+  "description_en": "Turn a script into a finished, downloadable AI short-drama episode: rewrite, cast and scenes, storyboards, frames, video, voice-over and final cut. Prepaid, with quotes before large spends.",
+  "source": "starreel",
+  "type": "mcp",
+  "version": "1.0.0",
+  "auth_mode": "token",
+  "minWorkbuddyVersion": "5.0.0",
+  "examples_zh": [
+    "列出我在 StarReel 上的所有短剧项目",
+    "用我贴的这份剧本新建一部竖屏短剧，并先帮我改写剧本",
+    "查一下第 1 集现在做到哪一步了，还差什么",
+    "给这一集的分镜出首帧之前，先告诉我要花多少点",
+    "把第 1 集合成成片，给我下载链接"
+  ],
+  "examples_en": [
+    "List all my short-drama projects on StarReel",
+    "Create a vertical short drama from the script I pasted and rewrite it first",
+    "Show me how far episode 1 has progressed and what is left",
+    "Quote how many points the first frames for this episode will cost before generating",
+    "Compose episode 1 into a final cut and give me the download link"
+  ]
+}
