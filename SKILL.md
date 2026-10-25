@@ -1618,7 +1618,11 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
 - **Read back (all free)**: `list_dramas`, `get_drama`, `get_characters`,
   `get_scenes`, `get_assets`, `get_jobs`, `get_pipeline_status`,
   `get_autofill_status` (progress of the background completion batch started by an
-  import's `auto_complete` or by `autofill_storyboards`), `get_cost_estimate`,
+  import's `auto_complete` or by `autofill_storyboards`, plus a counts-only receipt:
+  `skipped_no_gap`, `fields_written_counts`, `contract_coverage` — completion writes
+  internal fields that `get_storyboards` does not return, so report these counts),
+  `quote_autofill` (quote `autofill_storyboards` before running it; tell the customer
+  `estimated_points` / `typical_points` and run only after they agree), `get_cost_estimate`,
   `get_budget_status`
 - **Cut QA (all free)**: `scan_intra_shot_cuts` (vendor cutting inside a shot —
   run this first on any "切太快" report), `recommend_trim_window` (action ends up

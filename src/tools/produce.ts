@@ -720,7 +720,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_autofill_status',
-    '查本集后台补全批次(导入 auto_complete / autofill_storyboards 发起的 AI 一键填空)的进度:{ status: running|done|failed|idle, total, done, ok, fail }。免费。' +
+    '查本集后台补全批次(导入 auto_complete / autofill_storyboards 发起的 AI 一键填空)的进度与回执:{ status: running|done|failed|idle, total, done, ok, fail, skipped_no_gap, fields_written_counts, contract_coverage }。免费。' +
+      '★回执就是「补全写了什么」的证据:补全写的是内部叙事字段与构图契约,get_storyboards / get_shot_prompts **读不到**,回读看不到变化属正常——看这里的计数即可。' +
+      'skipped_no_gap=没有空缺、跳过未调 AI 未扣费的镜数;fields_written_counts=按字段名计的写入镜数(如 {shot_intent: 44});' +
+      'contract_coverage={total, missing_contract}=本集出图镜数与仍缺构图契约的镜数。只给计数、不给字段内容,把这几个数原样告诉客户。' +
       '★导入带自动补全后必须等 status=done 再 review_storyboards / generate_frames——补全逐镜改写字段,先审查的 review_token 会因内容变化失效。' +
       '每镜数十秒,整集可能十几分钟;轮询间隔 ≥10 秒,别紧轮。status=failed 或 fail>0 时看 fail 数,少量失败的镜可直接 autofill_storyboards 重跑(只填空模式下已补过的镜跳过、不调 AI、不扣费;只有没补过的镜计费)。',
     { episode_id: z.number().int().positive() },
@@ -1215,10 +1218,28 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/review/all`)),
   )
   server.tool(
+    'quote_autofill',
+    '报价:autofill_storyboards 要多少点。零扣费、不改任何数据。口径与补全本身一致:只填空模式下已经没有空缺的镜跳过、不计费;overwrite:true 全部计费。' +
+      '返回 { shots_to_fill(会真正调 AI 的镜数), shots_skipped_no_gap(没有空缺、跳过不扣费的镜数), estimated_points(预算上沿,按它备余额), typical_points(通常花费) }——' +
+      '两个点数都告诉客户,客户同意后再用**同样的** overwrite / storyboard_ids 调 autofill_storyboards。补全是后付文本步,报价不发 quote_id,也不锁价。',
+    {
+      episode_id: z.number().int().positive(),
+      overwrite: z.boolean().optional().describe('与 autofill_storyboards 相同:true=覆盖已有字段、全部计费(默认 false 只填空缺)'),
+      storyboard_ids: z.array(z.number().int().positive()).min(1).max(50).optional()
+        .describe('与 autofill_storyboards 相同:只报这些镜(本集镜 id,1~50 个);不传 = 整集。含别集的镜 → 400'),
+    },
+    async ({ episode_id, overwrite, storyboard_ids }) => jsonResult(await client.producePost(`/episodes/${episode_id}/storyboards/autofill/quote`, {
+      ...(overwrite ? { overwrite } : {}),
+      ...(storyboard_ids ? { storyboard_ids } : {}),
+    })),
+  )
+  server.tool(
     'autofill_storyboards',
     '(推荐)AI 一键给全集(或 storyboard_ids 指定的几镜)分镜补全空缺字段,默认**只填空缺、不覆盖已有**(overwrite=true 才覆盖)。提升分镜完整性,出图前做。后台异步,文本步后付(按实际调 AI 的镜计费)。' +
+      '★**先 quote_autofill 报价**(同样的 overwrite / storyboard_ids),把 shots_to_fill 与 estimated_points / typical_points 告诉客户,**客户同意再跑**本工具。' +
+      '★跑完用 get_autofill_status 看回执(写了哪些字段各几镜、跳过几镜、还缺几镜契约)告诉客户——补全写的内部字段 get_storyboards 读不到,别让客户以为白扣。' +
       '★拆镜落库时平台已自动补过一轮:只填空模式下已没有空缺的镜(六个叙事文本字段都已有、有台词的镜声音方向也已有,契约阀开时契约也已有)直接跳过,不调 AI、不扣费;overwrite:true 才会整集重跑并逐镜计费。' +
-      '★补全写的是叙事/节奏类内部字段与构图契约,get_storyboards / get_shot_prompts 不返回这些字段,回读看不到变化属正常;它**不改**出图/视频提示词正文。' +
+      '★补全写的是叙事/节奏类内部字段与构图契约,get_storyboards / get_shot_prompts 不返回这些字段,回读看不到变化属正常,看 get_autofill_status 回执里的计数即可;它**不改**出图/视频提示词正文。' +
       '★平台开启契约自动补全时,也会尝试给**没有构图契约**的镜补上契约(是否开启以导入回执 contract_coverage 的 note 为准;可见人数/主体范围/景别,出图与审核都按它判;默认 overwrite:false 时已有契约不动,**overwrite:true 会连已有契约一起重写**)——导入时关了 auto_complete、回执 contract_coverage 的 note 指向本工具的,出图前调一次。本集已有补全在跑时本次**不排队**(防重复点击重复扣费),新导入的镜要等 get_autofill_status 到 done 后再调。' +
       '★想先小范围试跑看效果:传 storyboard_ids(1~50 个本集镜 id,用 get_storyboards 取),只补这些镜,其它镜不调 AI、不扣费;不传 = 整集。本集已有补全在跑时子集不启动,回执 started=false、reason=fill batch already running,等 get_autofill_status 到 done 再调。',
     {

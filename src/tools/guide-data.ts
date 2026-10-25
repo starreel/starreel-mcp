@@ -259,7 +259,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '5 拆镜(纯文本,先于任何出图)',
-    tools: ['quote_storyboards', 'generate_storyboards', 'get_storyboards', 'get_health_report', 'autofill_storyboards', 'enhance_shot_prompts', 'complete_ending_motifs'],
+    tools: ['quote_storyboards', 'generate_storyboards', 'get_storyboards', 'get_health_report', 'quote_autofill', 'autofill_storyboards', 'enhance_shot_prompts', 'complete_ending_motifs'],
     billing: '报价确认后扣点',
     gate: 'review_storyboards(分镜审查;免费;generate_frames 前必过)',
     note: '每镜 5-7 秒是对 AI 出视频优化的正常时长,别因「镜偏长」重拆;`generate_storyboards` 替换整集分镜,已有分镜需 confirm_replace。',

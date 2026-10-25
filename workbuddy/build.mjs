@@ -18,6 +18,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SRC = join(HERE, 'src')
 const SKILL_SRC = join(HERE, '..', 'SKILL.md')
 
+const ICON_NAMES = ['icon.svg', 'icon.png', 'icon.jpg']
+
 export function validate(src = SRC, skillSrc = SKILL_SRC) {
   const errors = []
   const readJson = (f) => {
@@ -31,7 +33,10 @@ export function validate(src = SRC, skillSrc = SKILL_SRC) {
   const meta = readJson('connector-meta.json')
   const mcp = readJson('mcp.json')
   const schema = readJson('token-schema.json')
-  if (!existsSync(join(src, 'icon.svg'))) errors.push('缺 icon.svg')
+  // 图标 = workbuddy/icon-source-512.jpg(深色圆角 SR 开发者头像)缩到 128px;透明底的官网标在白色列表里发虚,
+  // 桌面端 icons/source.svg 是旧占位图——两者都别用
+  const icons = ICON_NAMES.filter((f) => existsSync(join(src, f)))
+  if (icons.length !== 1) errors.push(`图标须恰好一个 icon.svg / icon.png / icon.jpg(现 ${icons.length} 个)`)
   if (!existsSync(skillSrc)) errors.push(`缺 SKILL.md(${skillSrc})`)
 
   if (meta) {
@@ -98,8 +103,8 @@ function build() {
   const top = join(pkgRoot, meta.source)
   rmSync(pkgRoot, { recursive: true, force: true })
   mkdirSync(join(top, 'skills', 'starreel-drama-production'), { recursive: true })
-  for (const f of ['connector-meta.json', 'mcp.json', 'token-schema.json', 'icon.svg']) {
-    cpSync(join(SRC, f), join(top, f))
+  for (const f of ['connector-meta.json', 'mcp.json', 'token-schema.json', ...ICON_NAMES]) {
+    if (existsSync(join(SRC, f))) cpSync(join(SRC, f), join(top, f))
   }
   cpSync(SKILL_SRC, join(top, 'skills', 'starreel-drama-production', 'SKILL.md'))
 

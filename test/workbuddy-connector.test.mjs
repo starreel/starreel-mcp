@@ -59,3 +59,9 @@ test('配置两个 Server / 示例不足 2 条 → 红', () => {
   })
   assert.ok(validate(few, SKILL).errors.some((e) => e.includes('examples_zh')))
 })
+
+test('图标缺失或同时放了两种格式 → 红', () => {
+  const both = mutated('mcp.json', (j) => j)
+  writeFileSync(join(both, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>')
+  assert.ok(validate(both, SKILL).errors.some((e) => e.includes('图标')))
+})

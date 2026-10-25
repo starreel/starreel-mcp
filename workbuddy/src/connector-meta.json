@@ -7,7 +7,7 @@
   "description_en": "Turn a script into a finished, downloadable AI short-drama episode: rewrite, cast and scenes, storyboards, frames, video, voice-over and final cut. Prepaid, with quotes before large spends.",
   "source": "starreel",
   "type": "mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "auth_mode": "token",
   "minWorkbuddyVersion": "5.0.0",
   "examples_zh": [
