@@ -536,6 +536,10 @@ content that will be rejected.
    really is broken). To fix individual seams: `chain_shot_from_prev` (free,
    same-framing continuation) or
    `quote_chain_shot_from` → `chain_shot_from` with `mode: "reframe"` (framing changes).
+   A shot whose first frame the customer uploaded or locked is refused by all three
+   (409 `reason: "user-locked-frame"`, nothing dispatched or billed, no quote issued):
+   tell the customer; only after they explicitly agree to replace it pass `force: true`
+   to both the quote and the call (it lifts the upload / lock protection).
    If the previous shot's video is already done and the customer does not want to touch
    this shot's first frame, `quote_align_prev_shot` → `align_prev_shot` regenerates the
    **previous** shot's video so it ends on this shot's opening frame (one video).

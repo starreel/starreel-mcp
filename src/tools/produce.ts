@@ -3792,10 +3792,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★适用:两镜是同一机位、同一景别的延续(seam_state=unchained/broken 且本镜本来就该和上镜一个构图)。' +
       '★别用于景别有变化的缝(全景→近景等):那会把本镜的景别设计冲掉,且后续出图可能被判「与设计不符」——' +
       '这种缝用 chain_shot_from 的 mode=reframe。本镜已有视频的会被标为待重生。' +
-      '本镜首帧若已被客户定稿(first_frame_pinned)会被拒;覆盖它' + ALWAYS_ASK('') + '才传 force:true。',
+      '本镜首帧若是客户上传的(first_frame_source=upload)或已定稿(first_frame_pinned)会被拒(409 reason=user-locked-frame);' +
+      '覆盖它' + ALWAYS_ASK('') + '才传 force:true(会解除上传 / 定稿保护,新图需客户重新验收)。',
     {
       storyboard_id: z.number().int().positive().describe('要改首帧的那一镜(缝的右侧)'),
-      force: z.boolean().optional().describe('仅当客户明确同意覆盖已定稿的首帧时传 true'),
+      force: z.boolean().optional().describe('仅当客户明确同意覆盖其上传或已定稿的首帧时传 true'),
     },
     async ({ storyboard_id, force }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/chain-from-prev`, force ? { force: true } : {})),
@@ -3803,10 +3804,15 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'quote_chain_shot_from',
     '(免费报价)chain_shot_from 的 mode=reframe 要扣**一张图**(以源帧为锚重生本镜首帧),执行前先报价' + MODE_DECIDES('报价确认') + '。' +
-      '回 quote_id / estimated_points;quote_id 一次性、只对这一镜有效。mode=copy 不需要报价。',
-    { storyboard_id: z.number().int().positive().describe('要重生首帧的那一镜') },
-    async ({ storyboard_id }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/chain-from/quote`)),
+      '回 quote_id / estimated_points;quote_id 一次性、只对这一镜有效。mode=copy 不需要报价。' +
+      '本镜首帧是客户上传的或已定稿的:不带 force 不出报价(409 reason=user-locked-frame,不计价);' +
+      '客户明确同意替换后报价与执行都带 force:true。',
+    {
+      storyboard_id: z.number().int().positive().describe('要重生首帧的那一镜'),
+      force: z.boolean().optional().describe('仅当客户明确同意替换其上传或已定稿的首帧时传 true'),
+    },
+    async ({ storyboard_id, force }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/chain-from/quote`, force ? { force: true } : {})),
   )
   server.tool(
     'chain_shot_from',
@@ -3815,14 +3821,15 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '· mode=reframe(扣一张图,必须带 quote_chain_shot_from 的 quote_id):以源帧为锚、按本镜画面描述重生首帧——' +
       '人物/服装/道具/光线/场景延续,但保留本镜自己的景别与构图。景别有变化的缝要接,用这个。\n' +
       '★源不是上一镜尾帧时(首尾呼应/回到某个画面),平台会把本镜与上一镜的缝记为「有意切换」,自动帧链不会再覆盖它。' +
-      '本镜已有视频的会被标为待重生;首帧已定稿的会被拒,覆盖它' + ALWAYS_ASK('') + '才传 force:true。',
+      '本镜已有视频的会被标为待重生;首帧是客户上传的或已定稿的会被拒(409 reason=user-locked-frame,不派图不扣费),' +
+      '覆盖它' + ALWAYS_ASK('') + '才传 force:true(会解除上传 / 定稿保护,新图需客户重新验收;mode=reframe 的报价也要带 force)。',
     {
       storyboard_id: z.number().int().positive().describe('要改首帧的那一镜'),
       source_storyboard_id: z.number().int().positive().describe('源镜 id(必须同一集);接上一镜就传上一镜的 id'),
       source_frame: z.enum(['first', 'last']).optional().describe('取源镜的哪一帧,默认 last(尾帧)'),
       mode: z.enum(['copy', 'reframe']).optional().describe('默认 copy(免费);reframe 需 quote_id'),
       quote_id: z.string().optional().describe('mode=reframe 时必填,来自 quote_chain_shot_from'),
-      force: z.boolean().optional().describe('仅当客户明确同意覆盖已定稿的首帧时传 true'),
+      force: z.boolean().optional().describe('仅当客户明确同意覆盖其上传或已定稿的首帧时传 true'),
     },
     async ({ storyboard_id, source_storyboard_id, source_frame, mode, quote_id, force }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/chain-from`, {
