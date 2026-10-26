@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.224",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.224 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.225",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.225 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -1257,7 +1257,7 @@
       "put": {
         "operationId": "update_project_settings",
         "summary": "建剧后修改项目设定",
-        "description": "建剧后修改项目设定。除画幅/分辨率/世界观Brief/族裔/题材/导演风格外,现覆盖★整剧视觉一致性锚(摄影DNA cinematography_prompt/美术圣经 art_bible/视觉锁定 visual_lock/视频风格正负向词/视觉母题 motifs)、音频(bgm_source 自有vs原生/bgm_volume_preset 音量/use_clip_audio 用视频原声)、字幕(show_subtitles/双语 subtitle_secondary_lang/位置/边距/动效)、转场——即项目设定页全部通用设定。免费。⚠️ 世界观 Brief/族裔/画幅/一致性锚等改后,已生成的内容不会自动更新,需重生对应内容。",
+        "description": "建剧后修改项目设定。除画幅/分辨率/世界观Brief/族裔/题材/导演风格外,现覆盖★整剧视觉一致性锚(摄影DNA cinematography_prompt/美术圣经 art_bible/视觉锁定 visual_lock/视频风格正负向词/视觉母题 motifs)、音频(bgm_source 自有vs原生/bgm_volume_preset 音量/use_clip_audio 用视频原声)、字幕(show_subtitles/双语 subtitle_secondary_lang/位置/边距/动效)、转场——即项目设定页全部通用设定。免费。⚠️ 世界观 Brief/族裔/画幅/一致性锚等改后,已生成的内容不会自动更新,需重生对应内容。★frame_chain_mode 管整剧跨镜帧链:off=整剧不做(出帧落定后的自动衔接、chain_frames、首尾呼应都不派图不改帧,报价里也不再计入);reframe=默认;strict=相邻缝只裸拷贝上镜尾帧不重生(已设的首尾呼应仍按 reframe 重生、照常计入报价;要全不派图用 off)。关掉后想用 chain_frames 要先改回 reframe/strict;改模式不会自动重出已有帧。",
         "tags": [
           "dramas"
         ],
@@ -1279,6 +1279,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "frame_chain_mode": {
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "strict",
+                      "reframe"
+                    ]
+                  },
                   "genre": {
                     "type": "string"
                   },
@@ -1585,7 +1593,7 @@
       "get": {
         "operationId": "get_drama",
         "summary": "读一部剧的详情(设定/角色数/场景数/资产统计等)",
-        "description": "读一部剧的详情(设定/角色数/场景数/资产统计等)。免费。",
+        "description": "读一部剧的详情(设定/角色数/场景数/资产统计等)。免费。frame_chain_mode = 整剧跨镜帧链模式(off/strict/reframe,改用 update_project_settings)。",
         "tags": [
           "dramas"
         ],
@@ -6005,7 +6013,7 @@
       "post": {
         "operationId": "chain_frames",
         "summary": "整集首尾帧接力链:让每镜首帧承接上镜尾帧,镜间画面连续(比各镜独立出帧更顺)",
-        "description": "整集首尾帧接力链:让每镜首帧承接上镜尾帧,镜间画面连续(比各镜独立出帧更顺)。★何时调:首帧出完、tail_frame_plan 要的尾帧也补完之后,review_frames / generate_videos 之前。平台只在官网批量出帧结束时自动跑一次;逐镜出帧(generate_frames / generate_shot_frame)的集多半从没接过——get_storyboards 的 seam_state=unchained 就是这种缝。\n★先 dry_run:true(免费,不写库不出图):回 planned_copy / planned_reframe / estimated_points / needs_last_frame。copy=本镜首帧直接换成上镜尾帧(免费,但本镜景别会变成和上镜一样);reframe=以上镜尾帧为锚按本镜画面描述重生首帧(每道一张图,保景别)。把计划和 estimated_points 告诉客户,确认后**不带 dry_run** 再调一次执行(按用量后付)。\n★平台自己判哪道缝该接:有意切换(换场/时间跳跃/换装/插入镜)、已出视频的镜、已经接好的缝都会跳过——「已接好」= 首帧就是上镜尾帧,或 reframe 接在上镜**当前**尾帧上,所以重复执行不会重复扣费。上镜尾帧后来被重生过的缝会重新出现在计划里,那道缝确实断了。只补个别缝用 chain_shot_from_prev / chain_shot_from。执行后改了首帧的镜若已有视频会被标为待重生。★执行只派发 reframe、不等出图:用 get_jobs 看这些镜的 first_frame 出图行,等 pending/processing 全部结束(failed 的看 error_msg,单道用 chain_shot_from 重接;旧首帧还在时 get_storyboards 的 frame_status 仍是 ready、看不出失败),再用 get_storyboards 核对 seam_state、review_frames——提前审会审到旧首帧,token 随后作废。",
+        "description": "整集首尾帧接力链:让每镜首帧承接上镜尾帧,镜间画面连续(比各镜独立出帧更顺)。★何时调:首帧出完、tail_frame_plan 要的尾帧也补完之后,review_frames / generate_videos 之前。平台只在官网批量出帧结束时自动跑一次;逐镜出帧(generate_frames / generate_shot_frame)的集多半从没接过——get_storyboards 的 seam_state=unchained 就是这种缝。\n★先 dry_run:true(免费,不写库不出图):回 planned_copy / planned_reframe / estimated_points / needs_last_frame。copy=本镜首帧直接换成上镜尾帧(免费,但本镜景别会变成和上镜一样);reframe=以上镜尾帧为锚按本镜画面描述重生首帧(每道一张图,保景别)。把计划和 estimated_points 告诉客户,确认后**不带 dry_run** 再调一次执行(按用量后付)。\n★平台自己判哪道缝该接:有意切换(换场/时间跳跃/换装/插入镜)、已出视频的镜、已经接好的缝都会跳过——「已接好」= 首帧就是上镜尾帧,或 reframe 接在上镜**当前**尾帧上,所以重复执行不会重复扣费。上镜尾帧后来被重生过的缝会重新出现在计划里,那道缝确实断了。只补个别缝用 chain_shot_from_prev / chain_shot_from。剧级 frame_chain_mode=off 时整集不接(计划为空),要接先 update_project_settings 改回 reframe/strict。执行后改了首帧的镜若已有视频会被标为待重生。★执行只派发 reframe、不等出图:用 get_jobs 看这些镜的 first_frame 出图行,等 pending/processing 全部结束(failed 的看 error_msg,单道用 chain_shot_from 重接;旧首帧还在时 get_storyboards 的 frame_status 仍是 ready、看不出失败),再用 get_storyboards 核对 seam_state、review_frames——提前审会审到旧首帧,token 随后作废。",
         "tags": [
           "episodes"
         ],

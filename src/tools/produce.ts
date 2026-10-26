@@ -1900,9 +1900,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '(摄影DNA cinematography_prompt/美术圣经 art_bible/视觉锁定 visual_lock/视频风格正负向词/视觉母题 motifs)、' +
       '音频(bgm_source 自有vs原生/bgm_volume_preset 音量/use_clip_audio 用视频原声)、' +
       '字幕(show_subtitles/双语 subtitle_secondary_lang/位置/边距/动效)、转场——即项目设定页全部通用设定。免费。' +
-      '⚠️ 世界观 Brief/族裔/画幅/一致性锚等改后,已生成的内容不会自动更新,需重生对应内容。',
+      '⚠️ 世界观 Brief/族裔/画幅/一致性锚等改后,已生成的内容不会自动更新,需重生对应内容。' +
+      '★frame_chain_mode 管整剧跨镜帧链:off=整剧不做(出帧落定后的自动衔接、chain_frames、首尾呼应都不派图不改帧,报价里也不再计入);' +
+      'reframe=默认;strict=相邻缝只裸拷贝上镜尾帧不重生(已设的首尾呼应仍按 reframe 重生、照常计入报价;要全不派图用 off)。关掉后想用 chain_frames 要先改回 reframe/strict;改模式不会自动重出已有帧。',
     {
       drama_id: z.number().int().positive(),
+      frame_chain_mode: z.enum(['off', 'strict', 'reframe']).optional().describe(
+        '整剧跨镜帧链模式:off=整剧不做(含出帧落定后的自动衔接与 chain_frames)/strict=相邻缝只裸拷贝上镜尾帧(首尾呼应仍会重生计费)/reframe=默认。' +
+        '关掉后想用 chain_frames 先改回 reframe 或 strict;改了不会自动重出已有帧。当前值见 get_drama 的 frame_chain_mode。'),
       genre: z.string().optional(),
       style: z.string().optional(),
       description: z.string().optional(),
@@ -3215,7 +3220,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_drama',
-    '读一部剧的详情(设定/角色数/场景数/资产统计等)。免费。',
+    '读一部剧的详情(设定/角色数/场景数/资产统计等)。免费。frame_chain_mode = 整剧跨镜帧链模式(off/strict/reframe,改用 update_project_settings)。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}`)),
   )
@@ -3901,6 +3906,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★平台自己判哪道缝该接:有意切换(换场/时间跳跃/换装/插入镜)、已出视频的镜、已经接好的缝都会跳过——' +
       '「已接好」= 首帧就是上镜尾帧,或 reframe 接在上镜**当前**尾帧上,所以重复执行不会重复扣费。' +
       '上镜尾帧后来被重生过的缝会重新出现在计划里,那道缝确实断了。只补个别缝用 chain_shot_from_prev / chain_shot_from。' +
+      '剧级 frame_chain_mode=off 时整集不接(计划为空),要接先 update_project_settings 改回 reframe/strict。' +
       '执行后改了首帧的镜若已有视频会被标为待重生。★执行只派发 reframe、不等出图:用 get_jobs 看这些镜的 first_frame 出图行,' +
       '等 pending/processing 全部结束(failed 的看 error_msg,单道用 chain_shot_from 重接;旧首帧还在时 get_storyboards 的 frame_status 仍是 ready、看不出失败),' +
       '再用 get_storyboards 核对 seam_state、review_frames——提前审会审到旧首帧,token 随后作废。',

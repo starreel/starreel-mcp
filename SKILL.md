@@ -523,7 +523,12 @@ content that will be rejected.
    shot's first frame the previous shot's last frame (free, but the shot inherits the
    previous shot's framing); *reframe* regenerates the first frame anchored on that last
    frame (one image per seam, keeps the shot's own framing). Tell the customer, then run
-   it without `dry_run`. **Reframes render asynchronously** — the call returns as soon as
+   it without `dry_run`. Drama-wide switch: `update_project_settings` `frame_chain_mode`
+   — `off` turns all cross-shot chaining off (the automatic join after frames settle,
+   `chain_frames` and bookends; quotes stop counting them), `reframe` is the default,
+   `strict` only copies across adjacent seams (bookends still regenerate and are
+   still quoted — use `off` for no images at all). Switch back to `reframe`/`strict` before using `chain_frames`;
+   changing the mode never regenerates existing frames. **Reframes render asynchronously** — the call returns as soon as
    they are dispatched. Before `review_frames`, watch `get_jobs` until those shots'
    `first_frame` jobs are no longer pending/processing (a failed one carries `error_msg`;
    re-join that seam with `chain_shot_from`), then re-check `seam_state` in
