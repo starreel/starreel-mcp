@@ -1302,6 +1302,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★报价按**实际会用的模型与分辨率**分档,响应带 price_breakdown(逐档张数与单价);' +
       '打算在 generate_frames 里临时换模型,报价时就要把同一个 image_model 传进来,否则两边不是一个价。' +
       '★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。' +
+      '★响应带 frame_contract_advisory 时,列出的镜构图契约(画面里几人、主体是人物还是局部/道具)可能已过期或与绑定矛盾——出图仍按旧契约来;先讲给客户,同意后对这些镜调 rederive_shot_contract 再重新报价。' +
       QUOTE_RANGE_HINT,
     {
       episode_id: z.number().int().positive(),
@@ -1368,6 +1369,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。' +
       '★frame_type=both 时,平台判这一镜不需要独立尾帧(末态≈首态、没有运镜)会只出首帧:报价 frames_to_generate=1、只计首帧,并带 last_frame_skipped 说明原因——**原样告诉客户尾帧不会出**。' +
       '客户确实要尾帧(例如起止画面不同的运镜)就报价与生成都带 force_independent_last_frame:true。' +
+      '★响应带 frame_contract_advisory 时,列出的镜构图契约(画面里几人、主体是人物还是局部/道具)可能已过期或与绑定矛盾——出图仍按旧契约来;先讲给客户,同意后对这些镜调 rederive_shot_contract 再重新报价。' +
       '★出首帧(first_frame/both)时响应带 continuity:follows_previous_shot=true 表示上一镜尾帧会钉在参考图第 1 位(承接上一镜的人物、姿势与机位),note 说明原因。' +
       '这一镜不该接上一镜(跳切、换场、只拍手/道具的局部特写等),报价与生成都带 continuity_mode:\'independent\'。' +
       QUOTE_RANGE_HINT,
@@ -2658,7 +2660,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '(TERMINAL_DESC_GATE),修法是把**结束时画面是什么样**写进本镜 last_frame_prompt,然后重新出尾帧。' +
       '别去重试出图——这类镜(action_motion_class=state_change 却没写终态)的尾帧历史成功率 9.4%,' +
       '有终态描述的是 40.2%;不补描述就重生,送厂商的提示词里根本没有终态段,画出来仍和首帧一样、' +
-      '还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。',
+      '还是会被拒,而每次重生都照常扣费。get_shot_prompts 的 terminal_desc_missing=true 就是这个信号。' +
+      '★★【构图契约不会跟着改】改 shot_type / character_ids / character_presence / description / action / image_prompt / first_frame_prompt 后,' +
+      '本镜的构图契约(画面里可见几人、主体是人物还是手部等局部/道具、景别)不会自动重推,出图组织画面与帧审计判人数仍按旧契约来' +
+      '(典型:改成局部特写、解绑全部角色,出图照样画人像)。回执带 frame_contract_advisory 就是这种情况:讲给客户,' +
+      '客户同意后调 rederive_shot_contract(按 token 后付)重推,得出 updated 再报价出图;客户确认画面人数与主体都没变可以不推。' +
+      '★改 action 前先用 get_shot_prompts 读现值(action),别凭空整段覆盖。',
     {
       storyboard_id: z.number().int().positive(),
       product_text_contract: z.object({version:z.literal(1),strategy:z.enum(['generate_with_review','original_media','postproduction']),targets:z.array(z.object({asset_kind:z.enum(['prop','product']),asset_id:z.number().int().positive(),reference_url:z.string().url(),region:z.object({x:z.number(),y:z.number(),width:z.number(),height:z.number()}),exact_text:z.string().min(1).max(256)})).min(1).max(4)}).nullable().optional().describe('明确保留的实物原字：资产 ID、原图、归一化区域、原文及处理方式；生成不保证逐字正确，必须人工核对。null 清除声明，不回填历史。'),
@@ -2708,7 +2715,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       shot_type: z.string().optional().describe('景别(如 特写/中景/全景/远景)'),
       angle: z.string().optional().describe('机位角度'),
       camera_movement: z.string().optional().describe('运镜(推/拉/摇/移/跟/固定)'),
-      action: z.string().optional().describe('动作描述'),
+      action: z.string().optional().describe('动作描述(全量覆盖现值;★先用 get_shot_prompts 读现值 action 再改,别整段盲覆盖——里面残留已解绑角色的名字会让审查报 binding_character_mentioned_unbound、重推构图契约时也会被读进去)'),
       dialogue: z.string().optional().describe('台词(★改后自动失效本镜 TTS/字幕,需重出配音)'),
       location: z.string().optional().describe('地点'),
       time: z.string().optional().describe('时间/时段'),
@@ -2743,11 +2750,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'rederive_shot_contract',
     '按本镜**当前**的正文与角色绑定,让平台重新推导构图契约(画面里可见几人、主体是人物还是局部/道具、景别)。' +
-      '契约本身不对外,读不到也改不了;本工具只回结论 outcome:updated(已改并生效)/ unchanged(推出来和原来一样)/ ' +
+      '契约本体不对外、改不了(get_shot_prompts 的 frame_contract 只给人数 / 主体类型 / 是否可能过期这几个结论);本工具只回结论 outcome:updated(已改并生效)/ unchanged(推出来和原来一样)/ ' +
       'rejected(推出来自相矛盾,未采用,原契约保留)/ no_candidate(没拿到可用结果,原契约保留)/ ' +
       'stale(推导期间本镜又被改过,结果未写入,改完再调一次),附 note 说下一步。点数不足回 402。' +
       '★什么时候用:出图/预检/审核反复说人数不对、局部镜(手部/道具特写)被当成完整人物出图或审核,' +
       '而你已经改过正文或绑定——补全器只填空、不覆盖已有契约,不调本工具改动不会进契约。' +
+      'update_shot 回执带 frame_contract_advisory、get_shot_prompts 的 frame_contract.stale=true、review_storyboards 报 frame_contract_stale / frame_contract_binding_conflict、' +
+      '出帧报价带 frame_contract_advisory,都是该调本工具的信号;得出 updated 或 unchanged 后「可能过期」标记清除(rejected / stale / no_candidate 保留)。' +
       '★正确顺序:先 update_shot 把画面写对(谁在画面里、谁只出声音用 character_presence 标 voice_only、' +
       '不该出现的人从 character_ids 解绑),再调本工具;不改正文直接调多半回 unchanged。' +
       '★一次文本 AI 调用,按 token 后付(与 autofill_storyboards 同链路),调用前告知客户。' +
@@ -2766,6 +2775,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★pose_timeline_stale 非 null = 本镜动作起止姿态里的秒数时间轴超出了当前时长(多见于改短 duration 后),出视频时那一端已自动不送;新时间轴写进 video_prompt。' +
       '★同时回 description(画面描述)、lighting(本镜用光)与 sound_effect(本镜音效)现值——review_storyboards 的禁区词命中常在 description / sound_effect,改前先在这里读;用光写 lighting。' +
       '★同时回 shot_type(景别)/ angle(机位)/ camera_movement(运镜)/ continuity_intent(剪辑意图)现值——update_shot 改完这几项就在这里回读核对(整集 get_storyboards 不含它们);null=未设。' +
+      '★同时回 action(动作,update_shot 可改,改前先在这里读)与 action_in / action_out(动作起止姿态,只读)现值。' +
+      '★同时回 frame_contract{on_screen_count, subject_kind, stale, stale_fields?, binding_conflict?, note?}:本镜构图契约的**结论**——' +
+      '出图组织画面、帧审计判人数都按它(契约本体不对外)。stale=true = 契约生成后改过景别 / 绑定 / 画面描述等、可能已过期;' +
+      'binding_conflict=true = 绑定的角色全部只出声音而契约仍要画人;两种都按 note 建议客户调 rederive_shot_contract(按 token 后付)。' +
       '★同时回 expression_hint(本镜作者指定的面部表情,null=未指定、由平台按台词反推),改它用 update_shot。' +
       'expression_inferred 是拆镜 AI 在剧本没写神态时按本镜内容推断的表情(只读;null=没推断,或本镜台词/动作/氛围/描述/强度改过、推断已过期不再使用);它优先级低于 expression_hint——' +
       '推断不合意就用 update_shot 写 expression_hint 覆盖它。' +

@@ -480,8 +480,15 @@ content that will be rejected.
    **If frames keep getting the head count or the subject wrong** (a hand / prop insert
    drawn or judged as a full person, an off-screen speaker counted as visible, precheck or
    frame review repeatedly complaining about how many people are in shot), the shot's
-   composition contract is wrong. You cannot read or edit that contract directly, and the
-   completion passes only fill empty contracts, so editing text alone does not reach it.
+   composition contract is wrong. You cannot edit that contract directly (`get_shot_prompts`
+   returns only its conclusion as `frame_contract`: `on_screen_count`, `subject_kind`, `stale`),
+   and the completion passes only fill empty contracts, so editing text alone does not reach it.
+   The platform tells you when an edit probably left it behind: after `update_shot` changes the
+   shot type, bindings, voice-only marks, description, action or the first-frame prompt, the
+   receipt carries `frame_contract_advisory`; `review_storyboards` reports `frame_contract_stale`
+   (or `frame_contract_binding_conflict` when every bound character is voice-only but the
+   contract still expects people), and frame quotes carry `frame_contract_advisory`. Treat any
+   of these as the cue below. Read `action` with `get_shot_prompts` before rewriting it.
    Fix the shot with `update_shot` first (who is on screen; mark voice-only speakers with
    `character_presence: voice_only`; unbind people who should not appear), then call
    `rederive_shot_contract` (one metered text call — tell the customer). It returns only an
