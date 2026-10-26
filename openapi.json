@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.221",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.221 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.222",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.222 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -345,6 +345,279 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/derive-portrait": {
+      "post": {
+        "operationId": "derive_character_portrait",
+        "summary": "按报价派生定妆图候选(后台出图,按用量扣点)",
+        "description": "按报价派生定妆图候选(后台出图,按用量扣点)。只出候选,**不替换**目标角色现有定妆图;返回 image_generation_ids,用 get_derived_portrait_candidates 轮询到 completed 后把候选图给客户看,客户挑中一张再 adopt_derived_portrait 登记。参数一律以报价时为准(只传 quote_id 即可;另传不同参数会 409)。报价后参考角色换了定妆图或剧的图片模型被改 ⇒ 409,重新报价。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quote_id": {
+                    "type": "string",
+                    "description": "来自 quote_derive_character_portrait"
+                  }
+                },
+                "required": [
+                  "quote_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/derive-portrait/adopt": {
+      "post": {
+        "operationId": "adopt_derived_portrait",
+        "summary": "把客户选中的派生候选登记为目标角色的定妆图(免费登记;内容检查是一次小额视觉审核,按用量后付)",
+        "description": "把客户选中的派生候选登记为目标角色的定妆图(免费登记;内容检查是一次小额视觉审核,按用量后付)。效果同 set_character_portrait:之后 AI 重生默认不覆盖;原设定图/多角度头像/全身参考失效且**不会自动重出**——登记后按响应里的 next_step 先 generate_character_sheet(character_id) 重出设定图;响应里的 stale_frames 是首帧还用着旧定妆图的镜,要用 quote_shot_frame + generate_shot_frame 逐镜重生。内容检查不合规返回 422 不登记,把问题原样告诉客户,客户坚持才带 allow_issues:true。\n★【完成后质检·免费】出完等图落库(轮询对应 get_* 看状态,pending 别重复调),再调 review_assets 审资产层(缺图 / 生成中 / 失败 / 被一致性闸拒收 / 道具时代冲突 / 色彩脚本),findings 原样告诉客户、按 action 修完复审;再按它返回的 agent_qc 亲自逐张看图(像不像档案、是不是同一个人、时代对不对;设定图本身各角度齐不齐、比例与结构对不对;道具与场景图放在剧情里合不合理——对照素材 used_in_shots 那几镜),submit_qc_report 提交质检报告;出镜头图时把它的 review_token 作为 asset_review_token 传给 generate_frames / generate_shot_frame。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "image_generation_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "description": "get_derived_portrait_candidates 里客户选中的那张 id"
+                  },
+                  "allow_issues": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "image_generation_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/derive-portrait/candidates": {
+      "get": {
+        "operationId": "get_derived_portrait_candidates",
+        "summary": "查定妆图派生候选的进度与图片(免费)",
+        "description": "查定妆图派生候选的进度与图片(免费)。返回每张 {id,status,image_url,error_msg};pending/processing 是还在出,别重复派生(重复扣费)。全部 completed 后**亲自逐张看图**:是不是参考角色同一个人(五官、面部标记位置)、年龄对不对、穿着是否符合目标角色档案,把候选给客户挑。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "exclusiveMinimum": 0
+              },
+              "minItems": 1,
+              "description": "derive_character_portrait 返回的 image_generation_ids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/derive-portrait/quote": {
+      "post": {
+        "operationId": "quote_derive_character_portrait",
+        "summary": "定妆图派生的报价(免费,不出图)",
+        "description": "定妆图派生的报价(免费,不出图)。以一个角色的定妆图为参考做图生图:保留五官比例、脸型、眼型与面部标记(痣/疤)的位置,只把年龄推演到 age_stage。★典型用途:**同一人物的不同年龄建成了几个独立角色**——批量出定妆图时它们彼此没有身份锚,脸会画成不同的人、痣会换边;这时选其中定妆图合格的那个当参考(reference_character_id),给其余年龄的角色逐个派生。跨角色派生时穿着与发型按**目标角色档案**的外貌(appearance)与服装锁出,不沿用参考图的衣服——派生前先 get_characters 核对目标角色的 appearance 写对了年龄相应的穿着,不对先 update_character 改;不传 reference_character_id = 以目标角色自己的定妆图为参考、只改年龄、不注入服装。计价:每张候选 = 本剧图片模型带 1 张参考图的单价(如 gpt-image-2.5-flare 为 11+18=29 点)× count。拿到 quote_id 后传给 derive_character_portrait。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "目标角色(要出新定妆图的那个)"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "age_stage": {
+                    "type": "string",
+                    "description": "目标年龄,如「65」「65岁」「中年」"
+                  },
+                  "reference_character_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 6
+                  }
+                },
+                "required": [
+                  "age_stage"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",

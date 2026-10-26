@@ -2069,6 +2069,67 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
   )
   server.tool(
+    'quote_derive_character_portrait',
+    '定妆图派生的报价(免费,不出图)。以一个角色的定妆图为参考做图生图:保留五官比例、脸型、眼型与面部标记(痣/疤)的位置,' +
+      '只把年龄推演到 age_stage。★典型用途:**同一人物的不同年龄建成了几个独立角色**——批量出定妆图时它们彼此没有身份锚,' +
+      '脸会画成不同的人、痣会换边;这时选其中定妆图合格的那个当参考(reference_character_id),给其余年龄的角色逐个派生。' +
+      '跨角色派生时穿着与发型按**目标角色档案**的外貌(appearance)与服装锁出,不沿用参考图的衣服——派生前先 get_characters 核对目标角色的 appearance 写对了年龄相应的穿着,' +
+      '不对先 update_character 改;不传 reference_character_id = 以目标角色自己的定妆图为参考、只改年龄、不注入服装。' +
+      '计价:每张候选 = 本剧图片模型带 1 张参考图的单价(如 gpt-image-2.5-flare 为 11+18=29 点)× count。' +
+      '拿到 quote_id 后传给 derive_character_portrait。' + CONFIRM_HINT,
+    {
+      character_id: z.number().int().positive().describe('目标角色(要出新定妆图的那个)'),
+      reference_character_id: z.number().int().positive().optional()
+        .describe('参考角色(同剧、已有合格定妆图;通常是同一人物另一年龄的角色)。不传 = 目标角色自己'),
+      age_stage: z.string().describe('目标年龄,如「65」「65岁」「中年」'),
+      count: z.number().int().min(1).max(6).optional().describe('候选张数 1~6,默认 2;每张单独计费'),
+    },
+    async ({ character_id, reference_character_id, age_stage, count }) =>
+      jsonResult(await client.producePost(`/characters/${character_id}/derive-portrait/quote`, {
+        age_stage, ...(reference_character_id ? { reference_character_id } : {}), ...(count ? { count } : {}),
+      })),
+  )
+  server.tool(
+    'derive_character_portrait',
+    '按报价派生定妆图候选(后台出图,按用量扣点)。只出候选,**不替换**目标角色现有定妆图;' +
+      '返回 image_generation_ids,用 get_derived_portrait_candidates 轮询到 completed 后把候选图给客户看,' +
+      '客户挑中一张再 adopt_derived_portrait 登记。参数一律以报价时为准(只传 quote_id 即可;另传不同参数会 409)。' +
+      '报价后参考角色换了定妆图或剧的图片模型被改 ⇒ 409,重新报价。',
+    {
+      character_id: z.number().int().positive(),
+      quote_id: z.string().describe('来自 quote_derive_character_portrait'),
+    },
+    async ({ character_id, quote_id }) =>
+      jsonResult(await client.producePost(`/characters/${character_id}/derive-portrait`, { quote_id })),
+  )
+  server.tool(
+    'get_derived_portrait_candidates',
+    '查定妆图派生候选的进度与图片(免费)。返回每张 {id,status,image_url,error_msg};pending/processing 是还在出,别重复派生(重复扣费)。' +
+      '全部 completed 后**亲自逐张看图**:是不是参考角色同一个人(五官、面部标记位置)、年龄对不对、穿着是否符合目标角色档案,把候选给客户挑。',
+    {
+      character_id: z.number().int().positive(),
+      image_generation_ids: z.array(z.number().int().positive()).min(1).describe('derive_character_portrait 返回的 image_generation_ids'),
+    },
+    async ({ character_id, image_generation_ids }) =>
+      jsonResult(await client.produceGet(`/characters/${character_id}/derive-portrait/candidates?ids=${image_generation_ids.join(',')}`)),
+  )
+  server.tool(
+    'adopt_derived_portrait',
+    '把客户选中的派生候选登记为目标角色的定妆图(免费登记;内容检查是一次小额视觉审核,按用量后付)。' +
+      '效果同 set_character_portrait:之后 AI 重生默认不覆盖;原设定图/多角度头像/全身参考失效且**不会自动重出**——' +
+      '登记后按响应里的 next_step 先 generate_character_sheet(character_id) 重出设定图;响应里的 stale_frames 是首帧还用着旧定妆图的镜,' +
+      '要用 quote_shot_frame + generate_shot_frame 逐镜重生。内容检查不合规返回 422 不登记,把问题原样告诉客户,客户坚持才带 allow_issues:true。' + ASSET_QC_HINT,
+    {
+      character_id: z.number().int().positive(),
+      image_generation_id: z.number().int().positive().describe('get_derived_portrait_candidates 里客户选中的那张 id'),
+      allow_issues: z.boolean().optional().describe('内容检查报了问题、客户看过后仍明确坚持用这张图时才传 true'),
+    },
+    async ({ character_id, image_generation_id, allow_issues }) =>
+      jsonResult(await client.producePost(`/characters/${character_id}/derive-portrait/adopt`, {
+        image_generation_id, ...(allow_issues ? { allow_issues: true } : {}),
+      })),
+  )
+  server.tool(
     'upload_shot_frame',
     '用**客户自有图片**作为某镜的首帧(first_frame)或尾帧(last_frame)。尾帧可选——仅在想固定某镜结尾画面(大运镜/揭示镜)时传;常规只需首帧。会把该镜已有视频标为过期待重生。自动上传+登记。免费。' +
       '⚠️ 只用于客户自己提供的素材，或**本镜平台候选的局部修补**（recovery_options 的 upload_fixed：在 get_frame_candidates 给的原图上裁切/调色/修小瑕疵，客户确认后上传）。' +
