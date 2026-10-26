@@ -1011,7 +1011,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '用法:发起后每 30~60 秒调一次。running:true = 还在跑,继续等,**千万不要重发**' +
       '(重发拆镜会替换整集分镜,已调好/已出图的全丢、要重花钱);' +
       'running:false = 那次已经结束,这时才去 get_storyboards / get_script 看产物有没有落库。\n' +
-      '⚠️ 服务重启会让在途登记归零,重启期间发起的运行也会显示为无在途。',
+      '⚠️ 服务重启会让 agent 在途登记归零,重启期间发起的运行也会显示为无在途。\n' +
+      '★generate_videos 整集出视频的接力链看返回里的 video_run 段(它落库,重启不会凭空消失):' +
+      'shots_total / shots_with_video / shots_remaining = 共几镜、已出几镜、剩几镜;running:true = 链在跑,别重发 generate_videos;' +
+      'resumed_after_restart>0 = 中途服务重启过、已自动续跑(已出视频与中断前已派发的镜不重出不重扣);' +
+      'status=interrupted = 重启后没自动续跑(interrupt_reason 写原因),重新 quote_videos 后 generate_videos 会跳过已出的镜;' +
+      'shots_dispatched_without_video = 派发过但没出片的镜,用 get_jobs 看原因、regenerate_shot_video 单补。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/run-status`)),
   )

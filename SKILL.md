@@ -444,7 +444,11 @@ content that will be rejected.
    leave characters drifting across angle / lighting / wardrobe.
    `generate_portraits_and_sheets` does both (portraits first, then sheets).
    **`generate_videos` has no per-shot parameter** — it renders every shot of
-   the episode that still lacks a video, in one run. When a native-audio project
+   the episode that still lacks a video, in one run. Track that run with
+   `get_run_status` → `video_run` (shots with video / remaining; it survives a
+   server restart and is resumed automatically where enabled — `status=interrupted`
+   means re-quote and call `generate_videos` again, finished shots are skipped).
+   When a native-audio project
    needs one seed shot per speaking character before locking voices, render those
    seeds with the single-shot tools `quote_regenerate_shot_video` →
    `regenerate_shot_video` (they work on a shot that has no video yet), lock the

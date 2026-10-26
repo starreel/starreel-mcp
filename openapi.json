@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.238",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.238 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.239",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.239 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -9329,7 +9329,7 @@
       "get": {
         "operationId": "get_run_status",
         "summary": "(★免费·长耗时操作后必用)查这一集当前有没有 agent 正在跑",
-        "description": "(★免费·长耗时操作后必用)查这一集当前有没有 agent 正在跑。rewrite_script / extract_assets / generate_storyboards 都是**分钟级**后台任务,它们只回一句 status:\"generating\",本工具是唯一能区分「还在跑」与「已经结束」的手段。\n★典型耗时(生产实测):改写 2~4 分钟、拆镜 5~10 分钟——**单次 LLM 调用就可能 3~7 分钟**。所以 60 秒内查不到结果是完全正常的,绝不是失败。\n用法:发起后每 30~60 秒调一次。running:true = 还在跑,继续等,**千万不要重发**(重发拆镜会替换整集分镜,已调好/已出图的全丢、要重花钱);running:false = 那次已经结束,这时才去 get_storyboards / get_script 看产物有没有落库。\n⚠️ 服务重启会让在途登记归零,重启期间发起的运行也会显示为无在途。",
+        "description": "(★免费·长耗时操作后必用)查这一集当前有没有 agent 正在跑。rewrite_script / extract_assets / generate_storyboards 都是**分钟级**后台任务,它们只回一句 status:\"generating\",本工具是唯一能区分「还在跑」与「已经结束」的手段。\n★典型耗时(生产实测):改写 2~4 分钟、拆镜 5~10 分钟——**单次 LLM 调用就可能 3~7 分钟**。所以 60 秒内查不到结果是完全正常的,绝不是失败。\n用法:发起后每 30~60 秒调一次。running:true = 还在跑,继续等,**千万不要重发**(重发拆镜会替换整集分镜,已调好/已出图的全丢、要重花钱);running:false = 那次已经结束,这时才去 get_storyboards / get_script 看产物有没有落库。\n⚠️ 服务重启会让 agent 在途登记归零,重启期间发起的运行也会显示为无在途。\n★generate_videos 整集出视频的接力链看返回里的 video_run 段(它落库,重启不会凭空消失):shots_total / shots_with_video / shots_remaining = 共几镜、已出几镜、剩几镜;running:true = 链在跑,别重发 generate_videos;resumed_after_restart>0 = 中途服务重启过、已自动续跑(已出视频与中断前已派发的镜不重出不重扣);status=interrupted = 重启后没自动续跑(interrupt_reason 写原因),重新 quote_videos 后 generate_videos 会跳过已出的镜;shots_dispatched_without_video = 派发过但没出片的镜,用 get_jobs 看原因、regenerate_shot_video 单补。",
         "tags": [
           "episodes"
         ],
