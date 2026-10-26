@@ -1357,6 +1357,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
 
   // ---------- 单镜出帧/重生(改某一镜的画面走这里,别去外部平台出图再传回来) ----------
+  const CONTINUITY_MODE_ARG = z.enum(['auto', 'independent', 'follow_previous']).optional().describe(
+    '首帧的跨镜承接方式(只对 first_frame/both 的首帧生效):不传=auto,平台按剪辑意图、在画角色、景别与构图判断要不要把上一镜尾帧钉在参考图第 1 位;' +
+    'independent=这一镜独立出,绝不带上一镜画面(跳切、换场、局部特写);follow_previous=强制承接上一镜(即使两镜之间标了切)。★报价与生成须传同一个值,否则 409 重新报价')
   server.tool(
     'quote_shot_frame',
     '报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)。返回 estimated_points、quote_id。零扣费。' +
@@ -1365,15 +1368,18 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。' +
       '★frame_type=both 时,平台判这一镜不需要独立尾帧(末态≈首态、没有运镜)会只出首帧:报价 frames_to_generate=1、只计首帧,并带 last_frame_skipped 说明原因——**原样告诉客户尾帧不会出**。' +
       '客户确实要尾帧(例如起止画面不同的运镜)就报价与生成都带 force_independent_last_frame:true。' +
+      '★出首帧(first_frame/both)时响应带 continuity:follows_previous_shot=true 表示上一镜尾帧会钉在参考图第 1 位(承接上一镜的人物、姿势与机位),note 说明原因。' +
+      '这一镜不该接上一镜(跳切、换场、只拍手/道具的局部特写等),报价与生成都带 continuity_mode:\'independent\'。' +
       QUOTE_RANGE_HINT,
     {
       storyboard_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;both=首尾各一张'),
       image_model: z.string().optional().describe('按这个模型报价(★须与随后 generate_shot_frame 传的一致,否则 generate 会 400;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
       force_independent_last_frame: z.boolean().optional().describe('只对 frame_type=both 有意义:true=客户明确要独立尾帧,不让平台判据跳过(报价按首尾两张算)。★须与 generate_shot_frame 传的一致,否则 409 重新报价'),
+      continuity_mode: CONTINUITY_MODE_ARG,
     },
-    async ({ storyboard_id, frame_type, image_model, force_independent_last_frame }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/quote`, { frame_type, image_model, force_independent_last_frame })),
+    async ({ storyboard_id, frame_type, image_model, force_independent_last_frame, continuity_mode }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/quote`, { frame_type, image_model, force_independent_last_frame, continuity_mode })),
   )
   server.tool(
     'generate_shot_frame',
@@ -1381,7 +1387,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '场景/道具参考图、画风锚与帧审计,重生出的图与全片一致;用外部工具出图再上传会绕开这整条链路,人物/服装/画风必漂。' +
       '重生会覆盖该帧现有图(含此前上传的),并把本镜视频标为待重生。尾帧需本镜首帧已就绪(否则先用 first_frame 或 both)。' +
       '完成判据:轮询 get_storyboards 看该镜 first_frame_image/last_frame_image 变化。' +
-      '★回执的 frames_dispatched 是真派出去的张数;both 的尾帧被平台判为不需要时会带 skipped_frames(没出、没扣尾帧的钱),原样告诉客户。\n' +
+      '★回执的 frames_dispatched 是真派出去的张数;both 的尾帧被平台判为不需要时会带 skipped_frames(没出、没扣尾帧的钱),原样告诉客户。' +
+      '出首帧的回执带 continuity(这次承接没承接上一镜、原因);continuity_mode 须与报价时一致,否则 409 重新报价。\n' +
       '★继承重开(reopen_pair_id):get_storyboards 某镜带这个字段时,原样传进来可以只重掷首尾帧里' +
       '真正有问题的那一侧——另一侧此前已经生成好的候选原样保留,不重新生成、不重新计费。传了它就' +
       '不用再传 frame_type(会被忽略,由平台判定该重哪一侧);quote_id 仍要用 quote_shot_frame 报价' +
@@ -1402,11 +1409,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(★必须与 quote_shot_frame 传的那个一致,否则 400 IMAGE_MODEL_MISMATCH;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
       force_independent_last_frame: z.boolean().optional().describe('只对 frame_type=both 有意义:true=客户明确要独立尾帧,绕过平台判据(★须与 quote_shot_frame 传的一致)'),
+      continuity_mode: CONTINUITY_MODE_ARG,
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定角色定妆参考与时代设定冲突时,出图会被拦下(未扣费):客户上传的定妆图及其派生图报 400 ERA_USER_REF_CONFLICT,平台生成的定妆图报 era_identity_ref_blocked。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
       ...SHOT_REGEN_ARG,
     },
-    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, allow_era_ref_conflict, customer_approved_more_regens }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, allow_era_ref_conflict, customer_approved_more_regens })),
+    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, continuity_mode, allow_era_ref_conflict, customer_approved_more_regens }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, continuity_mode, allow_era_ref_conflict, customer_approved_more_regens })),
   )
 
   // ---------- 镜头图局部返修(只修一小块,其余像素原样保留;按剧灰度) ----------

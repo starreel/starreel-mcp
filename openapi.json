@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.230",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.230 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.231",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.231 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -14494,7 +14494,7 @@
       "post": {
         "operationId": "generate_shot_frame",
         "summary": "确认后给**某一镜**出帧或重生该帧(异步)",
-        "description": "确认后给**某一镜**出帧或重生该帧(异步)。这是修某一镜画面的正路:平台会带上该镜的角色身份锚、场景/道具参考图、画风锚与帧审计,重生出的图与全片一致;用外部工具出图再上传会绕开这整条链路,人物/服装/画风必漂。重生会覆盖该帧现有图(含此前上传的),并把本镜视频标为待重生。尾帧需本镜首帧已就绪(否则先用 first_frame 或 both)。完成判据:轮询 get_storyboards 看该镜 first_frame_image/last_frame_image 变化。★回执的 frames_dispatched 是真派出去的张数;both 的尾帧被平台判为不需要时会带 skipped_frames(没出、没扣尾帧的钱),原样告诉客户。\n★继承重开(reopen_pair_id):get_storyboards 某镜带这个字段时,原样传进来可以只重掷首尾帧里真正有问题的那一侧——另一侧此前已经生成好的候选原样保留,不重新生成、不重新计费。传了它就不用再传 frame_type(会被忽略,由平台判定该重哪一侧);quote_id 仍要用 quote_shot_frame 报价(frame_type 传 first_frame 或 last_frame 均可,单帧同价)。若该镜没有 reopen_pair_id 字段(不满足继承条件),这个参数不要传,走常规 frame_type 重试。\n★★出尾帧若被拦下并提示「此镜标为状态改变,但没有任何地方说明结束时是什么样子」:正解是用 update_shot 把结束状态写进 last_frame_prompt 再出,**别直接加 allow_missing_terminal 硬上**——这类镜照现状出尾帧的历史成功率只有 9.4%(有终态描述的 40.2%),硬上多半是白扣一次钱。只有确认这一镜就是要「几乎不变」的画面时才带那个参数。\n★一键出片托管环节:同一镜重出帧最多 3 轮(一次调用算一轮,both 也算一轮),到上限回 **409 AUTOPILOT_SHOT_REGEN_LIMIT**(未派发、未扣费,quote 未消耗)——别换个工具绕,停下问客户:客户同意再出就照常报价、生成时带 customer_approved_more_regens:true(再给一份上限);客户接受现状就往下走,下一步收费调用带 acknowledge_review:true 记下确认。专业模式与客户把控的环节不受这个上限约束。\n★【分镜审查硬闸·免费】本步前必须先调 review_storyboards:把返回的 findings 逐条原样告诉客户(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。单镜工具(generate_shot_frame / regenerate_shot_video)只核本镜与相邻镜:改了别的镜不用复审;本镜、相邻镜或共享资产变了才 400——这时带 base_review_token=<旧 token> 调审查工具做增量复审,只重审变更镜,质检也只看变更镜。有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——带病推进大概率产出废片且照常扣费(acknowledge_review 只代表客户本人同意,任何执行模式都须客户明确同意,托管也不例外);托管环节只有白名单内的启发式 error 能带 auto_acknowledge:true 放行(平台判,不在白名单回 400 AUTOPILOT_MUST_ASK:must_ask_customer=true 才暂停问客户,false = 按 action 自修复审)。★灰度剧还要你(agent)亲自质检:按 review_storyboards 返回的 agent_qc 逐件看素材、逐条答清单,调 submit_qc_report 提交后这张 token 才能用(没交 → 400 agent_qc_required;报告有问题 → 与 error 同样默认拦)。\n★【资产层硬闸·免费】还要先跑 review_assets(角色形象图/场景图/道具图),把它的 review_token 作为 asset_review_token 传进来(与分镜层的 review_token 并存,两张都要;灰度剧缺了会 400 并点名 review_assets)。出完帧不会让资产 token 失效。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "description": "确认后给**某一镜**出帧或重生该帧(异步)。这是修某一镜画面的正路:平台会带上该镜的角色身份锚、场景/道具参考图、画风锚与帧审计,重生出的图与全片一致;用外部工具出图再上传会绕开这整条链路,人物/服装/画风必漂。重生会覆盖该帧现有图(含此前上传的),并把本镜视频标为待重生。尾帧需本镜首帧已就绪(否则先用 first_frame 或 both)。完成判据:轮询 get_storyboards 看该镜 first_frame_image/last_frame_image 变化。★回执的 frames_dispatched 是真派出去的张数;both 的尾帧被平台判为不需要时会带 skipped_frames(没出、没扣尾帧的钱),原样告诉客户。出首帧的回执带 continuity(这次承接没承接上一镜、原因);continuity_mode 须与报价时一致,否则 409 重新报价。\n★继承重开(reopen_pair_id):get_storyboards 某镜带这个字段时,原样传进来可以只重掷首尾帧里真正有问题的那一侧——另一侧此前已经生成好的候选原样保留,不重新生成、不重新计费。传了它就不用再传 frame_type(会被忽略,由平台判定该重哪一侧);quote_id 仍要用 quote_shot_frame 报价(frame_type 传 first_frame 或 last_frame 均可,单帧同价)。若该镜没有 reopen_pair_id 字段(不满足继承条件),这个参数不要传,走常规 frame_type 重试。\n★★出尾帧若被拦下并提示「此镜标为状态改变,但没有任何地方说明结束时是什么样子」:正解是用 update_shot 把结束状态写进 last_frame_prompt 再出,**别直接加 allow_missing_terminal 硬上**——这类镜照现状出尾帧的历史成功率只有 9.4%(有终态描述的 40.2%),硬上多半是白扣一次钱。只有确认这一镜就是要「几乎不变」的画面时才带那个参数。\n★一键出片托管环节:同一镜重出帧最多 3 轮(一次调用算一轮,both 也算一轮),到上限回 **409 AUTOPILOT_SHOT_REGEN_LIMIT**(未派发、未扣费,quote 未消耗)——别换个工具绕,停下问客户:客户同意再出就照常报价、生成时带 customer_approved_more_regens:true(再给一份上限);客户接受现状就往下走,下一步收费调用带 acknowledge_review:true 记下确认。专业模式与客户把控的环节不受这个上限约束。\n★【分镜审查硬闸·免费】本步前必须先调 review_storyboards:把返回的 findings 逐条原样告诉客户(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。单镜工具(generate_shot_frame / regenerate_shot_video)只核本镜与相邻镜:改了别的镜不用复审;本镜、相邻镜或共享资产变了才 400——这时带 base_review_token=<旧 token> 调审查工具做增量复审,只重审变更镜,质检也只看变更镜。有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——带病推进大概率产出废片且照常扣费(acknowledge_review 只代表客户本人同意,任何执行模式都须客户明确同意,托管也不例外);托管环节只有白名单内的启发式 error 能带 auto_acknowledge:true 放行(平台判,不在白名单回 400 AUTOPILOT_MUST_ASK:must_ask_customer=true 才暂停问客户,false = 按 action 自修复审)。★灰度剧还要你(agent)亲自质检:按 review_storyboards 返回的 agent_qc 逐件看素材、逐条答清单,调 submit_qc_report 提交后这张 token 才能用(没交 → 400 agent_qc_required;报告有问题 → 与 error 同样默认拦)。\n★【资产层硬闸·免费】还要先跑 review_assets(角色形象图/场景图/道具图),把它的 review_token 作为 asset_review_token 传进来(与分镜层的 review_token 并存,两张都要;灰度剧缺了会 400 并点名 review_assets)。出完帧不会让资产 token 失效。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
         "tags": [
           "storyboards"
         ],
@@ -14554,6 +14554,14 @@
                   },
                   "force_independent_last_frame": {
                     "type": "boolean"
+                  },
+                  "continuity_mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "independent",
+                      "follow_previous"
+                    ]
                   },
                   "allow_era_ref_conflict": {
                     "type": "boolean"
@@ -15015,7 +15023,7 @@
       "post": {
         "operationId": "quote_shot_frame",
         "summary": "报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)",
-        "description": "报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)。返回 estimated_points、quote_id。零扣费。客户说「第 N 镜画错了/要改」时用它,而不是拿别的图像平台出图再 upload_shot_frame。★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。★frame_type=both 时,平台判这一镜不需要独立尾帧(末态≈首态、没有运镜)会只出首帧:报价 frames_to_generate=1、只计首帧,并带 last_frame_skipped 说明原因——**原样告诉客户尾帧不会出**。客户确实要尾帧(例如起止画面不同的运镜)就报价与生成都带 force_independent_last_frame:true。★返回两个数:estimated_points 是**上界**(按参考图张数上限估,拿它准备余额就不会中途 402),typical_points 是**通常花费**。两个都告诉客户,只报上界会让人以为贵得多。固定价模型(如 Nano Banana 系列)下两者相等。",
+        "description": "报价:重画/补出**某一镜的某一帧**要多少点(一帧=一张图)。返回 estimated_points、quote_id。零扣费。客户说「第 N 镜画错了/要改」时用它,而不是拿别的图像平台出图再 upload_shot_frame。★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。★frame_type=both 时,平台判这一镜不需要独立尾帧(末态≈首态、没有运镜)会只出首帧:报价 frames_to_generate=1、只计首帧,并带 last_frame_skipped 说明原因——**原样告诉客户尾帧不会出**。客户确实要尾帧(例如起止画面不同的运镜)就报价与生成都带 force_independent_last_frame:true。★出首帧(first_frame/both)时响应带 continuity:follows_previous_shot=true 表示上一镜尾帧会钉在参考图第 1 位(承接上一镜的人物、姿势与机位),note 说明原因。这一镜不该接上一镜(跳切、换场、只拍手/道具的局部特写等),报价与生成都带 continuity_mode:'independent'。★返回两个数:estimated_points 是**上界**(按参考图张数上限估,拿它准备余额就不会中途 402),typical_points 是**通常花费**。两个都告诉客户,只报上界会让人以为贵得多。固定价模型(如 Nano Banana 系列)下两者相等。",
         "tags": [
           "storyboards"
         ],
@@ -15050,6 +15058,14 @@
                   },
                   "force_independent_last_frame": {
                     "type": "boolean"
+                  },
+                  "continuity_mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "independent",
+                      "follow_previous"
+                    ]
                   }
                 }
               }

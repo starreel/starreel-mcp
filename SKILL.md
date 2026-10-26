@@ -667,6 +667,15 @@ content that will be rejected.
    `upload_shot_frame` is for art the customer already owns — the one exception is
    a **local touch-up of this shot's own platform candidate** (option 2 below).
 
+   **Does this shot continue from the previous one?** For a first frame, the quote
+   and the receipt carry `continuity`: `follows_previous_shot: true` means the
+   previous shot's last frame will be pinned as reference #1, so its people, pose
+   and camera position carry over (`note` says why). For a jump cut, a scene change
+   or a detail close-up of only hands / an object, pass `continuity_mode:
+   'independent'` on **both** `quote_shot_frame` and `generate_shot_frame`
+   (`follow_previous` forces continuation even across a cut). The two calls must
+   use the same value, otherwise 409 — re-quote.
+
    **Only a small part of the frame is wrong?** (a face, an open mouth, a fringe of
    halo pixels, a stray object) — use `quote_local_frame_edit` → `local_frame_edit`
    instead of redrawing the whole frame or fixing it in an outside tool. Box the area
