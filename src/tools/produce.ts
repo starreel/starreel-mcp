@@ -869,7 +869,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_image_dispatch',
-    '免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词。用于回答「到底用了哪张图、为什么画面不像」；先查清再决定是否重出，别靠猜反复付费重抽。ledger=partial/none 表示该图生成于台账上线前，缺失字段如实为 null。',
+    '免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词。用于回答「到底用了哪张图、为什么画面不像」；先查清再决定是否重出，别靠猜反复付费重抽。ledger=none 不等于没送参考，看 ledger_note（code + 原因：局部返修 / 零参考派发 / 台账上线前 / 尾帧复用首帧等）；缺失字段如实为 null。',
     { image_id: z.number().int().positive() },
     async ({ image_id }) => jsonResult(await client.produceGet(`/images/${image_id}/dispatch`)),
   )
@@ -878,7 +878,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）。每张候选给原图地址（被拒的也在，可直接打开看原尺寸）、状态、是否为当前在用（adopted）、' +
       '拒因 reject（main 主码 / code 具体病因 / details 明细 / class 分流：needs_content_fix=要改内容、content_retryable=内容问题但重掷约 1/3 能成、transient=审核没审成或偶发——不是画面不合格）、' +
       '审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、' +
-      '以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。' +
+      '以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）；reference_ledger_note 非空时说明为什么没有参考图记录或参考为空（no_references_sent=确实零参考派发，原因看 dropped_before_dispatch / local_frame_edit=局部返修只送底图裁片和蒙版 / zero_refs_unrecorded / legacy_before_ledger 等），空列表别说成「什么都没送」。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。' +
       '★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。' +
       '客户看过原图确认画面没问题、是审计误判时，用 adopt_frame_candidate 人工采用（免费）；manual_adoption 非空 = 该候选是人工放行的。' +
       'recovery_options 按帧位给出失败后的三选一（挑误拒 / 修图上传 / 重生），与 get_frame_retry_diagnosis 同口径。',
@@ -1485,6 +1485,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'quote_videos',
     '报价:给某一集批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。' +
       '⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。' +
+      '\n★**frame_delivery = 本次逐镜真正送到厂商的帧**:列出有独立尾帧的计价镜,以及首帧不送达的计价镜(带 reason,如 reference_video_exclusive=挂了定妆视频锚/运动参考);' +
+      'first_frame.verified=false = 预览没跑完、送不送未核验,别当已送达讲,可逐镜 quote_regenerate_shot_video 核对;没列出的计价镜 = 已核验首帧照常送达、无独立尾帧。advisories 里出现 av_anchor_strips_frames = 这些镜被角色定妆视频锚剥掉首尾帧,' +
+      '把镜号讲给客户,要保住首尾帧就 get_av_anchors 看来源、客户同意后 clear_character_av_anchor 摘锚再重新报价。' +
       '\n★**只计这次真会派发的镜**:已出视频的镜整集续跑时跳过,不重出不计价——shots_total = 这次计价的镜数(不是集内总镜数),' +
       'shots_already_done = 已出视频、这次跳过的镜数。例外:场景组只要有一镜没出视频就**整组重出**,组内已出的镜同样计价。' +
       '全部已出视频 ⇒ 400(没有可派发的镜,要重出某镜用 regenerate_shot_video)。' +
@@ -3270,9 +3273,41 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '一致性闸拒收未入库/failed/none)+ 拒收时的 sheet_fail_reason·sheet_retryable·sheet_fail_hint(拒收判词)。' +
       '★sheet_status=rejected 时照 retryable 判:consistency_rejected 可重掷一次(generate_character_sheet);' +
       '**连拒且 fail_hint 理由几乎相同 = 锚字段与人物档案冲突(结构性必拒),重掷纯白花钱**——' +
-      '先 run_precheck 看 anchor-conflict 警告,把 visual_lock/art_bible 里钉死的角色外观移除或对齐档案再重掷。',
+      '先 run_precheck 看 anchor-conflict 警告,把 visual_lock/art_bible 里钉死的角色外观移除或对齐档案再重掷。' +
+      'has_av_anchor=true 表示该角色挂着定妆视频锚(会剥掉含该角色镜头的首尾帧),来源与摘除见 get_av_anchors。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/characters`)),
+  )
+  server.tool(
+    'get_av_anchors',
+    '读某剧各角色的定妆视频锚(AV anchor)现况。免费。定妆视频锚是平台从该角色已出的某镜视频里自动截的约 3 秒片段,' +
+      '出视频时作参考视频注入,用来锚定该角色的长相、服装和声线。' +
+      '★后果要讲给客户:厂商规定参考视频与首尾帧互斥——锚一挂上,含该角色的镜做好的首帧、尾帧都不会送到视频厂商' +
+      '(有独立尾帧、走首尾帧路由的镜除外,以 quote_videos / quote_regenerate_shot_video 的 frame_delivery 为准)。' +
+      '每角色返回 status(active 在用 / disabled 已停用 / none 无锚)、anchor_url(锚片,可直接打开看)、' +
+      'source(kind=auto 自动建 / manual 手动指定;storyboard_id·storyboard_number 截自哪一镜;start_s·dur_s 截取窗口)、' +
+      'clip_duration_s、created_at、auto_rebuild(on=没锚时出视频会自动建一条)。' +
+      'provenance=unrecorded 是本功能上线前建的锚,来源没有记录:inferred_source 只是按自动选镜规则推测,别当事实讲,让客户打开 anchor_url 看。' +
+      'av_anchor_ref_enabled=false 表示本剧出视频不挂锚,锚存在也无影响。要摘锚用 clear_character_av_anchor。',
+    { drama_id: z.number().int().positive() },
+    async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/av-anchors`)),
+  )
+  server.tool(
+    'clear_character_av_anchor',
+    '摘掉某角色的定妆视频锚并停用自动建锚。免费。★必须客户确认后再调,先用 get_av_anchors 把锚的来源讲给客户。' +
+      '后果两面都要讲清:①摘锚后含该角色的镜首帧恢复送达,不再因参考视频互斥被剥(尾帧仍按动作类型等常规规则判定,以重新报价的 frame_delivery 为准);' +
+      '②台词镜的声线不再锚定锚片里的嗓音,只靠厂商按文字和首帧生成,跨镜声线可能有差异;长相改由定妆照/首帧锚定。' +
+      '默认停用:之后出视频不再挂它,也不会自动重建。allow_auto_rebuild:true = 只清锚不停用(下次出视频平台自动重选一镜重建,首尾帧又会被剥),' +
+      '也是停用后的恢复入口。这是解除引用不是删除:锚片文件不删,回执 unlinked 列出摘下的 URL(list_unlinked_assets 可查)。' +
+      '已出的视频不受影响;摘完重新报价(quote_videos / quote_regenerate_shot_video)核对 frame_delivery 与 advisories。',
+    {
+      character_id: z.number().int().positive(),
+      allow_auto_rebuild: z.boolean().optional().describe('true=只清锚、保持自动建锚(或恢复已停用的自动建锚);缺省=摘锚并停用'),
+    },
+    async ({ character_id, allow_auto_rebuild }) => jsonResult(await client.producePost(
+      `/characters/${character_id}/av-anchor/clear`,
+      allow_auto_rebuild !== undefined ? { allow_auto_rebuild } : {},
+    )),
   )
   server.tool(
     'get_scenes',

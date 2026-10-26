@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.235",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.235 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.238",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.238 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -345,6 +345,68 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/av-anchor/clear": {
+      "post": {
+        "operationId": "clear_character_av_anchor",
+        "summary": "摘掉某角色的定妆视频锚并停用自动建锚",
+        "description": "摘掉某角色的定妆视频锚并停用自动建锚。免费。★必须客户确认后再调,先用 get_av_anchors 把锚的来源讲给客户。后果两面都要讲清:①摘锚后含该角色的镜首帧恢复送达,不再因参考视频互斥被剥(尾帧仍按动作类型等常规规则判定,以重新报价的 frame_delivery 为准);②台词镜的声线不再锚定锚片里的嗓音,只靠厂商按文字和首帧生成,跨镜声线可能有差异;长相改由定妆照/首帧锚定。默认停用:之后出视频不再挂它,也不会自动重建。allow_auto_rebuild:true = 只清锚不停用(下次出视频平台自动重选一镜重建,首尾帧又会被剥),也是停用后的恢复入口。这是解除引用不是删除:锚片文件不删,回执 unlinked 列出摘下的 URL(list_unlinked_assets 可查)。已出的视频不受影响;摘完重新报价(quote_videos / quote_regenerate_shot_video)核对 frame_delivery 与 advisories。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "allow_auto_rebuild": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -1885,6 +1947,53 @@
         "operationId": "get_autopilot_log",
         "summary": "一键 / 混合模式的托管决策日志与交付报告(免费·只读)",
         "description": "一键 / 混合模式的托管决策日志与交付报告(免费·只读)。日志由**服务端**在审查、审查闸、质检提交时写入——你自报的「修了几轮、放行了什么」不算数,以这里为准。返回 pending_questions(必须客户决定的问题:不在自动放行白名单、或自修已到上限;每条带集号、环节、blocking 码与原因)、report(交付报告:budget 花费与硬上限、layers 每集每层自修轮数与最后一次审查/质检结论、auto_acknowledged 自动放行了什么、leftovers 遗留瑕疵)、entries(最近 200 条原始记录)。★pending_questions 非空就暂停,把它们**汇总后一次性**问客户(别一条一条问),客户答复前别往那一层下游推;客户同意照现状继续 → 下一步带 acknowledge_review:true。★出完片调一次,把 report 讲给客户:花了多少、每层自修几轮、自动放行了哪些启发式问题、还留着哪些瑕疵。交付验收 confirm_delivery_acceptance 只能客户本人确认。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/dramas/{drama_id}/av-anchors": {
+      "get": {
+        "operationId": "get_av_anchors",
+        "summary": "读某剧各角色的定妆视频锚(AV anchor)现况",
+        "description": "读某剧各角色的定妆视频锚(AV anchor)现况。免费。定妆视频锚是平台从该角色已出的某镜视频里自动截的约 3 秒片段,出视频时作参考视频注入,用来锚定该角色的长相、服装和声线。★后果要讲给客户:厂商规定参考视频与首尾帧互斥——锚一挂上,含该角色的镜做好的首帧、尾帧都不会送到视频厂商(有独立尾帧、走首尾帧路由的镜除外,以 quote_videos / quote_regenerate_shot_video 的 frame_delivery 为准)。每角色返回 status(active 在用 / disabled 已停用 / none 无锚)、anchor_url(锚片,可直接打开看)、source(kind=auto 自动建 / manual 手动指定;storyboard_id·storyboard_number 截自哪一镜;start_s·dur_s 截取窗口)、clip_duration_s、created_at、auto_rebuild(on=没锚时出视频会自动建一条)。provenance=unrecorded 是本功能上线前建的锚,来源没有记录:inferred_source 只是按自动选镜规则推测,别当事实讲,让客户打开 anchor_url 看。av_anchor_ref_enabled=false 表示本剧出视频不挂锚,锚存在也无影响。要摘锚用 clear_character_av_anchor。",
         "tags": [
           "dramas"
         ],
@@ -6136,7 +6245,7 @@
       "get": {
         "operationId": "get_characters",
         "summary": "读某一集的角色列表(名字/定妆图/设定图就绪状态)",
-        "description": "读某一集的角色列表(名字/定妆图/设定图就绪状态)。免费。每角色带结构化状态:portrait_status/sheet_status(ready=已入库/pending=生成或审计中·别重复点/rejected=图已生成但被一致性闸拒收未入库/failed/none)+ 拒收时的 sheet_fail_reason·sheet_retryable·sheet_fail_hint(拒收判词)。★sheet_status=rejected 时照 retryable 判:consistency_rejected 可重掷一次(generate_character_sheet);**连拒且 fail_hint 理由几乎相同 = 锚字段与人物档案冲突(结构性必拒),重掷纯白花钱**——先 run_precheck 看 anchor-conflict 警告,把 visual_lock/art_bible 里钉死的角色外观移除或对齐档案再重掷。",
+        "description": "读某一集的角色列表(名字/定妆图/设定图就绪状态)。免费。每角色带结构化状态:portrait_status/sheet_status(ready=已入库/pending=生成或审计中·别重复点/rejected=图已生成但被一致性闸拒收未入库/failed/none)+ 拒收时的 sheet_fail_reason·sheet_retryable·sheet_fail_hint(拒收判词)。★sheet_status=rejected 时照 retryable 判:consistency_rejected 可重掷一次(generate_character_sheet);**连拒且 fail_hint 理由几乎相同 = 锚字段与人物档案冲突(结构性必拒),重掷纯白花钱**——先 run_precheck 看 anchor-conflict 警告,把 visual_lock/art_bible 里钉死的角色外观移除或对齐档案再重掷。has_av_anchor=true 表示该角色挂着定妆视频锚(会剥掉含该角色镜头的首尾帧),来源与摘除见 get_av_anchors。",
         "tags": [
           "episodes"
         ],
@@ -11080,7 +11189,7 @@
       "post": {
         "operationId": "quote_videos",
         "summary": "报价:给某一集批量出视频要多少点(与实际扣费同函数,较准)",
-        "description": "报价:给某一集批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。\n★**只计这次真会派发的镜**:已出视频的镜整集续跑时跳过,不重出不计价——shots_total = 这次计价的镜数(不是集内总镜数),shots_already_done = 已出视频、这次跳过的镜数。例外:场景组只要有一镜没出视频就**整组重出**,组内已出的镜同样计价。全部已出视频 ⇒ 400(没有可派发的镜,要重出某镜用 regenerate_shot_video)。报价之后若有镜的视频被清空(变成待出视频),generate_videos 会 409 要求重新报价,不按报价外的镜扣费。\n★**按镜指定视频引擎**:传 shot_engines={分镜id: 引擎} 即只为这些镜、这一次整集生成换引擎(不改剧级 video_engine,其余镜照旧)。报价按它逐镜计价,quote_id 把引擎钉死,generate_videos 派发的就是它——要改引擎必须重新报价。回执 shot_engines = 实际生效的映射;shot_engines_ungrouped = 因含指定镜而**拆成逐镜出**的场景组(场景组的时长与多关键帧是按剧引擎规划的,换引擎整组出会丢镜/丢关键帧;拆组后组内其余镜仍按剧引擎逐镜出,失去组内一次成片的连贯性,所以别为一镜去拆一个好好的组——先看 get_scene_group_plan)。所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),且镜头时长不超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400(超长会被厂商截断,要么换引擎要么 split_shot)。指定引擎的镜必须这次会出视频:已出视频的镜整集生成不会重出,给它指定引擎 ⇒ 400;拆成逐镜的场景组只计没出视频的组员。只想重出个别已出过视频的镜,用 quote_regenerate_shot_video 的 model 更省。★响应可能带**未接缝提示**(不影响 review_token / 报价 / 状态码):review_frames 与 generate_videos 是 unchained_seam_advisory,quote_videos 是 advisories 里 code=unchained_seams。seams 列的是 chain_frames 会接、却还没接上的相邻缝(from_shot→to_shot),status=no_stamp(从没接过)/ pending(发起过衔接、还没落地或审计未出结论)/ stale_anchor(上次承接的锚已失效:上一镜尾帧在衔接之后又被重生过,需要重接)/ join_failed(上次发起的衔接重生被拒 / 失败 / 落选,没落地)/ audit_failed(衔接落地但审计判不连续,看 get_storyboards 的 seam_failed_dims)/ first_frame_regenerated(接缝审过之后下镜首帧又被重出、没走承接路径,原衔接已不算数)/ not_linked(规划器判没接上、原因证据不足);都按计划重接即可;video_locked 是下镜已出视频的同类缝,chain_frames 不再改它们,只能逐镜 chain_shot_from_prev / chain_shot_from 换首帧后 regenerate_shot_video(都先报价)。出视频前看到 seams 就先 chain_frames(dry_run:true) 把计划与报价告诉客户,客户同意再执行,执行后重调 review_frames。",
+        "description": "报价:给某一集批量出视频要多少点(与实际扣费同函数,较准)。返回 estimated_points、quote_id。零扣费。⚠️ 视频是大额花费,务必把点数清楚告诉用户并等其确认。\n★**frame_delivery = 本次逐镜真正送到厂商的帧**:列出有独立尾帧的计价镜,以及首帧不送达的计价镜(带 reason,如 reference_video_exclusive=挂了定妆视频锚/运动参考);first_frame.verified=false = 预览没跑完、送不送未核验,别当已送达讲,可逐镜 quote_regenerate_shot_video 核对;没列出的计价镜 = 已核验首帧照常送达、无独立尾帧。advisories 里出现 av_anchor_strips_frames = 这些镜被角色定妆视频锚剥掉首尾帧,把镜号讲给客户,要保住首尾帧就 get_av_anchors 看来源、客户同意后 clear_character_av_anchor 摘锚再重新报价。\n★**只计这次真会派发的镜**:已出视频的镜整集续跑时跳过,不重出不计价——shots_total = 这次计价的镜数(不是集内总镜数),shots_already_done = 已出视频、这次跳过的镜数。例外:场景组只要有一镜没出视频就**整组重出**,组内已出的镜同样计价。全部已出视频 ⇒ 400(没有可派发的镜,要重出某镜用 regenerate_shot_video)。报价之后若有镜的视频被清空(变成待出视频),generate_videos 会 409 要求重新报价,不按报价外的镜扣费。\n★**按镜指定视频引擎**:传 shot_engines={分镜id: 引擎} 即只为这些镜、这一次整集生成换引擎(不改剧级 video_engine,其余镜照旧)。报价按它逐镜计价,quote_id 把引擎钉死,generate_videos 派发的就是它——要改引擎必须重新报价。回执 shot_engines = 实际生效的映射;shot_engines_ungrouped = 因含指定镜而**拆成逐镜出**的场景组(场景组的时长与多关键帧是按剧引擎规划的,换引擎整组出会丢镜/丢关键帧;拆组后组内其余镜仍按剧引擎逐镜出,失去组内一次成片的连贯性,所以别为一镜去拆一个好好的组——先看 get_scene_group_plan)。所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),且镜头时长不超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),否则 400(超长会被厂商截断,要么换引擎要么 split_shot)。指定引擎的镜必须这次会出视频:已出视频的镜整集生成不会重出,给它指定引擎 ⇒ 400;拆成逐镜的场景组只计没出视频的组员。只想重出个别已出过视频的镜,用 quote_regenerate_shot_video 的 model 更省。★响应可能带**未接缝提示**(不影响 review_token / 报价 / 状态码):review_frames 与 generate_videos 是 unchained_seam_advisory,quote_videos 是 advisories 里 code=unchained_seams。seams 列的是 chain_frames 会接、却还没接上的相邻缝(from_shot→to_shot),status=no_stamp(从没接过)/ pending(发起过衔接、还没落地或审计未出结论)/ stale_anchor(上次承接的锚已失效:上一镜尾帧在衔接之后又被重生过,需要重接)/ join_failed(上次发起的衔接重生被拒 / 失败 / 落选,没落地)/ audit_failed(衔接落地但审计判不连续,看 get_storyboards 的 seam_failed_dims)/ first_frame_regenerated(接缝审过之后下镜首帧又被重出、没走承接路径,原衔接已不算数)/ not_linked(规划器判没接上、原因证据不足);都按计划重接即可;video_locked 是下镜已出视频的同类缝,chain_frames 不再改它们,只能逐镜 chain_shot_from_prev / chain_shot_from 换首帧后 regenerate_shot_video(都先报价)。出视频前看到 seams 就先 chain_frames(dry_run:true) 把计划与报价告诉客户,客户同意再执行,执行后重调 review_frames。",
         "tags": [
           "episodes"
         ],
@@ -11927,7 +12036,7 @@
       "get": {
         "operationId": "get_image_dispatch",
         "summary": "免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词",
-        "description": "免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词。用于回答「到底用了哪张图、为什么画面不像」；先查清再决定是否重出，别靠猜反复付费重抽。ledger=partial/none 表示该图生成于台账上线前，缺失字段如实为 null。",
+        "description": "免费只读查询一张镜头帧的派发台账：实际用了哪几张参考图、每张的用途与所属角色、是否送达模型、没送达或派发前被剔除的是哪一步因什么被剔（如时代预检点名的冲突物件），以及真正发给图片模型的最终提示词。用于回答「到底用了哪张图、为什么画面不像」；先查清再决定是否重出，别靠猜反复付费重抽。ledger=none 不等于没送参考，看 ledger_note（code + 原因：局部返修 / 零参考派发 / 台账上线前 / 尾帧复用首帧等）；缺失字段如实为 null。",
         "tags": [
           "images"
         ],
@@ -14303,7 +14412,7 @@
       "get": {
         "operationId": "get_frame_candidates",
         "summary": "免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）",
-        "description": "免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）。每张候选给原图地址（被拒的也在，可直接打开看原尺寸）、状态、是否为当前在用（adopted）、拒因 reject（main 主码 / code 具体病因 / details 明细 / class 分流：needs_content_fix=要改内容、content_retryable=内容问题但重掷约 1/3 能成、transient=审核没审成或偶发——不是画面不合格）、审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。客户看过原图确认画面没问题、是审计误判时，用 adopt_frame_candidate 人工采用（免费）；manual_adoption 非空 = 该候选是人工放行的。recovery_options 按帧位给出失败后的三选一（挑误拒 / 修图上传 / 重生），与 get_frame_retry_diagnosis 同口径。",
+        "description": "免费只读：一个镜头首帧/尾帧的**全部候选**（出图验收工作台同一份数据）。每张候选给原图地址（被拒的也在，可直接打开看原尺寸）、状态、是否为当前在用（adopted）、拒因 reject（main 主码 / code 具体病因 / details 明细 / class 分流：needs_content_fix=要改内容、content_retryable=内容问题但重掷约 1/3 能成、transient=审核没审成或偶发——不是画面不合格）、审计证据 audit（warnings 中文结论、expected 设计要求、derived_shot_type 画面推出的景别及依据、boxes 主体与身体部位在画面里的位置框；2026-10-07 前的候选无存档为 null，不代表审过）、以及这张图实际用了哪些参考图（references：用途/所属角色/是否送达）；reference_ledger_note 非空时说明为什么没有参考图记录或参考为空（no_references_sent=确实零参考派发，原因看 dropped_before_dispatch / local_frame_edit=局部返修只送底图裁片和蒙版 / zero_refs_unrecorded / legacy_before_ledger 等），空列表别说成「什么都没送」。storyboard.tail_endstate 是「尾帧≈首帧」检查结论（current=false 表示结论对应的不是现在这两张图）。★镜头反复被拒、或客户问「被拒的那几张到底什么样 / 为什么不采用」时先调它：逐张看原图和证据，再决定改分镜、改参考还是重掷——别盲目付费重抽。要看某张的最终提示词用 get_image_dispatch(generation_id)。客户看过原图确认画面没问题、是审计误判时，用 adopt_frame_candidate 人工采用（免费）；manual_adoption 非空 = 该候选是人工放行的。recovery_options 按帧位给出失败后的三选一（挑误拒 / 修图上传 / 重生），与 get_frame_retry_diagnosis 同口径。",
         "tags": [
           "storyboards"
         ],

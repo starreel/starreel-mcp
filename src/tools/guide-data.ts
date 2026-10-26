@@ -299,7 +299,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '8 出视频',
-    tools: ['quote_videos', 'generate_videos', 'get_scene_group_plan', 'generate_scene_groups', 'quote_regenerate_shot_video', 'regenerate_shot_video', 'quote_edit_video_shot', 'edit_video_shot', 'upload_shot_footage(实拍素材镜:客户录屏/产品实拍直接当该镜视频,不出视频不扣费)', 'get_edit_capabilities', 'get_repaint_capabilities', 'quote_repaint_shot_video', 'repaint_shot_video', 'quote_reskin_shot_video', 'reskin_shot_video', 'get_repaint_status', 'restore_repaint_original'],
+    tools: ['quote_videos', 'generate_videos', 'get_scene_group_plan', 'generate_scene_groups', 'quote_regenerate_shot_video', 'regenerate_shot_video', 'quote_edit_video_shot', 'edit_video_shot', 'upload_shot_footage(实拍素材镜:客户录屏/产品实拍直接当该镜视频,不出视频不扣费)', 'get_edit_capabilities', 'get_repaint_capabilities', 'quote_repaint_shot_video', 'repaint_shot_video', 'quote_reskin_shot_video', 'reskin_shot_video', 'get_repaint_status', 'restore_repaint_original', 'get_av_anchors(定妆视频锚现况:挂锚的镜首尾帧不送)', 'clear_character_av_anchor(客户确认后摘锚·免费)'],
     billing: '报价确认后扣点',
     note: 'video_engine 必须在出视频前定(写实真人剧 seedance-2.5 或降本 hailuo-3 / 动漫·风格化 seedance-2.5 或 wan3.0·wan 绝不用于写实真人;' + MODEL_AVAILABILITY_NOTE + ');切换不回溯已生成镜头。',
   },
