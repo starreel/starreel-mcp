@@ -4,11 +4,12 @@ import { readFileSync } from 'node:fs'
 
 // 2026-10-26：公开镜像 starreel/starreel-mcp 报 Dependabot 告警，三个传递依赖已升到修补版。
 // lockfile 随 npm 包与镜像一起分发，合并冲突选错边或重新生成 lockfile 都可能把它们打回含漏洞版本，这里钉住下限。
-// zod（GHSA-mrhx-c7xc-m3w5）只在 4.6.6 修补，3.x 无补丁，升级属大版本跨越，暂不处理，故不在此列。
+// zod（GHSA-mrhx-c7xc-m3w5）只在 4.6.6 修补，3.x 无补丁，已跨大版本升到 4；公开 spec 由 generate-openapi.ts 收敛回原形状。
 const FLOORS = {
   'body-parser': '2.4.0', // GHSA-27r3-jxmh-p828
   'fast-uri': '3.1.9', // GHSA-w74x-v6f9-j3xg / -xhq7-xmqj-769h / -wjr9-j795-jxcr / -333x-w4r6-6crp
   'ip-address': '10.7.4', // GHSA-rxp7-6hxx-x8q5
+  zod: '4.6.6', // GHSA-mrhx-c7xc-m3w5（直接依赖，同时被 @modelcontextprotocol/sdk 引用）
 }
 
 function cmp(a, b) {

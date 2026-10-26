@@ -2164,7 +2164,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       handoff_pack_id:z.string().optional(),
       handoff_manifest_sha256:z.string().regex(/^[a-f0-9]{64}$/).optional(),
       note: z.string().max(500).optional(),
-      manifest: z.record(z.unknown()).optional().describe('外部后期做了什么(≤64KB),原样存进交付清单的 client 段'),
+      manifest: z.record(z.string(), z.unknown()).optional().describe('外部后期做了什么(≤64KB),原样存进交付清单的 client 段'),
     },
     async ({ episode_id, file_path, file_url, note, manifest, handoff_pack_id, handoff_manifest_sha256 }) => {
       const url = file_path ? await client.uploadLocalFile(file_path, 'footage') : file_url

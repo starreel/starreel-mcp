@@ -18,7 +18,6 @@ import { writeFileSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { z } from 'zod'
-import { zodToJsonSchema } from 'zod-to-json-schema'
 import { registerProduceTools } from '../src/tools/produce.js'
 import { registerGuideTools } from '../src/tools/guide.js'
 
@@ -40,13 +39,16 @@ const NUM_BASE = 917_000_000 // 不会出现在任何真实字面量里的量级
 const numToKey = new Map<string, string>()
 const strToKey = new Map<string, string>()
 
+/** zod 4 的类型标签在 `_zod.def.type`（zod 3 是 `_def.typeName`，如 'ZodOptional'）。 */
+const defOf = (t: unknown): any => (t as any)?._zod?.def
+const kindOf = (t: unknown): string | undefined => defOf(t)?.type
+
 function unwrap(t: z.ZodTypeAny): z.ZodTypeAny {
   let cur: any = t
   for (;;) {
-    const tn = cur?._def?.typeName
-    if (tn === 'ZodOptional' || tn === 'ZodNullable') cur = cur._def.innerType
-    else if (tn === 'ZodDefault') cur = cur._def.innerType
-    else if (tn === 'ZodEffects') cur = cur._def.schema
+    const k = kindOf(cur)
+    if (k === 'optional' || k === 'nullable' || k === 'default' || k === 'prefault' || k === 'readonly') cur = defOf(cur).innerType
+    else if (k === 'pipe') cur = defOf(cur).in
     else return cur
   }
 }
@@ -59,38 +61,37 @@ function unwrap(t: z.ZodTypeAny): z.ZodTypeAny {
 function unwrapForSchema(t: z.ZodTypeAny): z.ZodTypeAny {
   let cur: any = t
   for (;;) {
-    const tn = cur?._def?.typeName
-    if (tn === 'ZodOptional' || tn === 'ZodDefault') cur = cur._def.innerType
+    const k = kindOf(cur)
+    if (k === 'optional' || k === 'default' || k === 'prefault') cur = defOf(cur).innerType
     else return cur
   }
 }
 
 function sentinelFor(key: string, t: z.ZodTypeAny): unknown {
   const cur: any = unwrap(t)
-  const tn = cur?._def?.typeName
-  switch (tn) {
-    case 'ZodNumber': {
+  const def = defOf(cur)
+  switch (def?.type) {
+    case 'number': {
       const v = NUM_BASE + ++numSeq
       numToKey.set(String(v), key)
       return v
     }
-    case 'ZodString': {
+    case 'string': {
       const v = `__S_${key}__`
       strToKey.set(v, key)
       return v
     }
-    case 'ZodEnum': return cur._def.values[0]
-    case 'ZodNativeEnum': return Object.values(cur._def.values)[0]
-    case 'ZodLiteral': return cur._def.value
-    case 'ZodBoolean': return true
-    case 'ZodArray': return [sentinelFor(key, cur._def.type)]
-    case 'ZodObject': {
+    case 'enum': return Object.values(def.entries)[0]
+    case 'literal': return def.values[0]
+    case 'boolean': return true
+    case 'array': return [sentinelFor(key, def.element)]
+    case 'object': {
       const out: Record<string, unknown> = {}
       for (const [k, sub] of Object.entries(cur.shape as Record<string, z.ZodTypeAny>)) out[k] = sentinelFor(`${key}.${k}`, sub)
       return out
     }
-    case 'ZodUnion': return sentinelFor(key, cur._def.options[0])
-    case 'ZodRecord': return {}
+    case 'union': return sentinelFor(key, def.options[0])
+    case 'record': return {}
     default: {
       const v = `__S_${key}__`
       strToKey.set(v, key)
@@ -118,9 +119,56 @@ const fakeClient: any = {
 
 // ---------- 4. zod 属性 → JSON Schema(剥 optional,description 保留) ----------
 function propSchema(t: z.ZodTypeAny): Record<string, unknown> {
-  const js: any = zodToJsonSchema(t, { $refStrategy: 'none', target: 'jsonSchema7' })
+  const js: any = z.toJSONSchema(t, { target: 'draft-7', io: 'input', unrepresentable: 'any' })
   delete js.$schema
-  return js
+  return normalizeV3Shape(js)
+}
+
+/**
+ * 把 zod 4 内置转换器的输出收敛回 zod 3 + zod-to-json-schema 时代的形状，公开 spec 不因换转换器而抖动：
+ * - `.int()` 在 zod 4 里自带 ±MAX_SAFE_INTEGER 边界，转换器会写出来 —— 去掉（原 spec 没有，语义不变）；
+ * - `z.record(z.string(), …)` 多出 `propertyNames.type: 'string'` —— 去掉（JSON 对象键本来就是字符串，键的 pattern 保留）；
+ * - 纯字面量 union 写成 `anyOf: [{type, const}, …]` —— 收回 `{type, enum}`；
+ * - 默认 strip 的对象不再写 `additionalProperties: false` —— 补回（原 spec 的约定，`.strict()` 本来就有）；
+ * - nullable 外层不再继承内层的 description —— 补回（zod 3 的 `.nullable()` 会把内层描述抄到外层）。
+ */
+function normalizeV3Shape(node: any): any {
+  if (Array.isArray(node)) return node.map(normalizeV3Shape)
+  if (!node || typeof node !== 'object') return node
+  const out: any = {}
+  for (const [k, v] of Object.entries(node)) out[k] = normalizeV3Shape(v)
+  if (out.maximum === Number.MAX_SAFE_INTEGER) delete out.maximum
+  if (out.minimum === Number.MIN_SAFE_INTEGER) delete out.minimum
+  if (out.propertyNames?.type === 'string') {
+    delete out.propertyNames.type
+    if (Object.keys(out.propertyNames).length === 0) delete out.propertyNames
+  }
+  if (Array.isArray(out.anyOf) && out.anyOf.length > 0 && out.anyOf.every((o: any) => o && 'const' in o && Object.keys(o).every((x) => x === 'const' || x === 'type'))) {
+    const types = [...new Set(out.anyOf.map((o: any) => o.type))]
+    const values = out.anyOf.map((o: any) => o.const)
+    delete out.anyOf
+    if (types.length === 1 && types[0]) out.type = types[0]
+    out.enum = values
+  }
+  if (out.type === 'object' && out.properties && !('additionalProperties' in out)) out.additionalProperties = false
+  if (out.description === undefined && Array.isArray(out.anyOf) && out.anyOf.length === 2 && out.anyOf[1]?.type === 'null' && Object.keys(out.anyOf[1]).length === 1 && out.anyOf[0]?.description !== undefined) {
+    out.description = out.anyOf[0].description
+  }
+  return reorderKeys(out)
+}
+
+// 键顺序也按 zod-to-json-schema 的习惯排（type 打头、description 收尾，约束类键居中保持原序），
+// 重新生成的 spec 不出整片的纯顺序 diff
+const KEY_HEAD = ['type', 'anyOf']
+const KEY_TAIL = ['items', 'minItems', 'maxItems', 'properties', 'required', 'additionalProperties', 'propertyNames', 'default', 'description']
+function keyRank(k: string): number {
+  if (KEY_HEAD.includes(k)) return KEY_HEAD.indexOf(k)
+  if (KEY_TAIL.includes(k)) return 100 + KEY_TAIL.indexOf(k)
+  return 50
+}
+function reorderKeys(node: Record<string, unknown>): Record<string, unknown> {
+  const entries = Object.entries(node)
+  return Object.fromEntries(entries.map((e, i) => ({ e, i })).sort((x, y) => keyRank(x.e[0]) - keyRank(y.e[0]) || x.i - y.i).map((x) => x.e))
 }
 
 /** handler 变换出来的键(不在 zod shape 里):按哨兵结构反推 schema。 */
