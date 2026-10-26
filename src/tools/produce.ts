@@ -633,6 +633,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★不传 content 时读本集「原始内容」。没有任何逐镜声明会被 400 拒(那是剧本不是分镜表,请走正常拆镜)。' +
       '★本集已有分镜时返回 409 并告知镜数,确认要替换再带 confirm_replace:true(旧镜转已删除状态、可恢复)。' +
       '秒数/景别缺失的镜照常导入但会在 issues 里列出——系统不替客户猜,猜错一个秒数就是成片时长错。' +
+      '★★先核绑定、再补全:autofill 跑完之后再重导,补全结果作废、要重新付费。拿不准角色/道具/场景能不能按名字绑上时,' +
+      '传 auto_complete:false 导入 → 对照**客户原稿**逐镜核对 get_storyboards 的 character_ids / scene_id / prop_ids' +
+      '(回执 props_possibly_unbound 列出画面里像有物件、却一个道具都没绑的镜) → 用 update_shot 补绑 → 确认无误再 quote_autofill / autofill_storyboards。' +
+      '导入后才发现漏绑也用 update_shot 补(prop_ids / character_ids),**不要整集重导**。' +
       '★导入后**默认自动补全**(auto_complete,跟随剧目「自动补齐辅助资产」开关、默认开):同一后台批次给全镜 AI 填空专业字段' +
       '(镜头意图/节拍/潜台词/J-L cut/声线等,只填空)并把每镜由平台拼的基础描述扩写成完整出图/视频提示词——客户导完即可出图。' +
       '文本步按 token 后付,**调用前告知客户**;只想导入不补传 auto_complete:false(**代价:不会生成构图契约**——可见人数、主体是人物/局部/道具、景别都只能靠文字推断,手部插入镜和画外配音镜容易被当完整人物出图和审核;回执 contract_coverage 列出缺几镜**并给出当前可行的补法,以它的 note 为准**——契约自动补全开着时是调 autofill_storyboards)。回执 auto_complete.started=true 后' +
@@ -706,6 +710,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★image_prompt / video_prompt 想自己写就直接写在每镜里,**逐字照用不被覆盖**;没填的镜平台拼基础描述(回执 base_prompts_built 是拼了几镜),导入后可用 get_shot_prompts 读、update_shot 改。' +
       '(frame_visual_contract 是内部帧契约,导入时忽略。)' +
       '★导入后:语速律会抬高装不下台词的镜(回执 speech_duration_raised / speech_duration_overflow)。' +
+      '★★先核绑定、再补全:autofill 跑完之后再重导,补全结果作废、要重新付费。拿不准角色/道具/场景能不能按名字绑上时,' +
+      '传 auto_complete:false 导入 → 对照**客户原稿**逐镜核对 get_storyboards 的 character_ids / scene_id / prop_ids' +
+      '(回执 props_possibly_unbound 列出画面里像有物件、却一个道具都没绑的镜) → 用 update_shot 补绑 → 确认无误再 quote_autofill / autofill_storyboards。' +
+      '导入后才发现漏绑也用 update_shot 补(prop_ids / character_ids),**不要整集重导**。' +
       '★导入后**默认自动补全**(auto_complete,跟随剧目「自动补齐辅助资产」开关、默认开):同一后台批次给全镜 AI 填空专业字段(只填空),' +
       '并只给**没填 image_prompt、由平台拼了基础描述**的镜扩写完整出图/视频提示词(客户自己写的绝不覆盖;回执 auto_complete.prompt_shots)。' +
       '文本步按 token 后付,**调用前告知客户**;只想导入传 auto_complete:false(**代价:不会生成构图契约**——可见人数、主体是人物/局部/道具、景别都只能靠文字推断,手部插入镜和画外配音镜容易被当完整人物出图和审核;回执 contract_coverage 列出缺几镜**并给出当前可行的补法,以它的 note 为准**——契约自动补全开着时是调 autofill_storyboards)。回执 started=true 后用 get_autofill_status 轮询到 done **再** review_storyboards。',
@@ -971,7 +979,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '(presence=on_screen 在画面 / voice_only 只有声音、不进画面)、scene_id、prop_ids、active_wardrobe_id(整镜服装)、' +
       'appearance_wardrobes[{character_id,wardrobe_id}](逐角色服装锚,只列声明了服装的角色)。' +
       '出图注入谁的定妆图/哪张场景图/哪些道具图由这几项决定;角色名对照 get_characters、道具名对照 get_props。' +
-      '改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;' +
+      '改绑用 update_shot 的 character_ids(★全量覆盖,先从这里读现值再改,漏传即解绑)与 character_presence;改道具绑定用 update_shot 的 prop_ids(同样全量覆盖,[] 清空);' +
       '改服装用 update_shot 的 active_wardrobe_id / appearance_wardrobes(可覆盖、可传 null 清空);' +
       '改完再读一次本工具核对。character_bindings 缺席 = 这次没读到(不是没绑),空数组才是没绑。' +
       '★启用双边版本审核时，seam_review.status 为 passed/failed/not_checked/stale；stale 是证据过期，不是画面失败，不据此付费重生。continuity_intent 可用 update_shot 明确。' +
@@ -1236,6 +1244,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'autofill_storyboards',
     '(推荐)AI 一键给全集(或 storyboard_ids 指定的几镜)分镜补全空缺字段,默认**只填空缺、不覆盖已有**(overwrite=true 才覆盖)。提升分镜完整性,出图前做。后台异步,文本步后付(按实际调 AI 的镜计费)。' +
+      '★跑之前先确认角色/场景/道具绑定无误(对照客户原稿逐镜核对 get_storyboards 的 character_ids / scene_id / prop_ids)。' +
+      '补全之后发现漏绑用 update_shot 补绑即可,**不要整集重导**——重导会替换分镜、补全结果作废、要重新付费。' +
       '★**先 quote_autofill 报价**(同样的 overwrite / storyboard_ids),把 shots_to_fill 与 estimated_points / typical_points 告诉客户,**客户同意再跑**本工具。' +
       '★跑完用 get_autofill_status 看回执(写了哪些字段各几镜、跳过几镜、还缺几镜契约)告诉客户——补全写的内部字段 get_storyboards 读不到,别让客户以为白扣。' +
       '★拆镜落库时平台已自动补过一轮:只填空模式下已没有空缺的镜(六个叙事文本字段都已有、有台词的镜声音方向也已有,契约阀开时契约也已有)直接跳过,不调 AI、不扣费;overwrite:true 才会整集重跑并逐镜计费。' +
@@ -2608,7 +2618,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'update_shot',
-    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、镜间转场(transition_type / transition_duration_ms)、角色绑定(character_ids)、画外音标记(character_presence)与服装绑定(active_wardrobe_id / appearance_wardrobes)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
+    '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、镜间转场(transition_type / transition_duration_ms)、角色绑定(character_ids)、道具绑定(prop_ids)、画外音标记(character_presence)与服装绑定(active_wardrobe_id / appearance_wardrobes)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
       '**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);' +
       '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids / active_wardrobe_id / appearance_wardrobes)。' +
       '★★【换衣服改这里,不是改文字】出图穿什么由**服装绑定**决定:单人镜用 active_wardrobe_id(整镜一件),' +
@@ -2634,6 +2644,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       continuity_intent: z.enum(['continuous_action','shot_change','insert_detail','jump_cut']).optional().describe('本镜相对上镜的剪辑意图：连续动作、换景别、插入细节、有意跳切。改变后旧双边审核失效；不自动生成或补审。'),
       character_ids: z.array(z.number().int().positive()).optional()
         .describe('本镜出场角色 ID 列表(★全量覆盖式,非增量,漏传的角色会被解绑)。决定出图时注入哪些角色的定妆图/设定图——非人角色(动物/生物)也必须绑定,否则形象会漂移。id 必须来自当前集已关联角色'),
+      prop_ids: z.array(z.number().int().positive()).max(8).optional()
+        .describe('本镜绑定的道具 ID 列表(★全量覆盖式,非增量,漏传的道具会被解绑;[] = 清空)。决定出图时注入哪些道具的道具图——' +
+          '导入后发现某镜漏绑道具就用这里补,不用整集重导。先用 get_storyboards 读本镜现值 prop_ids、在它基础上增删再整体传回;道具 ID 用 get_props 查。' +
+          '每个 id 必须是本剧未删除的道具,每镜最多 8 个,否则 400 且本请求一个字段都不写。' +
+          '★改完不会自动重出:已有首帧/尾帧/视频里没有新道具,回执带 prop_ids_note 时按它走(先 review_storyboards 复审,再重出本镜首帧,首帧换了视频会标过期再重生视频,都先报价)'),
       character_presence: z.array(z.object({
         character_id: z.number().int().positive(),
         presence: z.enum(['on_screen', 'voice_only']),

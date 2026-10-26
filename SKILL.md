@@ -998,7 +998,11 @@ the frame; writing a marker for an unbound character pulls that character's imag
 in; a `#variant` marker is the only source of that variant image. To take someone
 out of a shot, change `character_ids` (it is a full overwrite — read the current
 list first). If they only speak off-screen, keep them bound and mark them
-`voice_only` through `update_shot`'s `character_presence`. The prompt body
+`voice_only` through `update_shot`'s `character_presence`. Prop images work the
+same way: they follow the shot's `prop_ids`. A prop that the storyboard import
+missed is fixed with `update_shot`'s `prop_ids` (also a full overwrite — read the
+current list, add to it, send the whole list back), not by re-importing the
+episode, which would discard the autofilled fields. The prompt body
 is only the part you write: the platform still layers identity anchors and
 consistency constraints on top at generation time. Editing a prompt does not
 re-generate anything — regenerate the shot afterwards.
