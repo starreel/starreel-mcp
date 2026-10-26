@@ -398,7 +398,8 @@ const PROJECT_SETTINGS_FIELDS = {
     speech: z.enum(['unspecified', 'forbidden', 'required']).optional(),
     music: z.enum(['unspecified', 'forbidden']).optional(),
     pacing: z.enum(['unspecified', 'quiet']).optional(),
-  }).strict().nullable().optional().describe('客户明确创作约束：speech=forbidden 禁止对白/旁白/演唱，music=forbidden 仅禁止本片输出混入配乐（允许生成/保存/选择音乐素材），pacing=quiet 保持平静节奏。不推断；整对象替换，null 清除，省略保持。环境声/音效不受禁止人声影响。'),
+    ambient: z.enum(['normal', 'minimal']).optional(),
+  }).strict().nullable().optional().describe('客户明确创作约束：speech=forbidden 禁止对白/旁白/演唱，music=forbidden 仅禁止本片输出混入配乐（允许生成/保存/选择音乐素材），pacing=quiet 保持平静节奏，ambient=minimal 原声视频人声干净、环境音极轻、无底噪（客户嫌原声底噪/嘶声/嗡鸣大时设；默认 normal 保留自然环境音；只影响之后新出的视频，已出的要重出才生效）。不推断；★整对象替换——改其中一项要先 get_drama 读出现有 creative_contract 把其它键一并带上，否则被清掉；null 清除，省略保持。环境声/音效不受禁止人声影响。'),
   // drama 级图片模型(整剧统一画风):默认 ChatGPT Image 2.5 Flare(v0.9.1558)
   image_model: z.string().optional().describe('图片模型(★drama级·整剧统一画风·默认 ChatGPT Image 2.5 Flare)。可选:' +
     'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准·慢约5秒)/' +
@@ -888,6 +889,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'adopt_frame_candidate',
     '免费：人工采用一张已出完的首帧/尾帧候选（被审计拒掉 rejected、落选 dismissed，或曾经在用后被换下的 completed），作为本镜在用帧——审计误判时的人工兜底（例如作者契约写明的设定被判成冲突），也可随时换回之前那张。' +
       '★必须先用 get_frame_candidates 让客户看过原图和拒因、客户明确同意采用后才调' + ALWAYS_ASK('采用被拒候选') + '；不许为了让流程走下去自行放行。' +
+      '★采用前先对照本镜分镜（get_storyboards 的 first_frame_prompt / last_frame_prompt / action_in / action_out / movement）确认：采首帧要是动作起点、采尾帧要是动作终点——首帧候选若已是动作终态（人已到位、动作已做完）或把运镜终点画进了起点，采用后视频里就没有动作过程，换一张或改提示词重出。' +
       '只能采用本镜本帧位、已出完、有画面、且不是当前在用的那张；会在该候选上记录人工放行（谁/何时/原拒因），原拒因保留供统计。' +
       '本镜已有视频的会标成待重生（视频是按旧帧出的，需 regenerate_shot_video）。本镜该帧是客户上传或已定稿的，要带 replace_user_frame:true 才会替换（并解除定稿）。' +
       '同帧位有在途出图或本镜视频在途时返回 409，等它结束再采用。',
@@ -1282,6 +1284,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'tail_frame_plan',
     '★免费只读:这一集**哪几镜需要独立尾帧**(末态≠首态的镜——大运镜/物体脱手/状态改变)。' +
+      '运镜镜(摇/推/拉/移/升降,起止画面不同)按剧灰度计入;运镜要写进分镜的 movement 或 action(如「镜头缓慢向下摇到…」),只写在提示词里的「固定机位」会被当成静止。' +
       '判定用的就是平台出视频时那套判据,你自己是猜不出来的,所以出完首帧务必调一次。' +
       '返回 shots_needing_last_frame(总数)、ready(已有首帧、现在就能补尾帧的镜)、' +
       'pending_first_frame(还需要尾帧但首帧尚未落地的镜——等首帧出完再调一次本工具)。' +
@@ -1360,21 +1363,25 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '客户说「第 N 镜画错了/要改」时用它,而不是拿别的图像平台出图再 upload_shot_frame。' +
       '★响应带 billing_kind/unit_points(实际计费档与单价);要在 generate_shot_frame 里换模型,报价时传同一个 image_model。' +
       '★两边必须传同一个 image_model —— 不一致会被直接拒(400 IMAGE_MODEL_MISMATCH),因为模型决定计费档,不同源就是「预估≠扣费」。两边都不传也算一致(用该剧设定的模型)。已下架的型号(FLUX 全系列)一律拒收,别再传。' +
+      '★frame_type=both 时,平台判这一镜不需要独立尾帧(末态≈首态、没有运镜)会只出首帧:报价 frames_to_generate=1、只计首帧,并带 last_frame_skipped 说明原因——**原样告诉客户尾帧不会出**。' +
+      '客户确实要尾帧(例如起止画面不同的运镜)就报价与生成都带 force_independent_last_frame:true。' +
       QUOTE_RANGE_HINT,
     {
       storyboard_id: z.number().int().positive(),
       frame_type: FRAME_TYPE_ARG.optional().describe('默认 first_frame;both=首尾各一张'),
       image_model: z.string().optional().describe('按这个模型报价(★须与随后 generate_shot_frame 传的一致,否则 generate 会 400;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare)'),
+      force_independent_last_frame: z.boolean().optional().describe('只对 frame_type=both 有意义:true=客户明确要独立尾帧,不让平台判据跳过(报价按首尾两张算)。★须与 generate_shot_frame 传的一致,否则 409 重新报价'),
     },
-    async ({ storyboard_id, frame_type, image_model }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/quote`, { frame_type, image_model })),
+    async ({ storyboard_id, frame_type, image_model, force_independent_last_frame }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/quote`, { frame_type, image_model, force_independent_last_frame })),
   )
   server.tool(
     'generate_shot_frame',
     '确认后给**某一镜**出帧或重生该帧(异步)。这是修某一镜画面的正路:平台会带上该镜的角色身份锚、' +
       '场景/道具参考图、画风锚与帧审计,重生出的图与全片一致;用外部工具出图再上传会绕开这整条链路,人物/服装/画风必漂。' +
       '重生会覆盖该帧现有图(含此前上传的),并把本镜视频标为待重生。尾帧需本镜首帧已就绪(否则先用 first_frame 或 both)。' +
-      '完成判据:轮询 get_storyboards 看该镜 first_frame_image/last_frame_image 变化。\n' +
+      '完成判据:轮询 get_storyboards 看该镜 first_frame_image/last_frame_image 变化。' +
+      '★回执的 frames_dispatched 是真派出去的张数;both 的尾帧被平台判为不需要时会带 skipped_frames(没出、没扣尾帧的钱),原样告诉客户。\n' +
       '★继承重开(reopen_pair_id):get_storyboards 某镜带这个字段时,原样传进来可以只重掷首尾帧里' +
       '真正有问题的那一侧——另一侧此前已经生成好的候选原样保留,不重新生成、不重新计费。传了它就' +
       '不用再传 frame_type(会被忽略,由平台判定该重哪一侧);quote_id 仍要用 quote_shot_frame 报价' +
@@ -1394,11 +1401,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       reopen_pair_id: z.string().optional().describe('来自 get_storyboards 该镜的同名字段;只重掷有问题的那一侧,不必再传 frame_type'),
       image_model: z.string().optional().describe('临时覆盖本次重画的图片模型(★必须与 quote_shot_frame 传的那个一致,否则 400 IMAGE_MODEL_MISMATCH;不传=用 drama 级设定,默认 ChatGPT Image 2.5 Flare);取值同 generate_frames'),
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
+      force_independent_last_frame: z.boolean().optional().describe('只对 frame_type=both 有意义:true=客户明确要独立尾帧,绕过平台判据(★须与 quote_shot_frame 传的一致)'),
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定角色定妆参考与时代设定冲突时,出图会被拦下(未扣费):客户上传的定妆图及其派生图报 400 ERA_USER_REF_CONFLICT,平台生成的定妆图报 era_identity_ref_blocked。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
       ...SHOT_REGEN_ARG,
     },
-    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict, customer_approved_more_regens }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, allow_era_ref_conflict, customer_approved_more_regens })),
+    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, allow_era_ref_conflict, customer_approved_more_regens }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, allow_era_ref_conflict, customer_approved_more_regens })),
   )
 
   // ---------- 镜头图局部返修(只修一小块,其余像素原样保留;按剧灰度) ----------
@@ -2625,7 +2633,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'update_shot',
     '逐镜编辑:改单个分镜的文本内容(景别/动作/台词/画面描述/运镜等)、面部表情(expression_hint)、时长(duration)、成片变速(speed_factor)、镜间转场(transition_type / transition_duration_ms)、角色绑定(character_ids)、道具绑定(prop_ids)、画外音标记(character_presence)与服装绑定(active_wardrobe_id / appearance_wardrobes)。只传要改的字段、其余不动。★改镜(成功或被拒)都会作废覆盖本镜的未消费报价,生成时回 409 QUOTE_INVALIDATED——先改成功、回读核对,再报价。' +
       '**免费**(纯文本写库)。★改 dialogue 会自动失效本镜已生成的 TTS 配音与字幕(需重出 tts);' +
-      '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids / active_wardrobe_id / appearance_wardrobes)。' +
+      '改文本不会自动重出图/视频,如需让画面跟上文本改动,改完再 regen 对应镜。用 get_storyboards 查改后结果(每镜带 character_ids / character_bindings / scene_id / prop_ids / active_wardrobe_id / appearance_wardrobes);景别/机位/运镜/剪辑意图与提示词正文用 get_shot_prompts 逐镜回读。' +
       '★★【换衣服改这里,不是改文字】出图穿什么由**服装绑定**决定:单人镜用 active_wardrobe_id(整镜一件),' +
       '多人同框各穿各的用 appearance_wardrobes(逐角色)。把「穿某某衣服」写进 description/action 不会换衣服。' +
       '服装 id 用 list_wardrobe 查;改完不会自动重出图,要让画面跟上需重生本镜首帧再重生视频。' +
@@ -2646,7 +2654,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     {
       storyboard_id: z.number().int().positive(),
       product_text_contract: z.object({version:z.literal(1),strategy:z.enum(['generate_with_review','original_media','postproduction']),targets:z.array(z.object({asset_kind:z.enum(['prop','product']),asset_id:z.number().int().positive(),reference_url:z.string().url(),region:z.object({x:z.number(),y:z.number(),width:z.number(),height:z.number()}),exact_text:z.string().min(1).max(256)})).min(1).max(4)}).nullable().optional().describe('明确保留的实物原字：资产 ID、原图、归一化区域、原文及处理方式；生成不保证逐字正确，必须人工核对。null 清除声明，不回填历史。'),
-      continuity_intent: z.enum(['continuous_action','shot_change','insert_detail','jump_cut']).optional().describe('本镜相对上镜的剪辑意图：连续动作、换景别、插入细节、有意跳切。改变后旧双边审核失效；不自动生成或补审。'),
+      continuity_intent: z.enum(['continuous_action','shot_change','insert_detail','jump_cut']).optional().describe('本镜相对上镜的剪辑意图,决定跨镜帧链与续拍怎么接:' +
+        'continuous_action=同一动作往下走——帧链接续(本镜首帧接上镜尾帧);同场景、同景别、同一组角色且不是正反打时,平台开了续拍的剧会改走续拍' +
+        '(拿上一镜视频当参考往下延长,不送本镜首尾帧);' +
+        'shot_change=换景别/换机位(含正反打、过肩反打)——帧链按上镜尾帧重取景出本镜首帧,★不走续拍,本镜照常按自己的首尾帧出视频;' +
+        'insert_detail=插入细节镜——断开帧链、不续拍,本镜独立出;' +
+        'jump_cut=有意跳切——断开帧链、不续拍,本镜独立出。' +
+        '★正反打/过肩反打(越过A肩头拍B → 越过B肩头拍A)标 shot_change,别标 continuous_action。剧级 frame_chain_mode=off 时帧链一律不接,续拍规则不变。' +
+        '改变后旧双边审核失效;不自动生成或补审,已出的帧/视频不会自动重出。'),
       character_ids: z.array(z.number().int().positive()).optional()
         .describe('本镜出场角色 ID 列表(★全量覆盖式,非增量,漏传的角色会被解绑)。决定出图时注入哪些角色的定妆图/设定图——非人角色(动物/生物)也必须绑定,否则形象会漂移。id 必须来自当前集已关联角色'),
       prop_ids: z.array(z.number().int().positive()).max(8).optional()
@@ -2680,6 +2695,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       lighting: z.string().optional().describe('本镜用光(如「逆光」「左侧窗光、脸一半在暗处」)。★用光写这里,不要写进画面描述(description)或提示词:' +
         '那几个字段写光影词会被 review_storyboards 判 forbidden_term 拦下,这一条不在禁区词扫描范围。出视频时作为 [Lighting] 段送达,出图按它匹配场景光照变体。' +
         '全量覆盖现值,现值用 get_shot_prompts 读;改完不会自动重出图/视频'),
+      sound_effect: z.string().nullable().optional().describe('本镜音效(如「木门吱呀」「远处犬吠」;全量覆盖现值,null 清空)。出视频时作为 [Audio] 段送给视频引擎,' +
+        'review_storyboards 的禁区词也扫这一条(hits 里 field=sound_effect 时就在这里改)。现值用 get_shot_prompts 读;改完不会自动重出视频,要让声音跟上需重生本镜视频(先报价)'),
       shot_type: z.string().optional().describe('景别(如 特写/中景/全景/远景)'),
       angle: z.string().optional().describe('机位角度'),
       camera_movement: z.string().optional().describe('运镜(推/拉/摇/移/跟/固定)'),
@@ -2739,7 +2756,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★回执里的 terminal_desc_missing=true 表示本镜标为「状态改变」却三处都没说终态——' +
       '出尾帧会被前置闸拦下,修法是把结束状态写进 last_frame_prompt(别重试出图,重试必然重复被拒且照常扣费)。' +
       '★pose_timeline_stale 非 null = 本镜动作起止姿态里的秒数时间轴超出了当前时长(多见于改短 duration 后),出视频时那一端已自动不送;新时间轴写进 video_prompt。' +
-      '★同时回 description(画面描述)与 lighting(本镜用光)现值——review_storyboards 的禁区词命中常在 description,改前先在这里读;用光写 lighting。' +
+      '★同时回 description(画面描述)、lighting(本镜用光)与 sound_effect(本镜音效)现值——review_storyboards 的禁区词命中常在 description / sound_effect,改前先在这里读;用光写 lighting。' +
+      '★同时回 shot_type(景别)/ angle(机位)/ camera_movement(运镜)/ continuity_intent(剪辑意图)现值——update_shot 改完这几项就在这里回读核对(整集 get_storyboards 不含它们);null=未设。' +
       '★同时回 expression_hint(本镜作者指定的面部表情,null=未指定、由平台按台词反推),改它用 update_shot。' +
       'expression_inferred 是拆镜 AI 在剧本没写神态时按本镜内容推断的表情(只读;null=没推断,或本镜台词/动作/氛围/描述/强度改过、推断已过期不再使用);它优先级低于 expression_hint——' +
       '推断不合意就用 update_shot 写 expression_hint 覆盖它。' +
@@ -3996,7 +4014,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'get_scene_group_plan',
-    '查某一集的场景组规划(镜头如何归组做连续长镜)。免费。',
+    '查某一集的场景组规划(镜头如何归组做连续长镜)。免费。' +
+      '★先看回执顶层 active:false = 本剧长镜模式(scene_group_mode)未开启,groups 只是「开启后会怎么分」的预览、**不生效**——' +
+      '出视频按单镜逐个生成、按单镜计费,regenerate_shot_video 只动那一镜;要用分组先 update_project_settings 开启长镜模式。' +
+      'active:true 时 merged=true 的组才会整组一次生成。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/scene-group-plan`)),
   )

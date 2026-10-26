@@ -95,7 +95,8 @@ announces a condensed version as MCP `instructions` at connect time.
 | Their own **footage** for a shot (screen recording, product b-roll, an existing clip) | `upload_shot_footage` → that shot is no longer AI-generated (frames/video skipped, final cut uses the clip as-is, duration written back from the clip); **it overwrites whatever AI video that shot already had**, and afterwards every AI video call on it (including `edit_video_shot`) is refused with **409** until you `clear_shot_footage` or pass `replace_user_footage: true` | pasting an externally AI-generated clip to "fix" a shot — it carries none of this film's identity / style anchors; use `regenerate_shot_video` instead |
 | A clip that should **drive the motion** of an AI shot (a blocking/previz pass, a dance or action reference) | `edit_video_shot` with `reference_video_urls` — the shot keeps its AI video and borrows the clip's movement. To make the clip itself the source and restyle it in place, `upload_shot_footage` it first, then `edit_video_shot` with `replace_user_footage: true` | `upload_shot_footage` alone — that registers the clip as the finished shot, so nothing gets restyled and every later AI call on it returns 409 |
 | A clip whose **motion should be kept while the people / outfits are redrawn** (video repaint) — their own footage or a shot already generated here | `get_repaint_capabilities` (is it enabled for this drama; `relayMaxSegments`) → for their own clip, `upload_shot_footage` it onto a shot first → `quote_repaint_shot_video` → `repaint_shot_video` (prompt + reference image; with no `reference_image_url` the shot's character portrait is used — without any reference the person is redrawn too) **or** `quote_reskin_shot_video` → `reskin_shot_video` (`first_frame_url` = an already-reskinned first frame that matches the original first frame's composition, pose and props exactly) → `get_repaint_status` with the returned id until `completed` → `restore_repaint_original` to switch back (free). Motion, lip timing and camera move follow the source and its audio is carried over. ≤5 s is one charge (billed as 5 s); with long-shot relay enabled, 5–~14 s is split into ≤3 relayed segments, one charge each, and the quote is the total and the charge cap. A quote is tied to the shot's current video — if that video changes, generating returns 409; re-quote (free) | `edit_video_shot` to swap the whole cast or wardrobe (it edits by instruction); clips longer than ~14 s (`split_shot` first) |
-| `review_storyboards` reports `forbidden_term` (light / color-temperature / BGM wording in the shot text) | every hit is listed at once in the finding's `hits` (`shot`, `field`, `term`) → `get_shot_prompts` to read that field (`description` is returned there too) → `update_shot` to remove the term from that field; if the intent is lighting, move it to `update_shot`'s `lighting` field (not scanned, and video / image generation read it) → `review_storyboards` again | rewriting the whole shot blind, or putting the lighting back into `description` / prompts in other words |
+| `review_storyboards` reports `forbidden_term` (light / color-temperature / BGM wording in the shot text) | every hit is listed at once in the finding's `hits` (`shot`, `field`, `term`) → `get_shot_prompts` to read that field (`description` is returned there too) → `update_shot` to remove the term from that field; if the intent is lighting, move it to `update_shot`'s `lighting` field (not scanned, and video / image generation read it); a hit with `field=sound_effect` is fixed with `update_shot`'s `sound_effect` field (its current value is in `get_shot_prompts` too) → `review_storyboards` again | rewriting the whole shot blind, or putting the lighting back into `description` / prompts in other words |
+| A shot/reverse-shot or over-the-shoulder pair (camera over A's shoulder onto B, then over B's shoulder onto A) | `update_shot` the second shot with `continuity_intent: "shot_change"` — it keeps the frame chain (re-framed first frame) but never takes the video-extension path, so the shot is rendered from its own first/last frames | `continuous_action` on a reverse shot: extension continues the previous clip's camera and the model invents the turned-around view |
 | A scene plate that came out wrong (backdrop, era, light, layout) | `get_scene_prompt` → `update_scene` (`image_prompt`) → `quote_regenerate_scene_image` (tell the customer the points — it includes the lighting reference the platform auto-derives after a plate change when no wide-shot frame exists) → `regenerate_scene_image` with that `quote_id` (after `upload_scene_image` the platform does **not** auto-create the lighting reference — if the reply says `lighting_ref.needed`, quote it with `quote_scene_lighting_ref` and, once the customer agrees, `generate_scene_lighting_ref`); already-rendered shot frames still anchor on the old plate, so regenerate those shots too | re-running `generate_scene_images` (it only fills scenes that have **no** plate — it will not touch this one) |
 | A voice sample / a required voice | `clone_voice` → `speak_with_voice` → `set_character_voice` / `assign_voices` | cloning without the rights-holder's consent |
 | No sample, but a character already speaks in a rendered shot | `set_voice_anchor_from_shot` (free; native-audio dramas: locks the voice for later videos) → regenerate `stale_shots` | picking the voice after the whole episode is rendered |
@@ -758,6 +759,22 @@ content that will be rejected.
     lets it through). Relay your QC findings to the user verbatim. Listing a
     `ref` you never opened is signing off on the user's money.
 
+    **Check action and camera movement against the user's own script, not
+    against the platform's description.** Shot materials carry `shot_spec`
+    (shot type, `movement`, `action` with `action_in` / `action_out`, first and
+    last frame prompts). At the storyboard layer compare every shot with the
+    "picture" and "camera / movement" columns of the user's original
+    (`get_script` → `original_content`, or the storyboard table they gave you)
+    — `shot_action`, `camera_movement`. At the frame layer check that each first
+    frame is the *start* of the action and camera move and each last frame its
+    end (`frame_is_start_state`: a first frame that already shows the end state
+    leaves the video with no action), and compare left/right position, facing
+    and eyeline with the neighbouring shots (`screen_direction`). At the video
+    layer sample the start, middle and end of every clip: the action is played
+    out to the end, no extra limbs or objects appear, and the sound matches the
+    script (`action_complete`). Say in each note what you compared against — a
+    one-line summary is not a check.
+
     **The user's specific requirements are not covered by "the review passed".**
     When the user asks for something specific about a shot or the whole episode
     (identity, wardrobe, prop color, lip sync, visual artifacts…), register it in
@@ -988,7 +1005,9 @@ what? which shots are key moments? where is the emotional valley?),
 (`{speaker, text}` per line — parsed by the same parser subtitles and voice-over
 use, so the speaker you see is the one that will be voiced), `is_key_moment` and
 `emotion_intensity`. One call covers the whole episode; the prompt bodies stay
-per shot via `get_shot_prompts`.
+per shot via `get_shot_prompts`, which is also where you read back `shot_type`,
+`angle`, `camera_movement` and `continuity_intent` after changing them with
+`update_shot`.
 
 When the frame or the motion is off in a way the business text cannot express,
 edit the shot's prompt bodies directly: `get_shot_prompts` reads the current
@@ -1315,7 +1334,10 @@ from an internal measured run (one character, 3 shots, 18 s, `hailuo-3`):
   generating frames.
 - **Adjacent continuous-action shots are generated as one group**, and their
   durations get re-split by content (6 s + 5 s came back as ~8 s + 3.7 s). Check
-  `get_scene_group_plan` before generating videos.
+  `get_scene_group_plan` before generating videos. This only applies while
+  long-take mode is on: if the plan's top-level `active` is `false`
+  (`scene_group_mode` off), its `groups` are a preview only — every shot is
+  generated and billed on its own.
 - **Tail frames only help shots generated on their own.** Check
   `get_scene_group_plan` first: a grouped shot's tail frame is never sent to
   the video model (only the group head's first frame is, except Seedance 2.5
