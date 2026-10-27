@@ -448,6 +448,9 @@ content that will be rejected.
    `get_run_status` → `video_run` (shots with video / remaining; it survives a
    server restart and is resumed automatically where enabled — `status=interrupted`
    means re-quote and call `generate_videos` again, finished shots are skipped).
+   To stop that run, call `cancel_videos` only when the customer asks: shots
+   already sent to the vendor still finish and are still charged; the rest are
+   not dispatched (re-quote later to continue).
    When a native-audio project
    needs one seed shot per speaking character before locking voices, render those
    seeds with the single-shot tools `quote_regenerate_shot_video` →

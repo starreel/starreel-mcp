@@ -1016,7 +1016,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'shots_total / shots_with_video / shots_remaining = 共几镜、已出几镜、剩几镜;running:true = 链在跑,别重发 generate_videos;' +
       'resumed_after_restart>0 = 中途服务重启过、已自动续跑(已出视频与中断前已派发的镜不重出不重扣);' +
       'status=interrupted = 重启后没自动续跑(interrupt_reason 写原因),重新 quote_videos 后 generate_videos 会跳过已出的镜;' +
-      'shots_dispatched_without_video = 派发过但没出片的镜,用 get_jobs 看原因、regenerate_shot_video 单补。',
+      'shots_dispatched_without_video = 派发过但没出片的镜,用 get_jobs 看原因、regenerate_shot_video 单补;' +
+      'status=cancelling / cancelled = 客户用 cancel_videos 停了这条链,cancelled_shot_numbers 是没出没扣费的镜。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/run-status`)),
   )
@@ -1527,6 +1528,18 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async ({ episode_id, quote_id, review_token, acknowledge_review, auto_acknowledge }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/videos/generate`, { quote_id, review_token, acknowledge_review, auto_acknowledge })),
+  )
+
+  // ---------- 取消整集出视频(免费) ----------
+  server.tool(
+    'cancel_videos',
+    '(免费)停掉本集 generate_videos 发起的整集出视频接力链。语义:**已派给厂商的镜照常出完、照常扣费(不退)**;还没派的不再派、不扣费;' +
+      '取消后服务重启也不会自动续跑。回执里 in_flight_shot_numbers = 已派出、会照常出完扣费的镜;cancelled_shot_numbers = 被取消、没出没扣费的镜。' +
+      'status=cancelling 表示链会在当前镜之后停下,用 get_run_status 等 video_run.status 变成 cancelled。' +
+      '被取消的镜之后可以重新 quote_videos 再 generate_videos 接着做(会跳过已出视频的镜),或 quote_regenerate_shot_video / regenerate_shot_video 单镜补。' +
+      '★只在客户明确要停时调用。单镜在途的视频(regenerate_shot_video 等)不能中途取消;本集没有在跑的整批链会返回 409 NO_ACTIVE_VIDEO_RUN。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/videos/cancel`)),
   )
 
   // ---------- 成片(compose/终拼) ----------
