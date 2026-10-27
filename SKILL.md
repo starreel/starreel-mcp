@@ -1190,6 +1190,16 @@ shot whose voice drifted despite the anchor. Check them in this order:
    per episode) then `get_voice_consistency`: `summary.voice_mismatch` are shots
    whose voice does not sound like the character's anchor. `uncertain` means the
    spoken part was too short to judge — not a defect.
+3. **If regenerating would lose the first/last frames** (the vendor cannot take
+   first/last frames and a reference voice in the same request, so frame-locked
+   shots are voiced freely), unify the voice after the fact instead:
+   `quote_voice_unify` → tell the customer `estimated_points` and `typical_points`
+   → `unify_voices(quote_id)` → `get_voice_unify_status`. It converts only the
+   drifted speaker's lines into the anchor's timbre (per-line duration change
+   ≤0.05 s, so lip-sync and picture stay), skips shots that already carry the
+   current anchor and match it, and keeps the original audio when QC fails.
+   `preview_voice_unify` lets the customer listen to one shot first (free).
+   Recompose (`rerender_episode`) for `applied` shots to reach the final cut.
 
 ### "话没说完就切" / a line gets cut off mid-word
 

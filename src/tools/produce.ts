@@ -2648,9 +2648,55 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '查声线一致性扫描的进度与逐镜结果（scan_voice_consistency 启动的）。免费。' +
       'summary.voice_mismatch=声音不像该角色声线锚的镜号（重点看）；dialogue_issues=台词没念完/念错/多出说话声的镜；' +
       'not_scanned_or_stale=还没扫或视频换过需重扫。speaker_verdict=uncertain 表示人声太短判不了，不是问题。' +
-      '声线不一致的镜：先用 get_pipeline_status 的 native_voice_anchor 确认角色已绑声线，再 regenerate_shot_video 重出。',
+      '声线不一致的镜：先用 get_pipeline_status 的 native_voice_anchor 确认角色已绑声线，再 regenerate_shot_video 重出；' +
+      '要保住首尾帧（重出会丢构图）就走 quote_voice_unify → unify_voices，事后把人声转成声线锚的嗓音、不重生视频。' +
+      '做过声线统一的镜带 voice_unify：similarity / coverage / loudness_db 都是 before→after；summary.voice_unified=已进成片的镜号。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/voice-identity-scan`)),
+  )
+  server.tool(
+    'quote_voice_unify',
+    '★原声剧（视频自带人声）「同一个角色前后嗓音不一样」、又不想为声线重出视频丢掉首尾帧构图时用。免费报价、只读。' +
+      '列出本集每个有台词的镜要不要做「事后声线统一」及原因：to_process=出片时没送声线锚 / 送的是旧锚，一定处理；' +
+      'conditional=出片时已送进当前锚，执行时先测声纹，对得上就跳过、不收费；skipped=不动（锁定镜、实拍、已有换轨产物、角色没有声线锚等，见 reason_text）。' +
+      '多人镜按说话人分别判，只改需要处理的那个人的句子。按转换的人声秒数计费：estimated_points 是上界、typical_points 是通常花费，两个都告诉客户，客户同意后带 quote_id 调 unify_voices。' +
+      '角色没有声线锚的先 set_character_voice 或 set_voice_anchor_from_shot（挑一镜嗓音最对的当基准）。逐剧灰度，未开通回 403。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/voice-unify/quote`)),
+  )
+  server.tool(
+    'unify_voices',
+    '执行事后声线统一（必须先 quote_voice_unify，客户同意后带 quote_id）。只跑报价里的镜，后台串行（每镜约 1~2 分钟）。' +
+      '每镜：分离人声 → 按台词与声纹定位该角色的句子 → 逐句转成声线锚的嗓音（每句时长只变 ≤0.05s，口型与画面不动、不重生视频）→ 回填，环境声与音效原样保留。' +
+      '质检任一不过（转写覆盖率下降 / 时长差 >0.1s / 与锚的相似度没提升 / 响度差 >1dB）就保留原音轨并退回该镜费用。' +
+      '用 get_voice_unify_status 看进度与每镜前后对比；status=applied 的镜重拼成片（rerender_episode）后生效。',
+    { episode_id: z.number().int().positive(), quote_id: z.string().min(1) },
+    async ({ episode_id, quote_id }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/voice-unify`, { quote_id })),
+  )
+  server.tool(
+    'get_voice_unify_status',
+    '查声线统一的进度与逐镜结果（免费）。summary：applied=已统一（重拼成片后生效）/ kept_original=质检没过、保留原音轨、费用已退（reason 写了哪项没过）/ ' +
+      'skipped=测下来声纹本来就对得上或找不到该角色的人声 / errors=失败（费用已退）/ superseded=处理期间镜头被重出、换版本或锁定，结果作废未写回（费用已退）。每镜带 similarity（before→after，与声线锚的相似度）、coverage、loudness_db、points；stale=视频或产物换过、结论过期。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/voice-unify/status`)),
+  )
+  server.tool(
+    'preview_voice_unify',
+    '对单镜试听声线统一效果（免费、不写回、不扣费）。异步：start=true 启动（约 1~2 分钟），之后不带 start 再调一次取结果；' +
+      '结果里 productUrl 是处理后的视频（可直接听），checks 是四项质检结论。' +
+      '默认用该角色的声线锚当目标嗓音；reference_storyboard_id=同一集里嗓音最对的那一镜时，改用那一镜的人声当目标（适合角色还没绑锚、先挑基准的情况，speaker 指定转哪个角色）。',
+    {
+      storyboard_id: z.number().int().positive(),
+      start: z.boolean().optional().describe('true=启动试听；不传=查结果'),
+      speaker: z.string().optional().describe('多人镜里要转哪个角色（配合 reference_storyboard_id）'),
+      reference_storyboard_id: z.number().int().positive().optional().describe('拿这一镜的人声当目标嗓音（同一集、单人台词镜）'),
+    },
+    async ({ storyboard_id, start, speaker, reference_storyboard_id }) => jsonResult(start
+      ? await client.producePost(`/storyboards/${storyboard_id}/voice-unify/preview`, {
+        ...(speaker ? { speaker } : {}), ...(reference_storyboard_id ? { reference_storyboard_id } : {}),
+      })
+      : await client.produceGet(`/storyboards/${storyboard_id}/voice-unify/preview`)),
   )
   server.tool(
     'scan_dialogue_coverage',
