@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.240",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.240 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.241",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.241 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -2627,11 +2627,88 @@
         }
       }
     },
+    "/dramas/{drama_id}/images/cancel": {
+      "post": {
+        "operationId": "cancel_images",
+        "summary": "(免费)停掉本剧还在跑的批量出图:整集出帧(generate_frames)、工作台出帧批次、帧链(chain_frames 与自动帧链)、定妆图、设定图、场景图、世界观图、角色变体图、锚图",
+        "description": "(免费)停掉本剧还在跑的批量出图:整集出帧(generate_frames)、工作台出帧批次、帧链(chain_frames 与自动帧链)、定妆图、设定图、场景图、世界观图、角色变体图、锚图。语义:**已交给厂商的图照常出完、照常扣费(不退,含 best-of-N 已派出的候选)**;还没派的不再派、不扣费;之后的质量重试、补派、服务重启后的重排也不会再派;被取消的出帧批次重启后不续跑。可选 episode_id 只停这一集的批次、kind 只停一种(frames / frame_batch / frame_chain / portraits / sheets / scene_images / world_images / character_variants / anchors),不传 = 本剧全部。回执每批给 in_flight_items(已派出、会出完扣费)、completed_items(已出完)、cancelled_targets(没派、不扣费;null = 该批次没预先登记目标清单)。被取消的镜 / 角色 / 场景之后可以重新报价再发起对应的 generate_*(已出的会跳过),或单张重出。★只在客户明确要停时调用;单张出图(generate_shot_frame 等)不能取消;没有可取消的批次返回 409 NO_ACTIVE_IMAGE_BATCH。出视频的取消用 cancel_videos。",
+        "tags": [
+          "dramas"
+        ],
+        "parameters": [
+          {
+            "name": "drama_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "episode_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "frames",
+                      "frame_batch",
+                      "frame_chain",
+                      "portraits",
+                      "sheets",
+                      "scene_images",
+                      "world_images",
+                      "character_variants",
+                      "anchors"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/dramas/{drama_id}/jobs": {
       "get": {
         "operationId": "get_jobs",
         "summary": "查一部剧的任务队列进度(出图/出视频/合成各阶段的 pending/processing/done/failed)",
-        "description": "查一部剧的任务队列进度(出图/出视频/合成各阶段的 pending/processing/done/failed)。异步生成后用它看进度。免费。★整集出帧(generate_frames)是后台逐镜派发,被拒的镜不会出现在任务列表里——看响应的 frame_dispatch_rejections(每镜 storyboard_id/frame_type/code/message)。code=ERA_USER_REF_CONFLICT 表示客户上传的定妆图被时代审核判冲突:把 message 转告客户(allow_era_ref_conflict 任何执行模式都须客户明确同意,托管也不例外),客户确认后带 allow_era_ref_conflict=true 对那几镜 generate_shot_frame。重启后该列表清空。",
+        "description": "查一部剧的任务队列进度(出图/出视频/合成各阶段的 pending/processing/done/failed)。异步生成后用它看进度。免费。★整集出帧(generate_frames)是后台逐镜派发,被拒的镜不会出现在任务列表里——看响应的 frame_dispatch_rejections(每镜 storyboard_id/frame_type/code/message)。code=ERA_USER_REF_CONFLICT 表示客户上传的定妆图被时代审核判冲突:把 message 转告客户(allow_era_ref_conflict 任何执行模式都须客户明确同意,托管也不例外),客户确认后带 allow_era_ref_conflict=true 对那几镜 generate_shot_frame。重启后该列表清空。★image_batches = 最近 24 小时的批量出图批次(含 cancel_images 取消的,status=cancelled)。",
         "tags": [
           "dramas"
         ],
@@ -9329,7 +9406,7 @@
       "get": {
         "operationId": "get_run_status",
         "summary": "(★免费·长耗时操作后必用)查这一集当前有没有 agent 正在跑",
-        "description": "(★免费·长耗时操作后必用)查这一集当前有没有 agent 正在跑。rewrite_script / extract_assets / generate_storyboards 都是**分钟级**后台任务,它们只回一句 status:\"generating\",本工具是唯一能区分「还在跑」与「已经结束」的手段。\n★典型耗时(生产实测):改写 2~4 分钟、拆镜 5~10 分钟——**单次 LLM 调用就可能 3~7 分钟**。所以 60 秒内查不到结果是完全正常的,绝不是失败。\n用法:发起后每 30~60 秒调一次。running:true = 还在跑,继续等,**千万不要重发**(重发拆镜会替换整集分镜,已调好/已出图的全丢、要重花钱);running:false = 那次已经结束,这时才去 get_storyboards / get_script 看产物有没有落库。\n⚠️ 服务重启会让 agent 在途登记归零,重启期间发起的运行也会显示为无在途。\n★generate_videos 整集出视频的接力链看返回里的 video_run 段(它落库,重启不会凭空消失):shots_total / shots_with_video / shots_remaining = 共几镜、已出几镜、剩几镜;running:true = 链在跑,别重发 generate_videos;resumed_after_restart>0 = 中途服务重启过、已自动续跑(已出视频与中断前已派发的镜不重出不重扣);status=interrupted = 重启后没自动续跑(interrupt_reason 写原因),重新 quote_videos 后 generate_videos 会跳过已出的镜;shots_dispatched_without_video = 派发过但没出片的镜,用 get_jobs 看原因、regenerate_shot_video 单补;status=cancelling / cancelled = 客户用 cancel_videos 停了这条链,cancelled_shot_numbers 是没出没扣费的镜。",
+        "description": "(★免费·长耗时操作后必用)查这一集当前有没有 agent 正在跑。rewrite_script / extract_assets / generate_storyboards 都是**分钟级**后台任务,它们只回一句 status:\"generating\",本工具是唯一能区分「还在跑」与「已经结束」的手段。\n★典型耗时(生产实测):改写 2~4 分钟、拆镜 5~10 分钟——**单次 LLM 调用就可能 3~7 分钟**。所以 60 秒内查不到结果是完全正常的,绝不是失败。\n用法:发起后每 30~60 秒调一次。running:true = 还在跑,继续等,**千万不要重发**(重发拆镜会替换整集分镜,已调好/已出图的全丢、要重花钱);running:false = 那次已经结束,这时才去 get_storyboards / get_script 看产物有没有落库。\n⚠️ 服务重启会让 agent 在途登记归零,重启期间发起的运行也会显示为无在途。\n★generate_videos 整集出视频的接力链看返回里的 video_run 段(它落库,重启不会凭空消失):shots_total / shots_with_video / shots_remaining = 共几镜、已出几镜、剩几镜;running:true = 链在跑,别重发 generate_videos;resumed_after_restart>0 = 中途服务重启过、已自动续跑(已出视频与中断前已派发的镜不重出不重扣);status=interrupted = 重启后没自动续跑(interrupt_reason 写原因),重新 quote_videos 后 generate_videos 会跳过已出的镜;shots_dispatched_without_video = 派发过但没出片的镜,用 get_jobs 看原因、regenerate_shot_video 单补;status=cancelling / cancelled = 客户用 cancel_videos 停了这条链,cancelled_shot_numbers 是没出没扣费的镜。\n★批量出图(整集出帧 / 帧链 / 定妆图 / 设定图 / 场景图等)看 image_batches:每批 kind / status(running / done / cancelled)/ dispatched / in_flight / completed / targets_not_dispatched;status=cancelled = 客户用 cancel_images 停了这一批。",
         "tags": [
           "episodes"
         ],

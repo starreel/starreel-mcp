@@ -282,7 +282,7 @@ export const PIPELINE: PipelineStep[] = [
   },
   {
     step: '7 出帧(镜头图)',
-    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'tail_frame_plan(免费,首帧出完必调)', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'quote_local_frame_edit', 'local_frame_edit(局部返修·只改框内,灰度剧)', 'get_local_frame_edit', 'adopt_local_frame_edit', 'chain_frames(先 dry_run:true 看计划与预估)', 'chain_shot_from_prev(免费,单道接缝)', 'quote_chain_shot_from', 'chain_shot_from', 'quote_align_prev_shot', 'align_prev_shot', 'upload_shot_frame'],
+    tools: ['run_precheck(免费,揪出必被厂商拒的镜)', 'quote_frames', 'generate_frames', 'tail_frame_plan(免费,首帧出完必调)', 'quote_shot_frame', 'generate_shot_frame(单镜重生)', 'quote_local_frame_edit', 'local_frame_edit(局部返修·只改框内,灰度剧)', 'get_local_frame_edit', 'adopt_local_frame_edit', 'chain_frames(先 dry_run:true 看计划与预估)', 'cancel_images(停批量出图:已派的照常出完扣费,未派的不再派·免费)', 'chain_shot_from_prev(免费,单道接缝)', 'quote_chain_shot_from', 'chain_shot_from', 'quote_align_prev_shot', 'align_prev_shot', 'upload_shot_frame'],
     billing: '报价确认后扣点',
     gate: 'review_frames(镜头图审查;免费;generate_videos 前必过)',
     note: '★出帧是**两趟**:generate_frames 默认只出首帧,首帧出完必须调一次免费的 `tail_frame_plan` ' +

@@ -451,6 +451,9 @@ content that will be rejected.
    To stop that run, call `cancel_videos` only when the customer asks: shots
    already sent to the vendor still finish and are still charged; the rest are
    not dispatched (re-quote later to continue).
+   To stop a batch image job (frames, frame chain, portraits, sheets, scene
+   images…), call `cancel_images` only when the customer asks: images already
+   sent to the vendor still finish and are still charged; the rest are not sent.
    When a native-audio project
    needs one seed shot per speaking character before locking voices, render those
    seeds with the single-shot tools `quote_regenerate_shot_video` →

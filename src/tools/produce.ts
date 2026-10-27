@@ -1017,9 +1017,29 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'resumed_after_restart>0 = 中途服务重启过、已自动续跑(已出视频与中断前已派发的镜不重出不重扣);' +
       'status=interrupted = 重启后没自动续跑(interrupt_reason 写原因),重新 quote_videos 后 generate_videos 会跳过已出的镜;' +
       'shots_dispatched_without_video = 派发过但没出片的镜,用 get_jobs 看原因、regenerate_shot_video 单补;' +
-      'status=cancelling / cancelled = 客户用 cancel_videos 停了这条链,cancelled_shot_numbers 是没出没扣费的镜。',
+      'status=cancelling / cancelled = 客户用 cancel_videos 停了这条链,cancelled_shot_numbers 是没出没扣费的镜。\n' +
+      '★批量出图(整集出帧 / 帧链 / 定妆图 / 设定图 / 场景图等)看 image_batches:每批 kind / status(running / done / cancelled)/' +
+      ' dispatched / in_flight / completed / targets_not_dispatched;status=cancelled = 客户用 cancel_images 停了这一批。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/run-status`)),
+  )
+
+  // ---------- 取消批量出图(免费) ----------
+  server.tool(
+    'cancel_images',
+    '(免费)停掉本剧还在跑的批量出图:整集出帧(generate_frames)、工作台出帧批次、帧链(chain_frames 与自动帧链)、' +
+      '定妆图、设定图、场景图、世界观图、角色变体图、锚图。语义:**已交给厂商的图照常出完、照常扣费(不退,含 best-of-N 已派出的候选)**;' +
+      '还没派的不再派、不扣费;之后的质量重试、补派、服务重启后的重排也不会再派;被取消的出帧批次重启后不续跑。' +
+      '可选 episode_id 只停这一集的批次、kind 只停一种(frames / frame_batch / frame_chain / portraits / sheets / scene_images / world_images / character_variants / anchors),不传 = 本剧全部。' +
+      '回执每批给 in_flight_items(已派出、会出完扣费)、completed_items(已出完)、cancelled_targets(没派、不扣费;null = 该批次没预先登记目标清单)。' +
+      '被取消的镜 / 角色 / 场景之后可以重新报价再发起对应的 generate_*(已出的会跳过),或单张重出。' +
+      '★只在客户明确要停时调用;单张出图(generate_shot_frame 等)不能取消;没有可取消的批次返回 409 NO_ACTIVE_IMAGE_BATCH。出视频的取消用 cancel_videos。',
+    {
+      drama_id: z.number().int().positive(),
+      episode_id: z.number().int().positive().optional(),
+      kind: z.enum(['frames', 'frame_batch', 'frame_chain', 'portraits', 'sheets', 'scene_images', 'world_images', 'character_variants', 'anchors']).optional(),
+    },
+    async ({ drama_id, episode_id, kind }) => jsonResult(await client.producePost(`/dramas/${drama_id}/images/cancel`, { ...(episode_id ? { episode_id } : {}), ...(kind ? { kind } : {}) })),
   )
 
   // ---------- 分镜级 AI 操作:2 个免费质量闸 + 3 个 AI 增强(★都在出图前做)----------
@@ -3347,7 +3367,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '异步生成后用它看进度。免费。' +
       '★整集出帧(generate_frames)是后台逐镜派发,被拒的镜不会出现在任务列表里——看响应的 frame_dispatch_rejections' +
       '(每镜 storyboard_id/frame_type/code/message)。code=ERA_USER_REF_CONFLICT 表示客户上传的定妆图被时代审核判冲突:' +
-      '把 message 转告客户' + ALWAYS_ASK('allow_era_ref_conflict ') + ',客户确认后带 allow_era_ref_conflict=true 对那几镜 generate_shot_frame。重启后该列表清空。',
+      '把 message 转告客户' + ALWAYS_ASK('allow_era_ref_conflict ') + ',客户确认后带 allow_era_ref_conflict=true 对那几镜 generate_shot_frame。重启后该列表清空。' +
+      '★image_batches = 最近 24 小时的批量出图批次(含 cancel_images 取消的,status=cancelled)。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/jobs`)),
   )
