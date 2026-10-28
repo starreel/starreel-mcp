@@ -2660,9 +2660,29 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '列出本集每个有台词的镜要不要做「事后声线统一」及原因：to_process=出片时没送声线锚 / 送的是旧锚，一定处理；' +
       'conditional=出片时已送进当前锚，执行时先测声纹，对得上就跳过、不收费；skipped=不动（锁定镜、实拍、已有换轨产物、角色没有声线锚等，见 reason_text）。' +
       '多人镜按说话人分别判，只改需要处理的那个人的句子。按转换的人声秒数计费：estimated_points 是上界、typical_points 是通常花费，两个都告诉客户，客户同意后带 quote_id 调 unify_voices。' +
-      '角色没有声线锚的先 set_character_voice 或 set_voice_anchor_from_shot（挑一镜嗓音最对的当基准）。逐剧灰度，未开通回 403。',
+      '目标嗓音优先用 set_voice_unify_target 指定（挑一镜嗓音最对的当基准；不影响出片路线），没指定就用角色的 IP 声线锚。逐剧灰度，未开通回 403。',
     { episode_id: z.number().int().positive() },
     async ({ episode_id }) => jsonResult(await client.produceGet(`/episodes/${episode_id}/voice-unify/quote`)),
+  )
+  server.tool(
+    'set_voice_unify_target',
+    '给角色指定「统一目标嗓音」：取自嗓音最对的那一镜，只给事后声线统一（quote_voice_unify → unify_voices）用。免费。' +
+      '★与 set_character_voice / set_voice_anchor_from_shot 的区别：那两个设的是 IP 声线锚，原声剧出片时会送参考音频，首尾帧可能锁不住；' +
+      '这个字段出片路由不读，设了它仍按「首尾帧锁画面、出完再统一声线」走。指定后，该角色每一镜都先测声纹，对得上就跳过、不收费；目标镜自己跳过。' +
+      '这一镜必须已有视频、且只有该角色在说话（多人镜会把别人的嗓音一起当成目标，回 400）。清除用 clear_voice_unify_target。逐剧灰度，未开通回 403。',
+    {
+      character_id: z.number().int().positive(),
+      storyboard_id: z.number().int().positive().describe('嗓音最对、且只有该角色说话的那一镜（同一部剧、已有视频）'),
+    },
+    async ({ character_id, storyboard_id }) =>
+      jsonResult(await client.producePut(`/characters/${character_id}/voice-unify-target`, { storyboard_id })),
+  )
+  server.tool(
+    'clear_voice_unify_target',
+    '清除角色的「统一目标嗓音」（set_voice_unify_target 设的）。免费。清除后声线统一改用角色的 IP 声线锚；两者都没有就跳过该角色。',
+    { character_id: z.number().int().positive() },
+    async ({ character_id }) =>
+      jsonResult(await client.produceDelete(`/characters/${character_id}/voice-unify-target`)),
   )
   server.tool(
     'unify_voices',

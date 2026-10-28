@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.242",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.242 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.243",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.243 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -955,6 +955,118 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/voice-unify-target": {
+      "put": {
+        "operationId": "set_voice_unify_target",
+        "summary": "给角色指定「统一目标嗓音」：取自嗓音最对的那一镜，只给事后声线统一（quote_voice_unify → unify_voices）用",
+        "description": "给角色指定「统一目标嗓音」：取自嗓音最对的那一镜，只给事后声线统一（quote_voice_unify → unify_voices）用。免费。★与 set_character_voice / set_voice_anchor_from_shot 的区别：那两个设的是 IP 声线锚，原声剧出片时会送参考音频，首尾帧可能锁不住；这个字段出片路由不读，设了它仍按「首尾帧锁画面、出完再统一声线」走。指定后，该角色每一镜都先测声纹，对得上就跳过、不收费；目标镜自己跳过。这一镜必须已有视频、且只有该角色在说话（多人镜会把别人的嗓音一起当成目标，回 400）。清除用 clear_voice_unify_target。逐剧灰度，未开通回 403。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "storyboard_id": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "description": "嗓音最对、且只有该角色说话的那一镜（同一部剧、已有视频）"
+                  }
+                },
+                "required": [
+                  "storyboard_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "clear_voice_unify_target",
+        "summary": "清除角色的「统一目标嗓音」（set_voice_unify_target 设的）",
+        "description": "清除角色的「统一目标嗓音」（set_voice_unify_target 设的）。免费。清除后声线统一改用角色的 IP 声线锚；两者都没有就跳过该角色。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -11560,7 +11672,7 @@
       "get": {
         "operationId": "quote_voice_unify",
         "summary": "★原声剧（视频自带人声）「同一个角色前后嗓音不一样」、又不想为声线重出视频丢掉首尾帧构图时用",
-        "description": "★原声剧（视频自带人声）「同一个角色前后嗓音不一样」、又不想为声线重出视频丢掉首尾帧构图时用。免费报价、只读。列出本集每个有台词的镜要不要做「事后声线统一」及原因：to_process=出片时没送声线锚 / 送的是旧锚，一定处理；conditional=出片时已送进当前锚，执行时先测声纹，对得上就跳过、不收费；skipped=不动（锁定镜、实拍、已有换轨产物、角色没有声线锚等，见 reason_text）。多人镜按说话人分别判，只改需要处理的那个人的句子。按转换的人声秒数计费：estimated_points 是上界、typical_points 是通常花费，两个都告诉客户，客户同意后带 quote_id 调 unify_voices。角色没有声线锚的先 set_character_voice 或 set_voice_anchor_from_shot（挑一镜嗓音最对的当基准）。逐剧灰度，未开通回 403。",
+        "description": "★原声剧（视频自带人声）「同一个角色前后嗓音不一样」、又不想为声线重出视频丢掉首尾帧构图时用。免费报价、只读。列出本集每个有台词的镜要不要做「事后声线统一」及原因：to_process=出片时没送声线锚 / 送的是旧锚，一定处理；conditional=出片时已送进当前锚，执行时先测声纹，对得上就跳过、不收费；skipped=不动（锁定镜、实拍、已有换轨产物、角色没有声线锚等，见 reason_text）。多人镜按说话人分别判，只改需要处理的那个人的句子。按转换的人声秒数计费：estimated_points 是上界、typical_points 是通常花费，两个都告诉客户，客户同意后带 quote_id 调 unify_voices。目标嗓音优先用 set_voice_unify_target 指定（挑一镜嗓音最对的当基准；不影响出片路线），没指定就用角色的 IP 声线锚。逐剧灰度，未开通回 403。",
         "tags": [
           "episodes"
         ],

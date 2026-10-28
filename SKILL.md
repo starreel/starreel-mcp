@@ -1199,6 +1199,9 @@ shot whose voice drifted despite the anchor. Check them in this order:
    ≤0.05 s, so lip-sync and picture stay), skips shots that already carry the
    current anchor and match it, and keeps the original audio when QC fails.
    `preview_voice_unify` lets the customer listen to one shot first (free).
+   Choose the target voice with `set_voice_unify_target` (the shot whose voice
+   is right) rather than an IP voice anchor: the target is read only by voice
+   unification, so generation keeps locking first/last frames.
    Recompose (`rerender_episode`) for `applied` shots to reach the final cut.
 
 ### "话没说完就切" / a line gets cut off mid-word
