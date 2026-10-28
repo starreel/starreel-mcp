@@ -779,6 +779,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '★一键 / 混合模式(托管灰度内)的剧额外返回 next_action(action=run 托管环节直接做 / wait_running 后台还在跑、等它落库别重复派 / wait_customer 客户把控环节或没有预算预检的步骤先问 / ask_customer 有待问事项先汇总问 / done 各步完成——先按 tool=review_final_cut 审成片、有问题修完重拼复审,再出交付报告;tool=该调哪个工具)与 pending_questions,照 next_action 推进。' +
       'asset_versions_summary 将 generated、input_consistent、review_valid、adopted 和 current_effective 分开计数；不能把 generate_videos.completed 当当前有效数量。' +
       '★generate_images / generate_videos 的 status=done 只表示「已生成」，不代表可交付：看同一步的 validity（current_effective 当前有效 / input_changed 生成后输入已变，changed_by 列出是剧级设定、镜头本身还是哪个角色变了 / input_unknown / unreviewed / review_failed），validity.note 不为空时先把它告诉客户。输入变了不一定影响画面，别据此整集重出（付费），先用 get_asset_versions 逐镜看原因。' +
+      'validity.review_advised（asset_versions_summary 里同样单列 review_advised，stale 不含它）= 只有角色外观文本被改写（多是重新提取时换了写法）：仍算输入已变，但画面身份由定妆图锚定，属「建议复核」，review_advised_by 按角色列出——请客户对照定妆图确认，不要当作需重出。' +
       '★not_required=当前模式不需要该步(如原声剧的 TTS 三步、关配乐的 generate_bgm),不是没做完,别去补做。' +
       '图片/视频分母已剔除卡镜(shots_not_applicable);merge_episode.bgm_stale=true 表示配乐晚于成片,重新 compose_episode 即可。',
     { episode_id: z.number().int().positive() },
@@ -2583,6 +2584,33 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async ({ storyboard_id, in_ms, out_ms }) =>
       jsonResult(await client.producePut(`/storyboards/${storyboard_id}/trim`, { in_ms, out_ms })),
+  )
+  server.tool(
+    'set_shot_post',
+    "终拼后期(镜级,免费,不重生、不扣费):① mirror_h 单镜水平镜像——画面左右翻转并同时对调左右声道,补救过轴镜(人物站位/伸手方向与前后镜左右相反);画面里有字(招牌、烧录字幕)的镜不要镜像,字会反过来。② grade_group 调色分组名——同名的镜一起自动拉平曝光与白平衡(默认按场景分组;单场景剧里清晨/黄昏/夜这类不同时段要各起一个组名,否则会被拉成一锅);grade_ref=true 把本镜设为该组的参考镜,组内其它镜向它看齐(不设则向组内中位数看齐)。③ audio_lead_in_ms J-cut——本镜的声音比画面早这么多毫秒进来(压在上一镜尾部,上一镜声音随之淡出),0~800,常用 300~500;原声镜的提前声音取自本镜源片入点之前那一段,所以**本镜必须先用 trim_shot 设入点(in_ms)≥提前量**,不够会按入点余量自动缩短,入点为 0 则不生效;有叠化转场或变速的接缝不做。只传要改的键,空调用=查看当前值;grade_group 传 null 取消分组。回包 gray_on=false 表示本剧尚未开放这组后期(值已保存,开放后生效)。改完要 compose_episode 重新合成才生效(rerender_episode 沿用旧时间线,不会带上)。",
+    {
+      storyboard_id: z.number().int().positive(),
+      mirror_h: z.boolean().optional(),
+      grade_group: z.string().max(40).nullable().optional(),
+      grade_ref: z.boolean().optional(),
+      audio_lead_in_ms: z.number().int().min(0).max(800).optional(),
+    },
+    async ({ storyboard_id, ...rest }) =>
+      jsonResult(await client.producePut(`/storyboards/${storyboard_id}/compose-post`, rest)),
+  )
+  server.tool(
+    'set_ambient_bed',
+    "整场环境声床(免费,不重生、不扣费):给一组镜挂同一条环境底噪素材(风声、鸟鸣、室内底噪等),终拼时相邻且同一条素材的镜合成**一条连续轨**——跨镜不断、整段两端各淡 0.4 秒、有人说话时自动压低约 5dB。用来解决「每镜环境声各不相同、一切镜底噪就跳」。beds 每项 = {storyboard_ids, audio_url, gain_db?}:audio_url 必须是公网 http(s) 音频(素材短于整段会无缝循环),gain_db 取 -40~0、缺省 -18;audio_url=null 取消这些镜的声床。同一场戏里不同时段要换素材就分成两项;中间想静一下的镜不放进任何一项,声床会在那里断开。回包 runs 是按镜序合成的段;gray_on=false 表示本剧尚未开放(值已保存,开放后生效)。改完要 compose_episode 重新合成才生效(rerender_episode 沿用旧时间线)。MV 不铺声床。",
+    {
+      episode_id: z.number().int().positive(),
+      beds: z.array(z.object({
+        storyboard_ids: z.array(z.number().int().positive()).min(1).max(300),
+        audio_url: z.string().url().nullable(),
+        gain_db: z.number().min(-40).max(0).optional(),
+      })).min(1).max(50),
+    },
+    async ({ episode_id, beds }) =>
+      jsonResult(await client.producePut(`/episodes/${episode_id}/ambient-bed`, { beds })),
   )
   server.tool(
     'recommend_trim_window',
