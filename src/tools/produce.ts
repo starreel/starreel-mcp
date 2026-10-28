@@ -1872,6 +1872,47 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       jsonResult(await client.producePost(`/episodes/${episode_id}/derive-pose-chain`, {})),
   )
   server.tool(
+    'plan_shot_keyframes',
+    '★**内测**·规划**单镜中间关键帧**：给动作复杂的镜头在首帧与尾帧之间加 1~3 个「第 t 秒该是什么画面」的目标'
+      + '(蓄力、命中、落地等节点),让视频动作按节点走、不跳过过程。**要花钱**(走 LLM,文本按 token 后付)。'
+      + '\n★只规划视频引擎为 seedance-2.5 的镜(只有它按秒对齐关键帧,误差约 ±1 秒);时长 ≥5 秒、标为状态变化或关键镜的才会规划。'
+      + '\n★只填**空着**的镜:已经有中间关键帧的(含客户自己写的)一律不动。dry_run:true 只返回规划不写库,先给客户看。'
+      + '\n★结果用 get_storyboards 每镜的 keyframes 字段读;要改用 set_shot_keyframes。'
+      + '\n★回 400「本剧未开启」= 本剧不在内测名单,不是调用错误,别重试。本期只规划、不出图,出中间帧与送进视频是后续功能。',
+    {
+      episode_id: z.number().int().positive(),
+      dry_run: z.boolean().optional().describe('true = 只返回规划结果、不写库'),
+    },
+    async ({ episode_id, dry_run }) =>
+      jsonResult(await client.producePost(`/episodes/${episode_id}/keyframes/plan`, { dry_run: dry_run === true })),
+  )
+  server.tool(
+    'get_shot_keyframes',
+    '★**内测**·读**某一镜**的中间关键帧与可放范围。免费。'
+      + '回 keyframes(每项 t_sec / prompt / source=planner|author / status)、window(min_t、max_t、相邻最小间隔 gap、本镜最多几张 cap)'
+      + '与 enabled(本剧是否在内测名单)。写之前先读这里,按 window 排秒数,再调 set_shot_keyframes。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/keyframes`)),
+  )
+  server.tool(
+    'set_shot_keyframes',
+    '★**内测**·写**某一镜**的中间关键帧(整体覆盖;[] = 清空)。免费(纯文本写库)。'
+      + '\n每项 { t_sec, prompt }:t_sec 是镜内第几秒,必须落在 [2, 时长-1] 之内(开头会定格在首帧、结尾留给尾帧),'
+      + '相邻至少间隔 2 秒,每镜最多 3 张;prompt 写那一刻**看得见的**画面(人在哪、什么姿态、物件什么状态、景别机位与首帧一致)。'
+      + '\n★不收「正要 / 刚开始 / about to」这类起点措辞(单帧画不出「正在开始」),也不收「没有 X / no X」否定句'
+      + '(会把 X 画出来);违规会 400 并说明哪一张哪里不对,照着改写再提交。'
+      + '\n★先 get_storyboards 读现值再改。回 400「本剧未开启」= 本剧不在内测名单。',
+    {
+      storyboard_id: z.number().int().positive(),
+      keyframes: z.array(z.object({
+        t_sec: z.number().describe('镜内秒数'),
+        prompt: z.string().min(2).max(600).describe('这一刻看得见的画面'),
+      })).max(3),
+    },
+    async ({ storyboard_id, keyframes }) =>
+      jsonResult(await client.producePut(`/storyboards/${storyboard_id}/keyframes`, { keyframes })),
+  )
+  server.tool(
     'quote_extend_final',
     '★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长。'
       + '回 rounds(轮数)/duration_per_round(每轮秒数)/max_rounds(上限)/estimated_points(预估点数)。'

@@ -1530,6 +1530,18 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   (explain away a conflict the AI mis-read instead of editing shots),
   `link_world_state_scene_variant`, `derive_pose_chain` (LLM, **billed** — fills
   only the shots whose poses are blank, so cuts connect).
+- **Intermediate keyframes inside one shot (closed beta)**: `plan_shot_keyframes`
+  (LLM, **billed**; `dry_run:true` to preview) adds 1–3 "at second t the frame
+  shows …" targets between a shot's first and last frame — wind-up, contact,
+  landing — so the video passes those beats instead of skipping them. Only
+  shots on `seedance-2.5` (it follows keyframe timing within about ±1 s), ≥5 s,
+  marked state-change or key moment. Fills empty shots only. Read with
+  `get_shot_keyframes` (returns the allowed window: t in [2, duration−1],
+  ≥2 s apart, max 3) or the `keyframes` field of `get_storyboards`; overwrite
+  with `set_shot_keyframes`. Prompts must describe a visible pose — no
+  "about to / starting to" wording and no "no X" negations (both rejected).
+  A 400 "未开启" means the project is not in the beta. This stage only plans;
+  rendering the keyframes and feeding them to the video model come later.
 - **Era contract**: `set_era_contract` / `get_era_contract` — see the project
   settings tier above. Non-contemporary projects must set this before frames.
 - **Lengthen a finished cut**: `quote_extend_final` (free, quote first) →

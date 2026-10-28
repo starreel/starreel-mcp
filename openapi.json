@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.247",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.247 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.248",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.248 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -8134,6 +8134,68 @@
         }
       }
     },
+    "/episodes/{episode_id}/keyframes/plan": {
+      "post": {
+        "operationId": "plan_shot_keyframes",
+        "summary": "★**内测**·规划**单镜中间关键帧**：给动作复杂的镜头在首帧与尾帧之间加 1~3 个「第 t 秒该是什么画面」的目标(蓄力、命中、落地等节点),让视频动作按节点走、不跳过过程",
+        "description": "★**内测**·规划**单镜中间关键帧**：给动作复杂的镜头在首帧与尾帧之间加 1~3 个「第 t 秒该是什么画面」的目标(蓄力、命中、落地等节点),让视频动作按节点走、不跳过过程。**要花钱**(走 LLM,文本按 token 后付)。\n★只规划视频引擎为 seedance-2.5 的镜(只有它按秒对齐关键帧,误差约 ±1 秒);时长 ≥5 秒、标为状态变化或关键镜的才会规划。\n★只填**空着**的镜:已经有中间关键帧的(含客户自己写的)一律不动。dry_run:true 只返回规划不写库,先给客户看。\n★结果用 get_storyboards 每镜的 keyframes 字段读;要改用 set_shot_keyframes。\n★回 400「本剧未开启」= 本剧不在内测名单,不是调用错误,别重试。本期只规划、不出图,出中间帧与送进视频是后续功能。",
+        "tags": [
+          "episodes"
+        ],
+        "parameters": [
+          {
+            "name": "episode_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dry_run": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/episodes/{episode_id}/lipsync-batch": {
       "post": {
         "operationId": "lipsync_episode",
@@ -15756,6 +15818,137 @@
                     ]
                   }
                 }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/keyframes": {
+      "get": {
+        "operationId": "get_shot_keyframes",
+        "summary": "★**内测**·读**某一镜**的中间关键帧与可放范围",
+        "description": "★**内测**·读**某一镜**的中间关键帧与可放范围。免费。回 keyframes(每项 t_sec / prompt / source=planner|author / status)、window(min_t、max_t、相邻最小间隔 gap、本镜最多几张 cap)与 enabled(本剧是否在内测名单)。写之前先读这里,按 window 排秒数,再调 set_shot_keyframes。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "put": {
+        "operationId": "set_shot_keyframes",
+        "summary": "★**内测**·写**某一镜**的中间关键帧(整体覆盖;[] = 清空)",
+        "description": "★**内测**·写**某一镜**的中间关键帧(整体覆盖;[] = 清空)。免费(纯文本写库)。\n每项 { t_sec, prompt }:t_sec 是镜内第几秒,必须落在 [2, 时长-1] 之内(开头会定格在首帧、结尾留给尾帧),相邻至少间隔 2 秒,每镜最多 3 张;prompt 写那一刻**看得见的**画面(人在哪、什么姿态、物件什么状态、景别机位与首帧一致)。\n★不收「正要 / 刚开始 / about to」这类起点措辞(单帧画不出「正在开始」),也不收「没有 X / no X」否定句(会把 X 画出来);违规会 400 并说明哪一张哪里不对,照着改写再提交。\n★先 get_storyboards 读现值再改。回 400「本剧未开启」= 本剧不在内测名单。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keyframes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "t_sec": {
+                          "type": "number",
+                          "description": "镜内秒数"
+                        },
+                        "prompt": {
+                          "type": "string",
+                          "minLength": 2,
+                          "maxLength": 600,
+                          "description": "这一刻看得见的画面"
+                        }
+                      },
+                      "required": [
+                        "t_sec",
+                        "prompt"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "maxItems": 3
+                  }
+                },
+                "required": [
+                  "keyframes"
+                ]
               }
             }
           }
