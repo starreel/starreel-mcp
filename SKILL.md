@@ -231,6 +231,15 @@ Don't ask the user at every step. Sort work into three tiers:
    `video_style_prompt`) are all free and the foundation that steers every later
    generation. Set them up front via `create_drama` / `update_project_settings`
    — don't build an empty shell, or all downstream generation drifts.
+   **Free aspect ratio (Seedance 2.5 only, rolled out per drama).** Besides the
+   fixed presets, `aspect_ratio` accepts a number such as `2.35` (or `"2.35:1"`
+   / `"47:20"`, width÷height within 0.4–2.5). It requires `video_engine`
+   `seedance-2.5`, a Seedream `image_model` and a non-4k resolution; the video
+   follows the first-frame size, so every shot needs a first frame — scene
+   groups, reference-to-video, keyframe groups and text-to-video can't use it.
+   A drama that isn't enabled gets a 400: tell the user and pick a fixed preset.
+   At creation it only works once fully rolled out — otherwise create with a
+   fixed preset, then change it with `update_project_settings`.
    **Honor explicit creative requirements.** `creative_contract` on
    `create_drama` / `update_project_settings` accepts `version: 1`, optional
    `speech` (`unspecified` / `forbidden` / `required`), `music`

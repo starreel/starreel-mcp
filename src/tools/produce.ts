@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { StarReelClient } from '../client.js'
 import { assertSafeToolchainDir, TOOLCHAIN_FILENAMES } from '../path-guard.js'
-import { MODEL_AVAILABILITY_NOTE } from './guide-data.js'
+import { FREE_ASPECT_NOTE, MODEL_AVAILABILITY_NOTE } from './guide-data.js'
 
 const TOOLCHAIN_USAGE = [
   '1. 三个脚本放同一目录(assemble.sh 需可执行位)。',
@@ -332,7 +332,7 @@ export const WORKFLOW_HINT =
   '③【可选增强·AI 主动提示客户·报价确认才做】美术圣经生成/视觉锁抽取/场景组/口型/海报/音效/配乐/字幕翻译——' +
   '这些提升一致性/质量、大多收费。★AI 应主动告知客户这些可做并给报价' + MODE_DECIDES('跑不跑') + ';既不默默跳过、也不擅自扣费。' +
   '★两条锁定纪律:①**画幅比例**在 create_drama 即定、drama 级锁定,之后所有出图/出视频/成片都用它、**别中途改**' +
-  '(改了已生成内容画幅会不一致、漂移);不设默认 9:16。②**拆镜每镜 5-7 秒是对 AI 出视频优化的正常时长**,' +
+  '(改了已生成内容画幅会不一致、漂移);不设默认 9:16;Seedance 2.5 剧可用自由宽高比(数值,如 2.35),限制见 create_drama 的 aspect_ratio 说明。②**拆镜每镜 5-7 秒是对 AI 出视频优化的正常时长**,' +
   '别因「镜偏长」误判就重拆——generate_storyboards 会**替换整集所有分镜**、已出图白费,已有分镜后端会拦、需 confirm_replace。' +
   '★改写保真(默认 auto 智能路由):set_script 的原稿**本身已是剧本形态**(场景头/对白行结构)时,rewrite_script 自动走两步保真——' +
   '客户台词逐句由机器闸锁定(丢一句即内部拒收重做)、AI 绝不加戏;剧作缺口(钩子/情感锚点)不自动补,写进 get_script 返回的 dramaturgy_suggestions' + MODE_DECIDES('采不采纳') + '。' +
@@ -380,6 +380,29 @@ const BGM_LOCK_FIELDS = {
 const FRAME_TYPE_ARG = z.enum(['first_frame', 'last_frame', 'both'])
 
 const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '4:3', '21:9'] as const
+// 自由宽高比(Seedance 2.5 专属·按剧灰度):与后端 lib/free-aspect.ts classifyDramaAspectInput 同口径——
+// 数值 / '2.35' / '2.35:1' / '47:20'(分隔符 : x * × /),宽÷高须在 [0.4, 2.5];规范化(两位小数)与组合校验都在后端。
+// 这里只挡掉解析不出或越界的值,省一次 400;固定档仍走上面的枚举,旧调用逐字不变。
+export const FREE_ASPECT_MIN = 0.4
+export const FREE_ASPECT_MAX = 2.5
+/** 数值写法 → 宽÷高;解析不出 → null(范围另判)。 */
+export function parseAspectNumber(raw: unknown): number | null {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+  const s = typeof raw === 'string' ? raw.trim() : ''
+  if (/^\d+(?:\.\d+)?$/.test(s)) return Number(s)
+  const m = /^(\d+(?:\.\d+)?)\s*[:x*×/]\s*(\d+(?:\.\d+)?)$/i.exec(s)
+  return m && Number(m[2]) > 0 ? Number(m[1]) / Number(m[2]) : null
+}
+const inFreeAspectRange = (raw: unknown) => {
+  const r = parseAspectNumber(raw)
+  return r != null && r >= FREE_ASPECT_MIN && r <= FREE_ASPECT_MAX
+}
+const FREE_ASPECT_RANGE_MSG = `自由宽高比的宽÷高必须在 ${FREE_ASPECT_MIN}~${FREE_ASPECT_MAX} 之间`
+const ASPECT_RATIO_ARG = z.union([
+  z.enum(ASPECT_RATIOS),
+  z.number().min(FREE_ASPECT_MIN, FREE_ASPECT_RANGE_MSG).max(FREE_ASPECT_MAX, FREE_ASPECT_RANGE_MSG),
+  z.string().refine(inFreeAspectRange, FREE_ASPECT_RANGE_MSG),
+])
 const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p', '4k'] as const
 // 剧级视频引擎(与后端 video-engine-policy 白名单同源;短 id,后端归一化)。
 // kling-4.0 为内测引擎:后端按剧灰度(KLING_VIDEO_DRAMAS),未开放的剧传它会 400——那不是调用错误,换回其它引擎即可。
@@ -474,14 +497,15 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '新建一部短剧(剧壳)。★强烈建议建剧时一并设好基础项目设定——project_type/setting_brief(世界观·ERA LOCK)/' +
       'ethnicity(族裔)/画幅分辨率,以及一致性锚(cinematography_prompt/art_bible/visual_lock)。这些全免费、' +
       '是驱动全链一致性的地基;只传 title 建空壳会让后续所有生成跑偏、返工重花钱。' +
-      '按 total_episodes 自动建 N 空集,返回 drama_id 与各集 episode_id。免费。',
+      '按 total_episodes 自动建 N 空集,返回 drama_id 与各集 episode_id。免费。' +
+      '★Seedance 2.5 剧的画幅可设自由宽高比(如 2.35),限制与灰度口径见 aspect_ratio 参数说明。',
     {
       title: z.string().describe('剧名'),
       total_episodes: z.number().int().min(1).max(200).optional().describe('集数(默认 1),自动建 N 个空集'),
       genre: z.string().optional().describe('题材,如 都市/悬疑/古装'),
       style: z.string().optional().describe('风格描述'),
       description: z.string().optional(),
-      aspect_ratio: z.enum(ASPECT_RATIOS).optional().describe('画幅比例(默认 9:16 竖屏短剧)。★drama级锁定:建剧即定、之后所有出图/出视频/成片都用它,别中途改(改了已生成内容画幅不一致、漂移)'),
+      aspect_ratio: ASPECT_RATIO_ARG.optional().describe('画幅比例(默认 9:16 竖屏短剧;固定档 ' + ASPECT_RATIOS.join(' / ') + ')。★drama级锁定:建剧即定、之后所有出图/出视频/成片都用它,别中途改(改了已生成内容画幅不一致、漂移)。' + FREE_ASPECT_NOTE),
       video_resolution: z.enum(VIDEO_RESOLUTIONS).optional().describe('视频分辨率(默认 720p;成本随分辨率上升)。按引擎选:' +
         '倍数以 seedance-2.5 720p 为 1×,实价以 quote_* 报价为准。seedance-2.5 在售 480p/720p/1080p(约 0.45×/1×/2.5×,无 4K);hailuo-3 选 720p(=768P 约0.33×)或 1080p(=2K 约0.53×),无独立 480p 档;' +
         'wan3.0/prime 三档全售(wan3.0 约 0.2×/0.4×/0.8×,prime 约 0.3×/0.6×/1.2×)。草稿迭代用低档,成片交付才上高清'),
@@ -2072,6 +2096,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '音频(bgm_source 自有vs原生/bgm_volume_preset 音量/use_clip_audio 用视频原声)、' +
       '字幕(show_subtitles/双语 subtitle_secondary_lang/位置/边距/动效)、转场——即项目设定页全部通用设定。免费。' +
       '⚠️ 世界观 Brief/族裔/画幅/一致性锚等改后,已生成的内容不会自动更新,需重生对应内容。' +
+      '★aspect_ratio 除固定档外可设自由宽高比(数值如 2.35,只支持 Seedance 2.5 + Seedream + 非 4k、按剧灰度,未开通回 400),详见该参数说明。' +
       '★frame_chain_mode 管整剧跨镜帧链:off=整剧不做(出帧落定后的自动衔接、chain_frames、首尾呼应都不派图不改帧,报价里也不再计入);' +
       'reframe=默认;strict=相邻缝只裸拷贝上镜尾帧不重生(已设的首尾呼应仍按 reframe 重生、照常计入报价;要全不派图用 off)。关掉后想用 chain_frames 要先改回 reframe/strict;改模式不会自动重出已有帧。',
     {
@@ -2083,7 +2108,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       style: z.string().optional(),
       description: z.string().optional(),
       tags: z.array(z.string()).optional(),
-      aspect_ratio: z.enum(ASPECT_RATIOS).optional(),
+      aspect_ratio: ASPECT_RATIO_ARG.optional().describe('画幅比例(固定档 ' + ASPECT_RATIOS.join(' / ') + ')。已有分镜/生成内容后改画幅要带 confirm_aspect_change:true。' + FREE_ASPECT_NOTE),
       // v0.1.39 — 画幅锁定闸:本剧已有分镜/生成资产后改画幅会被 400 拦(已生成内容会漂移),
       // 确认要改必须显式带 true。通常正解是建剧时定好画幅、之后不改。
       confirm_aspect_change: z.boolean().optional(),

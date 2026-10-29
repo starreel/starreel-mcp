@@ -22,6 +22,18 @@
  */
 export const MODEL_AVAILABILITY_NOTE = '各引擎对写实真人/动漫等题材当前是否可用,以 get_production_menu 返回的 availability 为准(不可用的带 customer_note 与 expected_until,原样转告客户),不要凭本说明预设哪个模型不可用'
 
+/**
+ * 自由宽高比(Seedance 2.5 专属,后端 lib/free-aspect.ts 是判据唯一出处)的对外口径——
+ * create_drama / update_project_settings 的 aspect_ratio 描述、WORKFLOW_HINT、建剧步 note 共用这一句,防多处漂移。
+ * 厂商合同:2.5 的 ratio 只收 6 档 + adaptive,首帧任务输出跟随首帧比例;文生 / 参考生只出 6 档。
+ * ⇒ 自由比例只在「有首帧的 2.5 单镜」上成立,场景组 / 参考图 / 关键帧组 / 纯文生都做不到。
+ */
+export const FREE_ASPECT_NOTE =
+  '自由宽高比(灰度):除固定档外可传数值(2.35 / "2.35" / "2.35:1" / "47:20",宽÷高须在 0.4~2.5),平台规范成「比值:1」(两位小数,如 2.35:1)。' +
+  '只支持 Seedance 2.5:本剧 video_engine 须为 seedance-2.5、image_model 须为 Seedream(doubao-seedream-*)、视频分辨率不能 4k;' +
+  '视频按首帧尺寸出比例,所以每镜必须先有首帧——场景组 / 参考图生视频 / 关键帧组 / 纯文生视频不可用(厂商只出 6 档固定比例)。' +
+  '按剧灰度,未开通的剧回 400(原样转告客户,改用固定档);建剧时只有全量开放才能直接设,否则先用固定档建剧、再用 update_project_settings 改'
+
 export const GUIDE_VERSION = '2026-10-13'
 
 export interface EntryPoint {
@@ -239,7 +251,7 @@ export const PIPELINE: PipelineStep[] = [
     step: '1 建剧与项目设定',
     tools: ['list_project_options', 'create_drama', 'update_project_settings'],
     billing: '免费',
-    note: 'setting_brief(世界观/ERA LOCK)、画幅、video_engine、image_model、cinematography_prompt/art_bible/visual_lock 都在这一步定;收费步前服务端会要求 setting_brief≥30 字 + aspect_ratio。',
+    note: 'setting_brief(世界观/ERA LOCK)、画幅、video_engine、image_model、cinematography_prompt/art_bible/visual_lock 都在这一步定;收费步前服务端会要求 setting_brief≥30 字 + aspect_ratio。' + FREE_ASPECT_NOTE + '。',
   },
   {
     step: '2 灌本',
