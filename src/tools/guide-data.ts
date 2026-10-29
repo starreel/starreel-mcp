@@ -419,6 +419,7 @@ export const COMMON_REQUESTS: CommonRequest[] = [
   { customer_says: '我想自己剪', do: '`export_handoff_pack` + `build_av_timing_contract`(音画时长契约) + `get_handoff_toolchain`,不走 `compose_episode`。' },
   { customer_says: '做动作片 / 打斗 / 技能展示 / 这条参考动作片我们能不能做', do: '先 `get_capabilities_guide` section=action_film:资产照常走 `rewrite_script` → `review_script` → `extract_assets`,分镜改用自己写的表(`import_storyboard_table`)而不是 AI 拆镜,首帧停在起势,拖沓尾段用 `trim_shot` 剪;平台不支持镜内分段变速。' },
   { customer_says: '我有白模 / 3D 预演视频 / 想让某镜照一段视频的动作和运镜重新生成', do: '`create_motion_reference`(白模选 kind=greybox_coarse / greybox_fine)→ `attach_motion_reference`(多个色块传 greybox_bindings 写明哪个色块是哪个角色)→ `get_shot_motion_reference` 核对 → 照常 `review_frames` → `quote_videos` → `generate_videos`。别用 `upload_shot_footage`(那是把视频直接当成片);白模别带轨迹线 / 坐标轴 / 相机锥,四肢不建或建全动作。' },
+  { customer_says: '镜头景别 / 运镜 / 站位总是不听话、想先做白模预演但手上没有白模', do: '`generate_greybox_previs`(先 `dry_run=true` 看平台用了哪些字段、做了哪些假设,字段不对先 `update_shot`)→ 平台按分镜字段自动渲粗粒度白模并写好色块绑定 → `get_greybox_previs` 核对 → 照常 `review_frames` → `quote_videos` → `generate_videos`。先告诉客户:白模镜不送首尾帧、视频报价约贵两成;插入镜 / 无角色 / 超 15 秒 / 状态变化镜不适用。' },
   { customer_says: '要配音 / 不要视频原声', do: '`update_project_settings` use_clip_audio=false → `assign_voices` → `generate_tts` → `compose_episode`。' },
 ]
 
