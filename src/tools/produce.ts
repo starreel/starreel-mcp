@@ -2423,10 +2423,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'greybox_fine=建模完整的细粒度白模(视频里别带轨迹线 / 坐标轴 / 相机锥,会漏进成片)'
   server.tool(
     'create_motion_reference',
-    '把一段**动作 / 运镜参考视频**登记进本人运动参考库(免费),之后用 attach_motion_reference 挂到某镜,AI 出视频时照它的动作、运镜、站位重新生成。' +
+    '把一段**动作 / 运镜参考视频**登记进本人运动参考库(登记免费;白模 kind=greybox_* 登记时平台会顺带做一次输入预检,是一次小额视觉审核,按用量后付),之后用 attach_motion_reference 挂到某镜,AI 出视频时照它的动作、运镜、站位重新生成。' +
       '★**白模(3D 预演)走这里**:kind 选 greybox_coarse / greybox_fine,平台会告诉模型「白模只作运镜 / 节奏 / 景别 / 运动轨迹 / 站位参考,不参考几何体外形和灰模材质」。' +
       '白模建议:粗粒度最好,只用简单几何体拼人物 / 物体;身体只建躯干即可,建了四肢 / 翅膀就把动作补全,否则成片四肢僵硬;单段 ≤30 秒(Seedance 2.5),主体 1~5 个效果最好。' +
-      '⚠️ 与 upload_shot_footage 的区别:那个是「这段视频**就是**成片」,本工具是「照这段视频**重新生成**」。',
+      '⚠️ 与 upload_shot_footage 的区别:那个是「这段视频**就是**成片」,本工具是「照这段视频**重新生成**」。' +
+      '★白模登记后回执可能带 greybox_precheck(平台预检,只提示不拦截):advisories 每条有 message(问题)与 fix(改法),' +
+      '如 too_long(超 30 秒)/ helper_overlays(轨迹线·坐标轴等辅助显示会漏进成片)/ limbs_static(建了四肢却不动)——原样转告客户,改好重新登记再挂镜。',
     {
       file_path: z.string().describe('本地视频路径(mp4/mov/webm/m4v)'),
       name: z.string().min(1).max(80).describe('素材名,方便以后在 list_motion_references 里认出来'),
