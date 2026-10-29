@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.251",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.251 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.252",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.252 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -14851,7 +14851,7 @@
       "post": {
         "operationId": "edit_video_shot",
         "summary": "确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换",
-        "description": "确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换。可用 model 为本次编辑单独选引擎(与剧引擎可不同):hailuo-3=MiniMax H3 强保真编辑约1/3成本;wan3.0/wan3.0-prime=WAN 3.0 强语义编辑约4折(环境可能跟随指令扩写);H3/WAN 均不支持 start_sec/end_sec 区间(传了会 400),编辑/续写的输入视频在 H3/WAN 上另按秒计费。\n★回执里出现 `edit_instruction_negation_advisory` = 你的指令里有**否定式约束**(「不能采用X」「不要出现X」)。视频模型把名词当正向线索,写「不要 X」往往反而把 X 演出来——被否定的那个动作/物件恰恰是模型先验里最显眼的。这不是拦截,任务已照常提交;但**下一轮改指令时务必删掉否定句,改成正向描述**(把该做什么写具体:起手动作、手的位置、每一拍的时值),否则同一个毛病会一直复现。已实测:客户写「不能采用参考图举手单脚的静态舞姿」,成片开头的抬臂手势就被参考图那个举手带跑了。\n★收到 **409「本镜是用户上传的实拍素材」** = 这一镜被 upload_shot_footage 登记成了实拍素材镜,不是模型或引擎的问题,换引擎重试无用。两条出路:要以该素材为源做 AI 重绘 → 带 replace_user_footage=true 重发;要恢复成普通 AI 镜 → 先 clear_shot_footage。\n★收到 **409 + `in_flight_generation_id`** = 这一镜还有一条生成没跑完(上一次编辑 / 重生 / 批量出视频),这次编辑没提交、没扣费,quote 已作废。编辑的源是本镜当前视频,在途那条一完成就会换掉它——所以先等它完成、看过结果,再重新 quote 并编辑;**别连发**多条编辑想让它们叠加,每一条都只基于当时的源。若在途那条正是你刚提交的同一次编辑(例如调用超时后重发),直接等它的结果,不必再发。同一次编辑原样重发(指令、参考素材、区间、引擎都一样)不会 409,会挂到在途那条上、不重复扣费。\n★一键出片托管环节:同一镜重出视频最多 3 次(与 regenerate_shot_video 合计),到上限回 **409 AUTOPILOT_SHOT_REGEN_LIMIT**(未派发、未扣费,quote 未消耗)——别换个工具绕,停下问客户:客户同意再出就照常报价、生成时带 customer_approved_more_regens:true(再给一份上限);客户接受现状就往下走,下一步收费调用带 acknowledge_review:true 记下确认。专业模式与客户把控的环节不受这个上限约束。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。\n★【完成后质检·免费】出完等它落库(get_storyboards 看 video_status / get_pipeline_status),再调 review_videos 审视频与配音层(缺视频 / 旧帧出的视频 / 片尾硬切 / 意外人声 / 配音缺失 / 音色未分配 / 原声声线过期),修完复审;再按 agent_qc 亲自逐镜看视频、听配音(动作到位、不变脸、台词念全、嗓音对),submit_qc_report 提交;compose_episode 要带它的 review_token。",
+        "description": "确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换。可用 model 为本次编辑单独选引擎(与剧引擎可不同):hailuo-3=MiniMax H3 强保真编辑约1/3成本;wan3.0/wan3.0-prime=WAN 3.0 强语义编辑约4折(环境可能跟随指令扩写);H3/WAN 均不支持 start_sec/end_sec 区间(传了会 400),编辑/续写的输入视频在 H3/WAN 上另按秒计费。\n★参考素材条数按本次实际派发的引擎(model 优先、否则剧引擎)核:Seedance 2.5 = 参考图 30 / 额外参考视频 9(源视频另占 1 段,视频合计 ≤30 秒)/ 参考音频 10;其余引擎 = 9 / 2 / 3(2.0 视频合计 ≤15 秒)。超出直接 400、不扣费,**平台不会替你截断**——指令里的「图片N / 视频N / 音频N」按上传顺序编号,删减后编号要跟着改。官方经验:视频编辑参考图 1~5 张效果最好,6~8 张可试,更多未必更好。\n★回执里出现 `edit_instruction_negation_advisory` = 你的指令里有**否定式约束**(「不能采用X」「不要出现X」)。视频模型把名词当正向线索,写「不要 X」往往反而把 X 演出来——被否定的那个动作/物件恰恰是模型先验里最显眼的。这不是拦截,任务已照常提交;但**下一轮改指令时务必删掉否定句,改成正向描述**(把该做什么写具体:起手动作、手的位置、每一拍的时值),否则同一个毛病会一直复现。已实测:客户写「不能采用参考图举手单脚的静态舞姿」,成片开头的抬臂手势就被参考图那个举手带跑了。\n★收到 **409「本镜是用户上传的实拍素材」** = 这一镜被 upload_shot_footage 登记成了实拍素材镜,不是模型或引擎的问题,换引擎重试无用。两条出路:要以该素材为源做 AI 重绘 → 带 replace_user_footage=true 重发;要恢复成普通 AI 镜 → 先 clear_shot_footage。\n★收到 **409 + `in_flight_generation_id`** = 这一镜还有一条生成没跑完(上一次编辑 / 重生 / 批量出视频),这次编辑没提交、没扣费,quote 已作废。编辑的源是本镜当前视频,在途那条一完成就会换掉它——所以先等它完成、看过结果,再重新 quote 并编辑;**别连发**多条编辑想让它们叠加,每一条都只基于当时的源。若在途那条正是你刚提交的同一次编辑(例如调用超时后重发),直接等它的结果,不必再发。同一次编辑原样重发(指令、参考素材、区间、引擎都一样)不会 409,会挂到在途那条上、不重复扣费。\n★一键出片托管环节:同一镜重出视频最多 3 次(与 regenerate_shot_video 合计),到上限回 **409 AUTOPILOT_SHOT_REGEN_LIMIT**(未派发、未扣费,quote 未消耗)——别换个工具绕,停下问客户:客户同意再出就照常报价、生成时带 customer_approved_more_regens:true(再给一份上限);客户接受现状就往下走,下一步收费调用带 acknowledge_review:true 记下确认。专业模式与客户把控的环节不受这个上限约束。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。\n★【完成后质检·免费】出完等它落库(get_storyboards 看 video_status / get_pipeline_status),再调 review_videos 审视频与配音层(缺视频 / 旧帧出的视频 / 片尾硬切 / 意外人声 / 配音缺失 / 音色未分配 / 原声声线过期),修完复审;再按 agent_qc 亲自逐镜看视频、听配音(动作到位、不变脸、台词念全、嗓音对),submit_qc_report 提交;compose_episode 要带它的 review_token。",
         "tags": [
           "storyboards"
         ],
@@ -14896,21 +14896,21 @@
                     "items": {
                       "type": "string"
                     },
-                    "maxItems": 9
+                    "maxItems": 30
                   },
                   "reference_video_urls": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "maxItems": 2
+                    "maxItems": 9
                   },
                   "reference_audio_urls": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "maxItems": 3
+                    "maxItems": 10
                   },
                   "start_sec": {
                     "type": "number"

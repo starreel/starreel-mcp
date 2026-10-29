@@ -2463,6 +2463,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     '确认后就地编辑某镜视频:按 instruction 改,可带参考图/视频/音频,或用 start_sec/end_sec 做区间替换。' +
       '可用 model 为本次编辑单独选引擎(与剧引擎可不同):hailuo-3=MiniMax H3 强保真编辑约1/3成本;wan3.0/wan3.0-prime=WAN 3.0 强语义编辑约4折(环境可能跟随指令扩写);' +
       'H3/WAN 均不支持 start_sec/end_sec 区间(传了会 400),编辑/续写的输入视频在 H3/WAN 上另按秒计费。' +
+      '\n★参考素材条数按本次实际派发的引擎(model 优先、否则剧引擎)核:Seedance 2.5 = 参考图 30 / 额外参考视频 9(源视频另占 1 段,视频合计 ≤30 秒)/ 参考音频 10;' +
+      '其余引擎 = 9 / 2 / 3(2.0 视频合计 ≤15 秒)。超出直接 400、不扣费,**平台不会替你截断**——指令里的「图片N / 视频N / 音频N」按上传顺序编号,删减后编号要跟着改。' +
+      '官方经验:视频编辑参考图 1~5 张效果最好,6~8 张可试,更多未必更好。' +
       '\n★回执里出现 `edit_instruction_negation_advisory` = 你的指令里有**否定式约束**(「不能采用X」「不要出现X」)。' +
       '视频模型把名词当正向线索,写「不要 X」往往反而把 X 演出来——被否定的那个动作/物件恰恰是模型先验里最显眼的。' +
       '这不是拦截,任务已照常提交;但**下一轮改指令时务必删掉否定句,改成正向描述**(把该做什么写具体:起手动作、手的位置、每一拍的时值),' +
@@ -2480,9 +2483,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       quote_id: z.string().describe('来自 quote_edit_video_shot'),
       instruction: z.string().describe('编辑指令(如"把背景换成夜晚")'),
       model: z.enum(VIDEO_ENGINES).optional().describe('本次编辑的引擎(缺省=跟随剧 video_engine);hailuo-3/wan3.0/wan3.0-prime 不支持区间编辑;kling-4.0 不支持编辑'),
-      reference_image_urls: z.array(z.string()).max(9).optional().describe('参考图 URL(先 upload_image 拿)'),
-      reference_video_urls: z.array(z.string()).max(2).optional(),
-      reference_audio_urls: z.array(z.string()).max(3).optional(),
+      reference_image_urls: z.array(z.string()).max(30).optional().describe('参考图 URL(先 upload_image 拿);Seedance 2.5 最多 30 张,其余引擎最多 9 张'),
+      reference_video_urls: z.array(z.string()).max(9).optional().describe('额外参考视频 URL;源视频另占 1 段。Seedance 2.5 最多 9 段(含源视频总长 ≤30 秒),其余引擎最多 2 段'),
+      reference_audio_urls: z.array(z.string()).max(10).optional().describe('参考音频 URL;Seedance 2.5 最多 10 段,其余引擎最多 3 段'),
       start_sec: z.number().optional().describe('区间替换起点秒'),
       end_sec: z.number().optional().describe('区间替换终点秒'),
       replace_user_footage: z.boolean().optional().describe(
