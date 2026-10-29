@@ -2474,7 +2474,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'generate_greybox_previs',
-    '按分镜已有字段**自动生成粗粒度白模**并挂到镜上(免费):景别 / 机位高度与方位 / 运镜(推拉摇移跟升降环绕) / 站位 / 朝向 / 时长 / 动作(走近、后退、转身、坐下等)→ 平台本机渲成几何体白模视频(每个角色一种颜色、只建躯干),登记成 greybox_coarse 并**自动写好 greybox_bindings**,不用客户自己建白模。目的是把景别 / 运镜 / 站位从文字约束变成像素约束,治「镜头调度不听话」。★挂上后该镜改走参考视频路径:**首尾帧不再送达**(身份靠角色参考图),**视频报价会上涨约两成**(参考视频按秒计费)——生成前把这两点讲给客户。★先 dry_run=true 看平台按哪些字段、做了哪些假设(assumptions:缺失字段的兜底),字段不对先 update_shot 改再生成。不适用的镜会返回原因:插入镜、没有出镜角色、超过 15 秒、状态变化镜(依赖尾帧终态,确需生成传 include_state_change=true)。镜上已挂客户自己的运动参考时不覆盖(409),确要替换传 replace_existing=true。传 episode_id 不传 storyboard_id = 整集批量(一次 ≤40 镜,可用 storyboard_ids 选镜)。本剧未开放时回 409(灰度中)。生成后照常 review_frames → quote_videos → generate_videos。',
+    '按分镜已有字段**自动生成粗粒度白模**并挂到镜上(免费):景别 / 机位高度与方位 / 运镜(推拉摇移跟升降环绕) / 站位 / 朝向 / 时长 / 动作(走近、后退、转身、坐下等)→ 平台本机渲成几何体白模视频(每个角色一种颜色、只建躯干),登记成 greybox_coarse 并**自动写好 greybox_bindings**,不用客户自己建白模。目的是把景别 / 运镜 / 站位从文字约束变成像素约束,治「镜头调度不听话」。★挂上后该镜改走参考视频路径:**首尾帧不再送达**(身份靠角色参考图),**视频报价会上涨约两成**(参考视频按秒计费)——生成前把这两点讲给客户。★内部对照(15 个镜位):推 / 拉 / 摇 / 环绕比照常出视频明显听话,起幅贴首帧;**没有人物走动的移镜效果弱**,这类镜不建议用白模。★先 dry_run=true 看平台按哪些字段、做了哪些假设(assumptions:缺失字段的兜底),字段不对先 update_shot 改再生成。不适用的镜会返回原因:插入镜、没有出镜角色、超过 15 秒、状态变化镜(依赖尾帧终态,确需生成传 include_state_change=true)。镜上已挂客户自己的运动参考时不覆盖(409),确要替换传 replace_existing=true。传 episode_id 不传 storyboard_id = 整集批量(一次 ≤40 镜,可用 storyboard_ids 选镜)。本剧未开放时回 409(灰度中)。生成后照常 review_frames → quote_videos → generate_videos。',
     {
       storyboard_id: z.number().int().positive().optional().describe('单镜;与 episode_id 二选一'),
       episode_id: z.number().int().positive().optional().describe('整集批量;不传 storyboard_ids = 本集全部镜(≤40)'),
