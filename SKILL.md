@@ -1559,6 +1559,23 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   with their timestamps (first frame becomes a soft constraint; ±1 s timing; same
   price). Shots whose first frame is a copy of the previous shot's last frame keep
   first-frame mode (`reason: strict-continuity`) so the seam stays exact.
+- **Storyboard grid reference (closed beta, `seedance-2.5` only)**:
+  `set_shot_storyboard_grid` (free) mounts one multi-panel storyboard image
+  (line art / stick figures, ideally ≤15 panels) on a shot; the video is then
+  generated as one multi-shot clip following the grid's story, action, shot
+  order, camera positions and blocking. The grid is sent as reference image 1,
+  **not** as the first frame, and is **not** matched panel-by-panel — when the
+  frames must match exactly, use keyframes instead. The platform drops the
+  first/last frame (they are mutually exclusive with the grid), appends the
+  shot's character portraits and scene image, and writes the asset-reference
+  block at the top of the prompt; the grid never defines faces or art style.
+  Write the shot's `video_prompt` as a synopsis plus per-panel details the
+  sketch cannot show (shot size, camera move, action, materials, style).
+  Advisories (>15 panels, more panels than seconds) do not block. Non-2.5
+  engine → 400; grid shots never join scene groups; mounting marks the
+  existing video stale. `quote_regenerate_shot_video` returns `storyboard_grid`
+  when the grid will be used. Read with `get_shot_storyboard_grid`, remove with
+  `clear_shot_storyboard_grid`. A 400 "未开启" means the project is not in the beta.
 - **Era contract**: `set_era_contract` / `get_era_contract` — see the project
   settings tier above. Non-contemporary projects must set this before frames.
 - **Lengthen a finished cut**: `quote_extend_final` (free, quote first) →

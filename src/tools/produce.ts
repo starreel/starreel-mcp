@@ -1945,6 +1945,44 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/keyframes/generate`, { quote_id, keyframe_ids, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge })),
   )
   server.tool(
+    'get_shot_storyboard_grid',
+    '★**内测**·读**某一镜**挂的宫格分镜参考(故事板)。免费。回 grid(image_url / cells / advisories,null = 没挂)、'
+      + 'enabled(本剧是否在内测名单)、video_engine 与 engine_supported(只有 Seedance 2.5 支持宫格参考)、tips(宫格怎么画、提示词怎么写)。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/storyboard-grid`)),
+  )
+  server.tool(
+    'set_shot_storyboard_grid',
+    '★**内测**·给**某一镜**挂一张**宫格分镜图**(故事板,Seedance 2.5 官方多模态能力):客户手画的线稿 / 火柴人多宫格,'
+      + '一张图里按从左到右、从上到下排好这一段的镜头顺序、动作、机位与站位,出视频时**一次出成一段多镜头视频**。免费(只挂载,出视频照常报价扣费)。'
+      + '\n★宫格作参考图「图片1」送(不是首帧),**不严格对齐**画面细节——它只管剧情、动作、镜头顺序、机位与站位;'
+      + '**要逐格严格对齐画面,改用关键帧**(set_shot_keyframes 单镜中间关键帧,或场景组关键帧),不是本工具。'
+      + '\n★出视频时平台自动:不送首尾帧(厂商规定与宫格互斥)、把本镜角色定妆图与场景图接在宫格之后、在提示词最前面写好素材指代'
+      + '(宫格图@图片1、角色图@图片N、场景图@图片M);宫格图不当身份参考,人物长相以定妆图为准,也不会沿用宫格的线稿画风。'
+      + '\n★本镜视频提示词(update_shot 的 video_prompt)请写:故事梗概 + 按格逐镜补齐宫格里画不出的信息(景别、运镜、动作、材质、风格);写实片可再写一句「宫格只作脚本参考」。'
+      + '\n★建议 ≤15 格(超过易画面静止、顺序错乱,会回 advisories 提示但不拦截);推荐线稿 / 火柴人,不要过度锐化的 AI 直出图,图上少写字;'
+      + '格数多于本镜秒数也会提示(动作会被挤压)。'
+      + '\n★前提:本镜或本剧视频引擎是 seedance-2.5,否则 400;挂了宫格的镜不并场景组。挂 / 换宫格会把本镜已有视频标为待重生。'
+      + '之后照常 quote_regenerate_shot_video(回 storyboard_grid 字段即确认本次按宫格出)→ regenerate_shot_video。'
+      + '回 400「本剧未开启」= 不在内测名单,别重试。传 file_path(本地图,自动上传)或 image_url 二选一。',
+    {
+      storyboard_id: z.number().int().positive(),
+      cells: z.number().int().min(2).max(36).describe('宫格的格数,例如 3×3 填 9'),
+      file_path: z.string().optional().describe('本地宫格图路径(自动上传)'),
+      image_url: z.string().optional().describe('已上传的宫格图地址(与 file_path 二选一)'),
+    },
+    async ({ storyboard_id, cells, file_path, image_url }) => {
+      const url = file_path ? await client.uploadLocalFile(file_path, 'image') : image_url
+      return jsonResult(await client.producePut(`/storyboards/${storyboard_id}/storyboard-grid`, { image_url: url, cells }))
+    },
+  )
+  server.tool(
+    'clear_shot_storyboard_grid',
+    '★**内测**·清除**某一镜**的宫格分镜参考,本镜回到普通首帧出视频模式。免费。本镜已有视频会被标为待重生。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.produceDelete(`/storyboards/${storyboard_id}/storyboard-grid`)),
+  )
+  server.tool(
     'quote_extend_final',
     '★成片续写**报价**(免费·无副作用):在已有成片后面再接几轮 AI 生成的片段,把片子拉长。'
       + '回 rounds(轮数)/duration_per_round(每轮秒数)/max_rounds(上限)/estimated_points(预估点数)。'
