@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.260",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.260 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.261",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.261 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -15028,8 +15028,8 @@
     "/storyboards/{storyboard_id}/edit/quote": {
       "post": {
         "operationId": "quote_edit_video_shot",
-        "summary": "报价:对某镜做就地编辑/区间替换(Seedance 2",
-        "description": "报价:对某镜做就地编辑/区间替换(Seedance 2.5)要多少点。返回 quote_id。零扣费。本镜须已有视频。",
+        "summary": "报价:对某镜做就地编辑/区间替换要多少点",
+        "description": "报价:对某镜做就地编辑/区间替换要多少点。返回 quote_id。零扣费。本镜须已有视频。★要为本次编辑单独选引擎,model 在报价和 edit_video_shot 里都要传同一个,报价才按实际派发的引擎计价;kling-4.0 编辑按可灵「有输入视频」档计价(输入≤输出时按输出秒×2),比普通出视频约贵两成。",
         "tags": [
           "storyboards"
         ],
@@ -15044,6 +15044,28 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string",
+                    "enum": [
+                      "seedance-2.5",
+                      "hailuo-3",
+                      "wan3.0",
+                      "wan3.0-prime",
+                      "kling-4.0"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",

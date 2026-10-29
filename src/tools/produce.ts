@@ -2593,10 +2593,14 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'quote_edit_video_shot',
-    '报价:对某镜做就地编辑/区间替换(Seedance 2.5)要多少点。返回 quote_id。零扣费。' +
-      '本镜须已有视频。',
-    { storyboard_id: z.number().int().positive() },
-    async ({ storyboard_id }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/edit/quote`)),
+    '报价:对某镜做就地编辑/区间替换要多少点。返回 quote_id。零扣费。' +
+      '本镜须已有视频。★要为本次编辑单独选引擎,model 在报价和 edit_video_shot 里都要传同一个,报价才按实际派发的引擎计价;' +
+      'kling-4.0 编辑按可灵「有输入视频」档计价(输入≤输出时按输出秒×2),比普通出视频约贵两成。',
+    {
+      storyboard_id: z.number().int().positive(),
+      model: z.enum(VIDEO_ENGINES).optional().describe('本次编辑的引擎(缺省=跟随剧 video_engine),须与 edit_video_shot 传的一致'),
+    },
+    async ({ storyboard_id, model }) => jsonResult(await client.producePost(`/storyboards/${storyboard_id}/edit/quote`, model ? { model } : {})),
   )
   server.tool(
     'edit_video_shot',
@@ -2622,7 +2626,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_edit_video_shot'),
       instruction: z.string().describe('编辑指令(如"把背景换成夜晚")'),
-      model: z.enum(VIDEO_ENGINES).optional().describe('本次编辑的引擎(缺省=跟随剧 video_engine);hailuo-3/wan3.0/wan3.0-prime 不支持区间编辑;kling-4.0 不支持编辑'),
+      model: z.enum(VIDEO_ENGINES).optional().describe('本次编辑的引擎(缺省=跟随剧 video_engine),须与 quote_edit_video_shot 传的一致;hailuo-3/wan3.0/wan3.0-prime/kling-4.0 不支持区间编辑;kling-4.0 编辑内测中(未开放的剧 400),只支持附参考图、不支持参考视频/音频'),
       reference_image_urls: z.array(z.string()).max(30).optional().describe('参考图 URL(先 upload_image 拿);Seedance 2.5 最多 30 张,其余引擎最多 9 张'),
       reference_video_urls: z.array(z.string()).max(9).optional().describe('额外参考视频 URL;源视频另占 1 段。Seedance 2.5 最多 9 段(含源视频总长 ≤30 秒),其余引擎最多 2 段'),
       reference_audio_urls: z.array(z.string()).max(10).optional().describe('参考音频 URL;Seedance 2.5 最多 10 段,其余引擎最多 3 段'),
