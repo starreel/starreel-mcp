@@ -1534,14 +1534,27 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   (LLM, **billed**; `dry_run:true` to preview) adds 1–3 "at second t the frame
   shows …" targets between a shot's first and last frame — wind-up, contact,
   landing — so the video passes those beats instead of skipping them. Only
-  shots on `seedance-2.5` (it follows keyframe timing within about ±1 s), ≥5 s,
+  shots on `seedance-2.5` (it follows keyframe timing within about ±1 s) or
+  `kling-4.0` (closed beta; keyframes are kept in order but their timing is not
+  honored, and the first frame stays hard-pinned), ≥5 s,
   marked state-change or key moment. Fills empty shots only. Read with
   `get_shot_keyframes` (returns the allowed window: t in [2, duration−1],
   ≥2 s apart, max 3) or the `keyframes` field of `get_storyboards`; overwrite
   with `set_shot_keyframes`. Prompts must describe a visible pose — no
   "about to / starting to" wording and no "no X" negations (both rejected).
-  A 400 "未开启" means the project is not in the beta. This stage only plans;
-  rendering the keyframes and feeding them to the video model come later.
+  A 400 "未开启" means the project is not in the beta. Render the keyframe
+  images with `quote_shot_keyframes` (free) → `generate_shot_keyframes`
+  (**billed**, last-frame price tier, one candidate each; needs the shot's first
+  frame). Each image is anchored to the first frame and kept in the same camera
+  setup; poll `get_shot_keyframes`: `ready` frames are used when the shot's video
+  is regenerated, `framing_mismatch` means the framing drifted from the first
+  frame (not sent; rewrite the prompt and regenerate), `failed` means the render
+  failed. Rendering keyframes never touches the shot's first/last frame.
+  On the next `quote_regenerate_shot_video`, `shot_keyframes.mode=keyframes`
+  confirms the video will be sent first frame + ready keyframes (+ last frame)
+  with their timestamps (first frame becomes a soft constraint; ±1 s timing; same
+  price). Shots whose first frame is a copy of the previous shot's last frame keep
+  first-frame mode (`reason: strict-continuity`) so the seam stays exact.
 - **Era contract**: `set_era_contract` / `get_era_contract` — see the project
   settings tier above. Non-contemporary projects must set this before frames.
 - **Lengthen a finished cut**: `quote_extend_final` (free, quote first) →

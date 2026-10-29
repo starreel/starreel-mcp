@@ -382,7 +382,8 @@ const FRAME_TYPE_ARG = z.enum(['first_frame', 'last_frame', 'both'])
 const ASPECT_RATIOS = ['9:16', '16:9', '1:1', '4:5', '4:3', '21:9'] as const
 const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p', '4k'] as const
 // 剧级视频引擎(与后端 video-engine-policy 白名单同源;短 id,后端归一化)。
-const VIDEO_ENGINES = ['seedance-2.5', 'hailuo-3', 'wan3.0', 'wan3.0-prime'] as const
+// kling-4.0 为内测引擎:后端按剧灰度(KLING_VIDEO_DRAMAS),未开放的剧传它会 400——那不是调用错误,换回其它引擎即可。
+const VIDEO_ENGINES = ['seedance-2.5', 'hailuo-3', 'wan3.0', 'wan3.0-prime', 'kling-4.0'] as const
 
 // 「项目设定页」通用视觉/音频/字幕/转场设定 —— create_drama 与 update_project_settings 共用。
 // 后端内部 PUT /dramas 已接受写库,facade 白名单 Wave3 已放行(produce-create-fields.ts)。
@@ -406,7 +407,7 @@ const PROJECT_SETTINGS_FIELDS = {
     'gemini-3.1-flash-image(香蕉2·71点)/gemini-3-pro-image(香蕉Pro·精细·175点)/gemini-3.1-flash-lite-image(香蕉2 Lite·31点)/' +
     'doubao-seedream-5-0-260128(Seedream 5.0)。建剧即定、整剧统一;generate_frames 可临时覆盖某次出图。★各模型实测优劣(一次过率/手部结构/安全拒绝率/画风稳定度)与选型步骤见 get_capabilities_guide(section=model_guide)'),
   // drama 级视频引擎(整剧统一,单镜/批量/场景组/重生全走它;按镜例外入口:quote_videos 的 shot_engines / quote_regenerate_shot_video 的 model / edit_video_shot 的 model)
-  video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→seedance-2.5 或降本 hailuo-3(' + MODEL_AVAILABILITY_NOTE + ');风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒):' +
+  video_engine: z.enum(VIDEO_ENGINES).optional().describe('视频引擎(★drama级·整剧统一·AI必须按剧选型主动引导:写实真人剧→seedance-2.5 或降本 hailuo-3(' + MODEL_AVAILABILITY_NOTE + ');风格化/动画/3D卡通/空镜/产品镜→wan3.0(赶交付 wan3.0-prime);写实真人剧绝不选 wan——720p+ 真人脸被厂商审核一致拒;kling-4.0 为内测引擎,只在开放名单内的剧可选,未开放回 400,动作大场面单镜可试):' +
     'seedance-2.5(动漫/风格化剧默认·写实真人剧在该题材可用时也默认它·全能力:帧链/场景组/就地编辑/延长/参考图锚·价格基准 720p=1×) / ' +
     '★不传时平台按画风兜底:动漫/风格化→seedance-2.5;写实/未定画风→seedance-2.5 写实开关开着用它,否则 hailuo-3——这只是兜底盖章,不查菜单的题材可用性,所以按 get_production_menu 选定后要显式传。' +
     'hailuo-3(MiniMax H3:约1/3成本 720p 约0.33×·原生对白与音效·支持2K·单镜约6分钟·支持就地编辑(强保真)与成片续写·关键帧组/时间戳区间暂不可用;编辑/续写输入视频另按秒计费) / ' +
@@ -1878,7 +1879,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + '\n★只规划视频引擎为 seedance-2.5 的镜(只有它按秒对齐关键帧,误差约 ±1 秒);时长 ≥5 秒、标为状态变化或关键镜的才会规划。'
       + '\n★只填**空着**的镜:已经有中间关键帧的(含客户自己写的)一律不动。dry_run:true 只返回规划不写库,先给客户看。'
       + '\n★结果用 get_storyboards 每镜的 keyframes 字段读;要改用 set_shot_keyframes。'
-      + '\n★回 400「本剧未开启」= 本剧不在内测名单,不是调用错误,别重试。本期只规划、不出图,出中间帧与送进视频是后续功能。',
+      + '\n★回 400「本剧未开启」= 本剧不在内测名单,不是调用错误,别重试。规划完用 quote_shot_keyframes → generate_shot_keyframes 出中间帧图。',
     {
       episode_id: z.number().int().positive(),
       dry_run: z.boolean().optional().describe('true = 只返回规划结果、不写库'),
@@ -1911,6 +1912,37 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     },
     async ({ storyboard_id, keyframes }) =>
       jsonResult(await client.producePut(`/storyboards/${storyboard_id}/keyframes`, { keyframes })),
+  )
+  server.tool(
+    'quote_shot_keyframes',
+    '★**内测**·中间关键帧出图**报价**(免费·无副作用)。默认报本镜所有还没就绪的中间帧(planned / failed / framing_mismatch),'
+      + 'keyframe_ids 可点名重出。回 estimated_points / typical_points、要出的 keyframes 与 quote_id。'
+      + '\n★前提:本镜视频引擎是 Seedance 2.5、首帧已就绪、已用 plan_shot_keyframes / set_shot_keyframes 写好中间帧。'
+      + '把 estimated_points 原样告诉客户,同意后再调 generate_shot_keyframes。回 400「本剧未开启」= 不在内测名单,别重试。',
+    {
+      storyboard_id: z.number().int().positive(),
+      keyframe_ids: z.array(z.number().int().positive()).max(3).optional().describe('只重出这几张(默认:所有未就绪的)'),
+      image_model: z.string().optional().describe('临时换图片模型(报价与出图要传同一个)'),
+    },
+    async ({ storyboard_id, keyframe_ids, image_model }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/keyframes/quote`, { keyframe_ids, image_model })),
+  )
+  server.tool(
+    'generate_shot_keyframes',
+    '★**内测**·按报价出本镜中间关键帧图(**真扣费**)。每张以本镜首帧为锚、保持同一机位取景,只画到 prompt 描述的那一刻;'
+      + '不改本镜首尾帧、不把已有视频标陈旧。异步:立即返回 dispatched,用 get_shot_keyframes 轮询每张 status——'
+      + 'ready 才会在重出本镜视频时送进 Seedance 2.5;framing_mismatch = 取景与首帧对不上(不送),改 prompt 后报价重出;failed = 出图失败。'
+      + '\n★报价后改过关键帧会 409,重新报价(免费)即可。' + REVIEW_GATE_HINT('review_storyboards', '分镜') + ASSET_GATE_HINT + CONFIRM_HINT,
+    {
+      storyboard_id: z.number().int().positive(),
+      quote_id: z.string().describe('来自 quote_shot_keyframes'),
+      keyframe_ids: z.array(z.number().int().positive()).max(3).optional().describe('与报价时一致'),
+      image_model: z.string().optional().describe('与报价时一致'),
+      ...REVIEW_ARGS,
+      ...ASSET_REVIEW_ARG,
+    },
+    async ({ storyboard_id, quote_id, keyframe_ids, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/keyframes/generate`, { quote_id, keyframe_ids, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge })),
   )
   server.tool(
     'quote_extend_final',
@@ -2447,7 +2479,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       storyboard_id: z.number().int().positive(),
       quote_id: z.string().describe('来自 quote_edit_video_shot'),
       instruction: z.string().describe('编辑指令(如"把背景换成夜晚")'),
-      model: z.enum(VIDEO_ENGINES).optional().describe('本次编辑的引擎(缺省=跟随剧 video_engine);hailuo-3/wan3.0/wan3.0-prime 不支持区间编辑'),
+      model: z.enum(VIDEO_ENGINES).optional().describe('本次编辑的引擎(缺省=跟随剧 video_engine);hailuo-3/wan3.0/wan3.0-prime 不支持区间编辑;kling-4.0 不支持编辑'),
       reference_image_urls: z.array(z.string()).max(9).optional().describe('参考图 URL(先 upload_image 拿)'),
       reference_video_urls: z.array(z.string()).max(2).optional(),
       reference_audio_urls: z.array(z.string()).max(3).optional(),
@@ -2564,6 +2596,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★**按镜指定视频引擎**:传 model 即只为这一镜这一次重生换引擎(不改剧级 video_engine,其它镜照旧);' +
       '报价按该引擎计价,quote_id 把引擎钉死,regenerate_shot_video 派发的就是它——要换引擎必须重新报价,生成时再传引擎无效。' +
       '回执 video_engine = 实际派发的引擎,engine_overridden=true 表示盖过了剧引擎。' +
+      '\n★**内测·单镜中间关键帧**:回执带 shot_keyframes(只在内测剧)时,mode=keyframes 表示本次会把首帧 + ready 的中间帧(+尾帧)按秒数一起送给 Seedance 2.5' +
+      '(首帧变软约束、秒数误差约 ±1 秒、点数不变);mode=first_frame 时 reason 说明为什么没走(如 strict-continuity = 首帧是上一镜尾帧拷贝,接缝优先)。' +
       '★所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),不支持则 400 并列出可选引擎——不会悄悄换成别的引擎出片;' +
       '本镜时长也不能超过该引擎单镜上限(seedance-2.5/wan3.0 30s,hailuo-3 15s),超了 400(厂商会截断)。' +
       '适用:某镜在本剧引擎上反复失败/被厂商审核拒/镜内自剪,单独换一个引擎试。' +

@@ -29,7 +29,7 @@ test('openapi 请求体发布了 shot_engines（键为分镜 id、值为引擎�
  const sch=o.paths['/episodes/{episode_id}/videos/quote'].post.requestBody.content['application/json'].schema
  const se=sch.properties.shot_engines
  assert.ok(se,'shot_engines 缺失')
- assert.deepEqual(se.additionalProperties.enum,['seedance-2.5','hailuo-3','wan3.0','wan3.0-prime'])
+ assert.deepEqual(se.additionalProperties.enum,['seedance-2.5','hailuo-3','wan3.0','wan3.0-prime','kling-4.0'])
 })
 test('generate_videos 不收 shot_engines；描述讲清含指定镜的场景组会拆成逐镜',()=>{
  const {m}=tools()
