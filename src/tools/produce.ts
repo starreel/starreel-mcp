@@ -1915,7 +1915,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'quote_shot_keyframes',
-    '★**内测**·中间关键帧出图**报价**(免费·无副作用)。默认报本镜所有还没就绪的中间帧(planned / failed / framing_mismatch),'
+    '★**内测**·中间关键帧出图**报价**(免费·无副作用)。默认报本镜所有还没就绪的中间帧(planned / failed / framing_mismatch / no_progress),'
       + 'keyframe_ids 可点名重出。回 estimated_points / typical_points、要出的 keyframes 与 quote_id。'
       + '\n★前提:本镜视频引擎是 Seedance 2.5、首帧已就绪、已用 plan_shot_keyframes / set_shot_keyframes 写好中间帧。'
       + '把 estimated_points 原样告诉客户,同意后再调 generate_shot_keyframes。回 400「本剧未开启」= 不在内测名单,别重试。',
@@ -1929,9 +1929,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'generate_shot_keyframes',
-    '★**内测**·按报价出本镜中间关键帧图(**真扣费**)。每张以本镜首帧为锚、保持同一机位取景,只画到 prompt 描述的那一刻;'
+    '★**内测**·按报价出本镜中间关键帧图(**真扣费**)。每张以本镜首帧为机位锚(有独立尾帧时一并作动作终点参考)、保持同一机位取景,人物按 prompt 推进到描述的那一刻;'
       + '不改本镜首尾帧、不把已有视频标陈旧。异步:立即返回 dispatched,用 get_shot_keyframes 轮询每张 status——'
-      + 'ready 才会在重出本镜视频时送进 Seedance 2.5;framing_mismatch = 取景与首帧对不上(不送),改 prompt 后报价重出;failed = 出图失败。'
+      + 'ready 才会在重出本镜视频时送进 Seedance 2.5;framing_mismatch = 取景与首帧对不上、no_progress = 与首帧几乎一样(动作没推进),这两种都不送,改 prompt 写清这一刻人物到了哪、做到哪一步后报价重出;failed = 出图失败。'
       + '\n★报价后改过关键帧会 409,重新报价(免费)即可。' + REVIEW_GATE_HINT('review_storyboards', '分镜') + ASSET_GATE_HINT + CONFIRM_HINT,
     {
       storyboard_id: z.number().int().positive(),
@@ -2355,6 +2355,57 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       const video_url = await client.uploadLocalFile(file_path, 'footage')
       return jsonResult(await client.producePost(`/storyboards/${storyboard_id}/footage`, { video_url }))
     },
+  )
+  const GREYBOX_KIND_DESC = 'footage=真人实拍 / 成片当动作参考(默认);greybox_coarse=简单几何体拼的粗粒度白模(官方推荐,效果最好);' +
+    'greybox_fine=建模完整的细粒度白模(视频里别带轨迹线 / 坐标轴 / 相机锥,会漏进成片)'
+  server.tool(
+    'create_motion_reference',
+    '把一段**动作 / 运镜参考视频**登记进本人运动参考库(免费),之后用 attach_motion_reference 挂到某镜,AI 出视频时照它的动作、运镜、站位重新生成。' +
+      '★**白模(3D 预演)走这里**:kind 选 greybox_coarse / greybox_fine,平台会告诉模型「白模只作运镜 / 节奏 / 景别 / 运动轨迹 / 站位参考,不参考几何体外形和灰模材质」。' +
+      '白模建议:粗粒度最好,只用简单几何体拼人物 / 物体;身体只建躯干即可,建了四肢 / 翅膀就把动作补全,否则成片四肢僵硬;单段 ≤30 秒(Seedance 2.5),主体 1~5 个效果最好。' +
+      '⚠️ 与 upload_shot_footage 的区别:那个是「这段视频**就是**成片」,本工具是「照这段视频**重新生成**」。',
+    {
+      file_path: z.string().describe('本地视频路径(mp4/mov/webm/m4v)'),
+      name: z.string().min(1).max(80).describe('素材名,方便以后在 list_motion_references 里认出来'),
+      kind: z.enum(['footage', 'greybox_coarse', 'greybox_fine']).optional().describe(GREYBOX_KIND_DESC),
+      description: z.string().max(240).optional(),
+    },
+    async ({ file_path, name, kind, description }) => {
+      const video_url = await client.uploadLocalFile(file_path, 'video')
+      return jsonResult(await client.producePost('/motion-references', { video_url, name, kind, description }))
+    },
+  )
+  server.tool(
+    'list_motion_references',
+    '列出本人运动参考库里的素材(含白模),免费。返回 id / name / kind / video_url;id 给 attach_motion_reference 用。',
+    {},
+    async () => jsonResult(await client.produceGet('/motion-references')),
+  )
+  server.tool(
+    'get_shot_motion_reference',
+    '看某镜当前挂的运动参考 / 白模与「色块 → 角色」绑定(免费)。greybox_gray_on=false 表示本剧还没开放白模渲染,白模按普通运动参考处理。',
+    { storyboard_id: z.number().int().positive() },
+    async ({ storyboard_id }) => jsonResult(await client.produceGet(`/storyboards/${storyboard_id}/motion-reference`)),
+  )
+  server.tool(
+    'attach_motion_reference',
+    '把运动参考 / 白模挂到某镜(免费),asset_id=null 解除挂载(绑定一并清掉)。挂好后照常 quote_videos / generate_videos:该镜改走参考视频路径——' +
+      '动作、运镜、站位、景别跟参考视频走,首尾帧不送(厂商规定两者互斥),身份靠角色参考图,出视频前仍要过 review_frames。' +
+      '★**白模有多个模型时务必传 greybox_bindings**,写明白模里「哪个色块是哪个角色」(如 [{proxy:"红色模型",character_id:12},{proxy:"蓝色模型",character_id:15}]);' +
+      '平台会把对应角色的参考图编号写进提示词,不绑定的话多人镜容易串身份。proxy 按客户白模里的真实颜色 / 编号写,character_id 必须是本剧角色(get_characters)。' +
+      '绑定了但不在本镜出镜名单里的角色,参考图也会自动带上。不传 greybox_bindings = 同一素材保留原绑定、换了素材就清空。',
+    {
+      storyboard_id: z.number().int().positive(),
+      asset_id: z.number().int().positive().nullable().describe('list_motion_references / create_motion_reference 返回的 id;null = 解除挂载'),
+      greybox_bindings: z.array(z.object({
+        proxy: z.string().min(1).max(24).describe('白模里那个模型的称呼,如「红色模型」「1号模型」'),
+        character_id: z.number().int().positive(),
+      })).max(10).nullable().optional().describe('白模色块 → 本剧角色;null / [] 清空'),
+    },
+    async ({ storyboard_id, asset_id, greybox_bindings }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/motion-reference`, {
+        asset_id, ...(greybox_bindings !== undefined ? { greybox_bindings } : {}),
+      })),
   )
   server.tool(
     'list_unlinked_assets',

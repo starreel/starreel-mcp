@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.252",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.252 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.256",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.256 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -50,6 +50,10 @@
     {
       "name": "images",
       "description": "Operations under /images"
+    },
+    {
+      "name": "motion-references",
+      "description": "Operations under /motion-references"
     },
     {
       "name": "production-menu",
@@ -12643,6 +12647,42 @@
         }
       }
     },
+    "/motion-references": {
+      "get": {
+        "operationId": "list_motion_references",
+        "summary": "列出本人运动参考库里的素材(含白模),免费",
+        "description": "列出本人运动参考库里的素材(含白模),免费。返回 id / name / kind / video_url;id 给 attach_motion_reference 用。",
+        "tags": [
+          "motion-references"
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
     "/production-menu": {
       "post": {
         "operationId": "get_production_menu",
@@ -15991,7 +16031,7 @@
       "post": {
         "operationId": "generate_shot_keyframes",
         "summary": "★**内测**·按报价出本镜中间关键帧图(**真扣费**)",
-        "description": "★**内测**·按报价出本镜中间关键帧图(**真扣费**)。每张以本镜首帧为锚、保持同一机位取景,只画到 prompt 描述的那一刻;不改本镜首尾帧、不把已有视频标陈旧。异步:立即返回 dispatched,用 get_shot_keyframes 轮询每张 status——ready 才会在重出本镜视频时送进 Seedance 2.5;framing_mismatch = 取景与首帧对不上(不送),改 prompt 后报价重出;failed = 出图失败。\n★报价后改过关键帧会 409,重新报价(免费)即可。\n★【分镜审查硬闸·免费】本步前必须先调 review_storyboards:把返回的 findings 逐条原样告诉客户(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。单镜工具(generate_shot_frame / regenerate_shot_video)只核本镜与相邻镜:改了别的镜不用复审;本镜、相邻镜或共享资产变了才 400——这时带 base_review_token=<旧 token> 调审查工具做增量复审,只重审变更镜,质检也只看变更镜。有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——带病推进大概率产出废片且照常扣费(acknowledge_review 只代表客户本人同意,任何执行模式都须客户明确同意,托管也不例外);托管环节只有白名单内的启发式 error 能带 auto_acknowledge:true 放行(平台判,不在白名单回 400 AUTOPILOT_MUST_ASK:must_ask_customer=true 才暂停问客户,false = 按 action 自修复审)。★灰度剧还要你(agent)亲自质检:按 review_storyboards 返回的 agent_qc 逐件看素材、逐条答清单,调 submit_qc_report 提交后这张 token 才能用(没交 → 400 agent_qc_required;报告有问题 → 与 error 同样默认拦)。\n★【资产层硬闸·免费】还要先跑 review_assets(角色形象图/场景图/道具图),把它的 review_token 作为 asset_review_token 传进来(与分镜层的 review_token 并存,两张都要;灰度剧缺了会 400 并点名 review_assets)。出完帧不会让资产 token 失效。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "description": "★**内测**·按报价出本镜中间关键帧图(**真扣费**)。每张以本镜首帧为机位锚(有独立尾帧时一并作动作终点参考)、保持同一机位取景,人物按 prompt 推进到描述的那一刻;不改本镜首尾帧、不把已有视频标陈旧。异步:立即返回 dispatched,用 get_shot_keyframes 轮询每张 status——ready 才会在重出本镜视频时送进 Seedance 2.5;framing_mismatch = 取景与首帧对不上、no_progress = 与首帧几乎一样(动作没推进),这两种都不送,改 prompt 写清这一刻人物到了哪、做到哪一步后报价重出;failed = 出图失败。\n★报价后改过关键帧会 409,重新报价(免费)即可。\n★【分镜审查硬闸·免费】本步前必须先调 review_storyboards:把返回的 findings 逐条原样告诉客户(每条带 code=问题类型、shots=命中镜号、action=该调哪个工具修),再把 review_token 传进本工具。未审查会被 400 拒。审查后又改了内容 → token 自动失效,复审一次即可(仍免费)。单镜工具(generate_shot_frame / regenerate_shot_video)只核本镜与相邻镜:改了别的镜不用复审;本镜、相邻镜或共享资产变了才 400——这时带 base_review_token=<旧 token> 调审查工具做增量复审,只重审变更镜,质检也只看变更镜。有 error 时默认拦截;客户知情并坚持照现状继续,才带 acknowledge_review:true——带病推进大概率产出废片且照常扣费(acknowledge_review 只代表客户本人同意,任何执行模式都须客户明确同意,托管也不例外);托管环节只有白名单内的启发式 error 能带 auto_acknowledge:true 放行(平台判,不在白名单回 400 AUTOPILOT_MUST_ASK:must_ask_customer=true 才暂停问客户,false = 按 action 自修复审)。★灰度剧还要你(agent)亲自质检:按 review_storyboards 返回的 agent_qc 逐件看素材、逐条答清单,调 submit_qc_report 提交后这张 token 才能用(没交 → 400 agent_qc_required;报告有问题 → 与 error 同样默认拦)。\n★【资产层硬闸·免费】还要先跑 review_assets(角色形象图/场景图/道具图),把它的 review_token 作为 asset_review_token 传进来(与分镜层的 review_token 并存,两张都要;灰度剧缺了会 400 并点名 review_assets)。出完帧不会让资产 token 失效。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
         "tags": [
           "storyboards"
         ],
@@ -16080,7 +16120,7 @@
       "post": {
         "operationId": "quote_shot_keyframes",
         "summary": "★**内测**·中间关键帧出图**报价**(免费·无副作用)",
-        "description": "★**内测**·中间关键帧出图**报价**(免费·无副作用)。默认报本镜所有还没就绪的中间帧(planned / failed / framing_mismatch),keyframe_ids 可点名重出。回 estimated_points / typical_points、要出的 keyframes 与 quote_id。\n★前提:本镜视频引擎是 Seedance 2.5、首帧已就绪、已用 plan_shot_keyframes / set_shot_keyframes 写好中间帧。把 estimated_points 原样告诉客户,同意后再调 generate_shot_keyframes。回 400「本剧未开启」= 不在内测名单,别重试。",
+        "description": "★**内测**·中间关键帧出图**报价**(免费·无副作用)。默认报本镜所有还没就绪的中间帧(planned / failed / framing_mismatch / no_progress),keyframe_ids 可点名重出。回 estimated_points / typical_points、要出的 keyframes 与 quote_id。\n★前提:本镜视频引擎是 Seedance 2.5、首帧已就绪、已用 plan_shot_keyframes / set_shot_keyframes 写好中间帧。把 estimated_points 原样告诉客户,同意后再调 generate_shot_keyframes。回 400「本剧未开启」= 不在内测名单,别重试。",
         "tags": [
           "storyboards"
         ],
@@ -16165,6 +16205,156 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/storyboards/{storyboard_id}/motion-reference": {
+      "get": {
+        "operationId": "get_shot_motion_reference",
+        "summary": "看某镜当前挂的运动参考 / 白模与「色块 → 角色」绑定(免费)",
+        "description": "看某镜当前挂的运动参考 / 白模与「色块 → 角色」绑定(免费)。greybox_gray_on=false 表示本剧还没开放白模渲染,白模按普通运动参考处理。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "post": {
+        "operationId": "attach_motion_reference",
+        "summary": "把运动参考 / 白模挂到某镜(免费),asset_id=null 解除挂载(绑定一并清掉)",
+        "description": "把运动参考 / 白模挂到某镜(免费),asset_id=null 解除挂载(绑定一并清掉)。挂好后照常 quote_videos / generate_videos:该镜改走参考视频路径——动作、运镜、站位、景别跟参考视频走,首尾帧不送(厂商规定两者互斥),身份靠角色参考图,出视频前仍要过 review_frames。★**白模有多个模型时务必传 greybox_bindings**,写明白模里「哪个色块是哪个角色」(如 [{proxy:\"红色模型\",character_id:12},{proxy:\"蓝色模型\",character_id:15}]);平台会把对应角色的参考图编号写进提示词,不绑定的话多人镜容易串身份。proxy 按客户白模里的真实颜色 / 编号写,character_id 必须是本剧角色(get_characters)。绑定了但不在本镜出镜名单里的角色,参考图也会自动带上。不传 greybox_bindings = 同一素材保留原绑定、换了素材就清空。",
+        "tags": [
+          "storyboards"
+        ],
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "asset_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "exclusiveMinimum": 0
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "list_motion_references / create_motion_reference 返回的 id;null = 解除挂载"
+                  },
+                  "greybox_bindings": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "proxy": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 24,
+                              "description": "白模里那个模型的称呼,如「红色模型」「1号模型」"
+                            },
+                            "character_id": {
+                              "type": "integer",
+                              "exclusiveMinimum": 0
+                            }
+                          },
+                          "required": [
+                            "proxy",
+                            "character_id"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "maxItems": 10
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "asset_id"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -18491,6 +18681,10 @@
     },
     {
       "tool": "upload_shot_footage",
+      "reason": "unmappable: local file upload flow"
+    },
+    {
+      "tool": "create_motion_reference",
       "reason": "unmappable: local file upload flow"
     },
     {
