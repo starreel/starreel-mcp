@@ -332,7 +332,7 @@ export const WORKFLOW_HINT =
   '③【可选增强·AI 主动提示客户·报价确认才做】美术圣经生成/视觉锁抽取/场景组/口型/海报/音效/配乐/字幕翻译——' +
   '这些提升一致性/质量、大多收费。★AI 应主动告知客户这些可做并给报价' + MODE_DECIDES('跑不跑') + ';既不默默跳过、也不擅自扣费。' +
   '★两条锁定纪律:①**画幅比例**在 create_drama 即定、drama 级锁定,之后所有出图/出视频/成片都用它、**别中途改**' +
-  '(改了已生成内容画幅会不一致、漂移);不设默认 9:16;Seedance 2.5 剧可用自由宽高比(数值,如 2.35),限制见 create_drama 的 aspect_ratio 说明。②**拆镜每镜 5-7 秒是对 AI 出视频优化的正常时长**,' +
+  '(改了已生成内容画幅会不一致、漂移);不设默认 9:16;Seedance 2.5 剧可用自由宽高比(数值,如 2.35),限制见 create_drama 的 aspect_ratio 说明。②**拆镜每镜 5-7 秒是对 AI 出视频优化的正常时长**(动作镜例外:按节拍约 4 秒写 2~3 拍,短也正常),' +
   '别因「镜偏长」误判就重拆——generate_storyboards 会**替换整集所有分镜**、已出图白费,已有分镜后端会拦、需 confirm_replace。' +
   '★改写保真(默认 auto 智能路由):set_script 的原稿**本身已是剧本形态**(场景头/对白行结构)时,rewrite_script 自动走两步保真——' +
   '客户台词逐句由机器闸锁定(丢一句即内部拒收重做)、AI 绝不加戏;剧作缺口(钩子/情感锚点)不自动补,写进 get_script 返回的 dramaturgy_suggestions' + MODE_DECIDES('采不采纳') + '。' +
@@ -866,7 +866,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'generate_storyboards',
     '确认后拆镜:后台跑(分钟级),立即返回 status:generating。用 get_storyboards 轮询。' +
       '★注意:拆镜会**替换整集所有已有分镜**(已调好/已出图的全丢、要重花钱重来)。每镜 5-7 秒是对 AI 出视频' +
-      '优化的**正常**时长,别因「一镜偏长」觉得有问题就重拆。已有分镜时后端会拦,确认重拆才带 confirm_replace=true。' +
+      '优化的**正常**时长(动作镜按节拍约 4 秒写 2~3 拍,短也正常),别因「一镜偏长」觉得有问题就重拆。已有分镜时后端会拦,确认重拆才带 confirm_replace=true。' +
       '★典型耗时 5~10 分钟(生产实测 7~8.4 分钟;**单次 LLM 调用就可能 3~7 分钟**)。' +
       '**60 秒、甚至 3 分钟内查不到分镜都是正常的**——用 get_run_status 判断是否还在跑。' +
       'running:true 就继续等;重发一次等于把整集分镜重来一遍。' +

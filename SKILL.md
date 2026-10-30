@@ -1378,7 +1378,16 @@ from an internal measured run (one character, 3 shots, 18 s, `hailuo-3`):
   background: poll `get_autofill_status` until done, make your `update_shot`
   prompt edits, and only then run `review_storyboards` for the token that
   `generate_frames` needs (completion or edits invalidate an earlier token).
-- **One big move per 5–7 s shot**, effects in `[VFX: …]` lines.
+- **Write in beats, not one move per long shot.** About 1.3 s per beat: a 4 s
+  action shot carries 2–3 continuous beats (BEAT 1 wind-up → BEAT 2 main move →
+  BEAT 3 follow-through), and beats scale with duration (+1 beat ≈ +1.3 s). A
+  6–7 s shot with a single move comes out as slow motion, and
+  `review_storyboards` reports `action_beat_sparse` (over 2.5 s per beat on a
+  hand-written table). AI breakdown tags each shot's `pace`: fast ≈ 1.3 s/beat,
+  frenzy ≈ 1 s/beat, normal ≈ 2 s/beat (sparse past 3 s), slow / pause are not
+  scored. Large-displacement moves (a dive, a plunge, a charge across the set)
+  can fill a shot on their own. Still one technique per shot; effects go in
+  `[VFX: …]` lines.
 - **First frame = wind-up, not impact.** In the measured run the "punch shatters
   the wall" frame was drawn at the moment of impact, so the video could only
   play the aftermath. Set `first_frame_prompt` to the wind-up pose before
