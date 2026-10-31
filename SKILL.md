@@ -1392,6 +1392,13 @@ from an internal measured run (one character, 3 shots, 18 s, `hailuo-3`):
   the wall" frame was drawn at the moment of impact, so the video could only
   play the aftermath. Set `first_frame_prompt` to the wind-up pose before
   generating frames.
+- **Tail frame inside a fight run = the next strike's wind-up.** When another
+  attack shot follows, end the shot (and its `last_frame_prompt`) a beat before
+  the next strike starts — loaded, low, weight forward — not on a recovery or a
+  posed finish, so the tail frame can serve directly as the next shot's first
+  frame (`chain_frames`). An isolated action shot, or the last shot of the run,
+  still ends on its follow-through. Describe the pose only; never add pause or
+  freeze timings (they make the model hold, then hard-cut).
 - **Adjacent continuous-action shots are generated as one group**, and their
   durations get re-split by content (6 s + 5 s came back as ~8 s + 3.7 s). Check
   `get_scene_group_plan` before generating videos. This only applies while
