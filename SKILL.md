@@ -1773,7 +1773,14 @@ to close") tells the vendor to fit that entire sequence into each 3-second shot.
   billed) — otherwise frame generation returns 400 `episode_style.sheet_required` (no charge; add the
   sheets, don't retry). When the override is set and `video_style_prompt_override` is empty, the
   drama-level video style prompt is not carried into the episode. Props, scene plates and portraits
-  still use the drama style. 403 `episode_style.gate_off` = not enabled for this drama. Compose each
+  still use the drama style. 403 `episode_style.gate_off` = not enabled for this drama. **Changing an
+  episode's style after assets exist** (set, switch, or clear) does not regenerate anything, but the
+  response lists what is now in the old style: `stale_style_frames` (first / last frames — shots that
+  still have one cannot generate video: 400 `episode_style.frame_stale`, no charge, don't retry),
+  `stale_style_sheets` (episode sheets made under the old style, treated as missing) and
+  `stale_style_videos`. Platform-made frames must be regenerated in the new style (billed, quote
+  first); for customer-uploaded frames (`can_confirm_keep=true`) ask the customer: re-upload, clear,
+  or — only on their explicit say-so — keep it via `set_episode_style` `confirm_keep_frames`. Compose each
   episode, then join them with `concat_episodes`. Never switch style inside one episode.
 - **Join several episodes of one drama into a single film**: `concat_episodes` (free; `drama_id` +
   `episode_ids` in playback order, 2–12) → poll `get_episode_concat` until `completed` → `download_url`.

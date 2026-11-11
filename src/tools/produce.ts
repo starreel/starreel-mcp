@@ -2313,6 +2313,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + 'effective_style_resolution(kind=known 标准档 / free-text 自由文本;anchored=false 表示平台不替这个画风下任何画风锚)、'
       + 'effective_video_style_prompt(本集视频实际带的风格词)。'
       + '\n★missing_episode_sheets:本集设了画风覆盖后,出镜却还没有**本集设定图**的角色——有一个就出不了镜头帧(见 set_episode_style)。'
+      + '\n★本集画风**改过**(新设、换成另一种、清空)之后,按旧画风出的素材会被点名:'
+      + 'stale_style_frames(旧画风下的首帧 / 尾帧:storyboard_id、shot_number、frame_type、source、'
+      + 'produced_under_style_override=当时的集级画风(null=当时没有覆盖)、can_confirm_keep)——**要送到厂商的旧画风帧会让这一镜出不了视频**(首帧一律;尾帧只在这一镜这次真会送尾帧时,见报价的 frame_delivery)'
+      + '(quote_videos / generate_videos / quote_regenerate_shot_video / regenerate_shot_video 回 400 episode_style.frame_stale,不扣费);'
+      + 'stale_style_sheets(本集设定图是旧画风下出的角色,已按缺处理、同时列在 missing_episode_sheets 里);'
+      + 'stale_style_videos(旧画风下出的视频,只点名不拦)。处置见 set_episode_style。'
       + '\n★notes 是给客户看的中文提示,逐条原样转告。enabled=false 表示这部剧尚未开通集级画风覆盖(画风档 / 视频风格词现在设不了);'
       + '集级美术圣经 / 视觉锁不受此限。',
     { episode_id: z.number().int().positive() },
@@ -2327,17 +2333,27 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + '同一集之内不能切画风(帧链、参考图、场景组会跨画风互相污染)。'
       + '\n★四个字段:'
       + '\n· style_override:本集画风档。优先填标准档 key:realistic(写实)/ cinematic(电影感)/ film(复古胶片)/ noir(黑白光影)/ '
-      + 'anime(日系动画)/ ghibli(吉卜力风)/ comic(漫画)/ watercolor(水彩)/ ink(水墨)/ guoman(国漫)/ c3d(3D 动画)/ cg(CG 动画)/ clay(黏土定格);'
-      + '标准档里没有的画风(油画、厚涂、版画…)可以写一句画风描述,但平台**不会**替它下画风锚(回执 anchored=false),'
-      + '这时画面风格必须由下面三个字段写明,否则出来的仍接近写实。'
+      + 'anime(日系动画)/ ghibli(吉卜力风)/ comic(漫画)/ watercolor(水彩)/ ink(水墨)/ guoman(国漫)/ c3d(3D 动画)/ cg(CG 动画)/ clay(黏土定格)/ oil(油画 / 厚涂);'
+      + '标准档里没有的画风(版画、水粉、剪纸…)可以写一句画风描述,但平台**不会**替它下画风锚(回执 anchored=false),'
+      + '这时画面风格必须由下面三个字段写明,否则出来的仍接近写实;要的是油画就直接填 oil,别写描述。'
       + '\n· art_bible_override / visual_lock_override:本集的美术圣经 / 视觉锁,非空时在本集取代剧级那段(出图、设定图、出视频都认)。'
       + '只写画风与美术规则;角色外观的唯一真相源仍是人物档案(update_character),别写进这里。'
+      + '★出图时美术圣经只取**前 600 字符**(出视频取全文):最要紧的规则写在最前面,或写进 visual_lock_override(出图出视频都取全文)。'
       + '\n· video_style_prompt_override:本集出视频时的风格词。本集设了 style_override 而这一项为空时,'
       + '**剧级视频风格词不会带进本集**(它是为剧级画风写的),需要就为本集单独写一段。'
+      + '★提示词过长时这段会被截短甚至整段不送:视频也必须守住的画风规则同时写进 visual_lock_override。'
       + '\n★设完之后必须做的事(顺序别跳):① get_episode_style 看 missing_episode_sheets——剧级定妆图是按剧级画风出的,'
       + '直接当参考会把本集画面拉回剧级画风,所以平台要求本集出镜角色先有**本集设定图**:对本集调 generate_character_sheets'
-      + '(收费,先把费用讲给客户);② 设定图齐了再 quote_frames / generate_frames。缺设定图时出帧回 400 episode_style.sheet_required 并点名角色,'
-      + '不扣费——补设定图,别重试。③ 已经出好的帧与视频不会自动重出:改画风前出的要客户决定是否重出(收费)。'
+      + '(收费、没有报价工具;★它会给**全剧**所有还没有本集设定图的角色各出一张,不只本集出镜的——先 get_characters 数清角色数,把「几张 × 单价」讲给客户);② 设定图齐了再 quote_frames / generate_frames。缺设定图时出帧回 400 episode_style.sheet_required 并点名角色,'
+      + '不扣费——补设定图,别重试。'
+      + '\n★改画风之前已经出好的素材(顺序别跳,平台**不会**自动重出,重出都收费、先报价给客户):回执里的 stale_style_frames 是旧画风下的首帧 / 尾帧,'
+      + '它们不清掉这几镜就出不了视频(400 episode_style.frame_stale,点名镜号,不扣费,别重试)——'
+      + '平台出的帧(can_confirm_keep=false)按现在的画风重出:generate_shot_frame / generate_frames;'
+      + '客户上传的帧(can_confirm_keep=true)三选一,**问客户**:重新上传一张新画风的(upload_shot_frame)/ 清掉(clear_shot_frame)/ '
+      + '客户明确说就要用这张时用 confirm_keep_frames 放行。stale_style_sheets 里的角色要按现在的画风重出本集设定图(generate_character_sheets);'
+      + 'stale_style_videos 是旧画风下出的视频,帧重出后再重出。把画风改回原来那种,当初在那种画风下出的素材自动不再算旧。'
+      + '\n★镜头正文是按剧级画风拆的:用 get_shot_prompts 看本集各镜的 image_prompt / video_prompt,'
+      + '里面带剧级画风词(如 Realistic、写实)的用 update_shot 改掉,否则它会和本集画风打架。'
       + '\n★本期范围:道具图、场景图、定妆图仍按剧级画风出。场景图若与本集画风差得远,在镜头正文与 art_bible_override 里把画风写明。'
       + '\n★403 episode_style.gate_off = 这部剧尚未开通集级画风覆盖(不是调用姿势错了),别重试,告诉客户联系平台开通;'
       + '此时 art_bible_override / visual_lock_override 仍可单独设置。400 提到「提示词预算」= 本集画风与这部剧的图片模型不兼容,'
@@ -2350,6 +2366,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         .describe('本集视频风格词(空串 / null = 清空)'),
       art_bible_override: z.string().nullable().optional().describe('本集美术圣经(空串 / null = 清空,回退剧级)'),
       visual_lock_override: z.string().nullable().optional().describe('本集视觉锁(空串 / null = 清空,回退剧级)'),
+      confirm_keep_frames: z.array(z.object({
+        storyboard_id: z.number().int().positive(),
+        frame_type: z.enum(['first_frame', 'last_frame']),
+      })).min(1).max(200).optional()
+        .describe('画风改过后,确认这几张**客户上传的**旧画风帧在现在的画风下照用(免费;只认 stale_style_frames 里 can_confirm_keep=true 的帧,'
+          + '平台出的帧回 400 episode_style.confirm_keep_invalid)。必须是客户明确同意——确认后这张帧不再拦,出的视频可能在片中换画风。可单独传,不必带别的字段'),
     },
     async ({ episode_id, ...body }) =>
       jsonResult(await client.producePut(`/episodes/${episode_id}/style-override`, body)),
