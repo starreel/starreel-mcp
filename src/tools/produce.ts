@@ -1710,6 +1710,10 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★**只计这次真会派发的镜**:已出视频的镜整集续跑时跳过,不重出不计价——shots_total = 这次计价的镜数(不是集内总镜数),' +
       'shots_already_done = 已出视频、这次跳过的镜数。例外:场景组只要有一镜没出视频就**整组重出**,组内已出的镜同样计价。' +
       '全部已出视频 ⇒ 400(没有可派发的镜,要重出某镜用 regenerate_shot_video)。' +
+      '\n★**local_static = 由平台本地渲染成静帧的镜**(回执带该字段时才有):这些镜的描述被判为黑场 / 字卡类画面(origin=black_shot),' +
+      '或首帧和尾帧是客户锁定的同一张图(origin=locked_freeze),出视频时不调厂商、视频按 0 点计——已含在 estimated_points 里,' +
+      'shot_billing 对应行 points=0 并带 local_static。把 local_static.message 原样讲给客户;origin=black_shot 的镜如果本该有动作,' +
+      '先 update_shot 改掉描述里的黑场 / 黑屏 / 字卡字样再重新报价,否则出来就是一张不动的图。场景组内的镜整组一次出,不适用这一条。' +
       '报价之后若有镜的视频被清空(变成待出视频),generate_videos 会 409 要求重新报价,不按报价外的镜扣费。' +
       '\n★**按镜指定视频引擎**:传 shot_engines={分镜id: 引擎} 即只为这些镜、这一次整集生成换引擎(不改剧级 video_engine,其余镜照旧)。' +
       '报价按它逐镜计价,quote_id 把引擎钉死,generate_videos 派发的就是它——要改引擎必须重新报价。' +
@@ -3074,6 +3078,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★**按镜指定视频引擎**:传 model 即只为这一镜这一次重生换引擎(不改剧级 video_engine,其它镜照旧);' +
       '报价按该引擎计价,quote_id 把引擎钉死,regenerate_shot_video 派发的就是它——要换引擎必须重新报价,生成时再传引擎无效。' +
       '回执 video_engine = 实际派发的引擎,engine_overridden=true 表示盖过了剧引擎。' +
+      '\n★回执带 **local_static**(estimate_source=local-static、estimated_points=0)= 本镜由平台本地渲染成静帧、不调视频厂商、不扣视频点数:' +
+      'origin=black_shot 是描述被判为黑场 / 字卡类画面,origin=locked_freeze 是首帧和尾帧为客户锁定的同一张图。把 local_static.message 原样讲给客户;' +
+      'black_shot 的镜如果本该有动作,先 update_shot 改掉描述里的黑场 / 黑屏 / 字卡字样再重新报价,直接重出仍是一张不动的图。这时传 model 不生效。' +
       '\n★**内测·单镜中间关键帧**:回执带 shot_keyframes(只在内测剧)时,mode=keyframes 表示本次会把首帧 + ready 的中间帧(+尾帧)按秒数一起送给 Seedance 2.5' +
       '(首帧变软约束、秒数误差约 ±1 秒、点数不变);mode=first_frame 时 reason 说明为什么没走(如 strict-continuity = 首帧是上一镜尾帧拷贝,接缝优先)。' +
       '★所选引擎必须支持本剧分辨率(seedance-2.5 只有 480p/720p;hailuo-3 只有 720p/1080p;wan3.0/wan3.0-prime 480p~1080p),不支持则 400 并列出可选引擎——不会悄悄换成别的引擎出片;' +
@@ -3100,6 +3107,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '先等在途那条完成、看过结果,再重新 quote 并重生——否则拿到的视频是旧内容(旧提示词或旧首尾帧)出的,会误以为改动没效果。' +
       '\n★成功但返回里带 **`reused_in_flight: true`** = 同样的内容已经在生成(重发/双击/批量出视频已派发),' +
       '这次没有新建、没有新扣费,返回的就是在途那一条,看它的进度即可,不必再发。' +
+      '\n★返回里带 **`local_static`** 且 charged_points=0 = 本镜已由平台本地渲染成静帧(status=completed,video_url 即这镜的视频),' +
+      '没调厂商、没扣视频点数(报价时已是 0 点);想让它动起来,先 update_shot 改掉描述里的黑场 / 黑屏 / 字卡字样,再重新报价重出。' +
       SHOT_REGEN_HINT('重出视频最多 3 次(与 edit_video_shot 合计)') + REVIEW_GATE_HINT('review_frames', '镜头图片') + CONFIRM_HINT + VIDEO_QC_HINT + VERBOSE_HINT,
     {
       storyboard_id: z.number().int().positive(),
