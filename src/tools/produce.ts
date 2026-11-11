@@ -1766,6 +1766,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n' + PRE_COMPOSE_CHECK_HINT +
       '\n★成片时长 ≠ 分镜合计:每道非硬切转场(叠化等)会把相邻两镜重叠掉转场时长(7 道 300ms 叠化 ≈ 少 2.1s)。回执的 declared_total_s 是分镜合计,不是成片时长;' +
       '成片实测时长、差值与来源看 get_final_cut / review_final_cut 的 duration_check。要成片时长等于分镜合计就用硬切(default_transition=cut)。返回的 transition 字段给出本集最多几处切点叠转场、合计最多短多少秒,转场不是硬切时把这个数告诉客户。' +
+      '黑底字卡镜的入场转场看 transition.card_fade_in:带 follows_settings=true 的剧,字卡跟随转场设置(字卡镜自己的 transition_type / transition_duration_ms 优先,其次剧级默认;设硬切即无),ms_total 是这些字卡切点合计重叠的毫秒;' +
+      '不带的剧每张字卡固定淡入 ms_each 毫秒、设成硬切也在(分镜合计与成片会差这一截,如实告诉客户)。' +
       '\n★分辨率:成片画布按剧的画幅定(如 16:9 = 1920x1080),镜头源分辨率由所选视频模型 / resolution 决定(如 720p = 1280x720);源低于画布时成片是**放大**出来的、不增加实际清晰度——get_final_cut 的 resolution 会写明。' +
       '\n★【完成后质检·免费】成片出来后跑 review_final_cut(缺镜/字幕放不下/身份锚/跳轴/错别字,proofread=false 则不扣费),' +
       '结论讲给客户;客户确认后才 confirm_delivery_acceptance' + ALWAYS_ASK('交付验收') + '。force 只越过终拼预检,不越过审查闸。',
