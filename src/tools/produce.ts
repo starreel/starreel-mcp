@@ -939,8 +939,22 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   // ---------- 设定图(镜头一致性根锚·批量 / 一键) ----------
   server.tool(
+    'quote_character_sheets',
+    '参考报价(免费、只读):generate_character_sheets 这一次会出几张设定图、给哪些角色、大约多少点。返回 sheets_to_generate、' +
+      'characters(名单)、unit_points_upper(单张上界)、estimated_points(上界,实际按用量后付、通常更低)、scope。' +
+      'auto_reference_images = 设定图出完后平台还会给其中还没有的角色自动补的全身定装 / 发型参考图张数(同样计费,已算进 estimated_points)——张数连它们一起讲给客户。' +
+      '不产生 quote_id——批量设定图不消费报价,名单与 generate_character_sheets 同源。' +
+      '★scope=episode_on_screen:本集设了集级画风,只给**本集出镜**、还缺本集设定图的角色出(按本集画风);' +
+      'scope=drama:给全剧缺设定图且已有定妆图的角色出(平台还会跳过画外音 / 总称角色,实际可能更少)。' +
+      '★调 generate_character_sheets 之前先调它,把「几张、给谁、上界多少点」原样告诉客户,客户同意再出。' +
+      'estimated_points 为 null = 当前取不到实时单价,稍后再报;sheets_to_generate=0 = 不需要再出。',
+    { episode_id: z.number().int().positive() },
+    async ({ episode_id }) => jsonResult(await client.producePost(`/episodes/${episode_id}/character-sheets/quote`)),
+  )
+  server.tool(
     'generate_character_sheets',
-    '★批量给全剧角色出设定图(多视角 turnaround)。设定图是镜头帧/视频引用的**一致性根锚**——只出定妆图不出设定图,' +
+    '★先 quote_character_sheets(免费)看这次会出几张、给谁、上界多少点,讲给客户、客户同意再调本工具。' +
+      '批量给角色出设定图(多视角 turnaround):普通集给全剧缺设定图的角色出;**设了集级画风的集只给本集出镜、还缺本集设定图的角色出**(按本集画风)。设定图是镜头帧/视频引用的**一致性根锚**——只出定妆图不出设定图,' +
       '镜头人物换角度/换光/服装会漂移(2.5 更直接用设定图切片做骨相锚)。只对缺设定图的角色出(不重复扣费)。' +
       '前置:角色须已有定妆图(缺则拦并提示先出定妆图)。图片步,按用量后付不欠费。轮询 get_characters 看 sheet_status:' +
       'pending=生成/审计中(设定图约 2~4 分钟,别重复点);ready=入库;**rejected=图已出但被一致性闸拒收**,' +
@@ -2344,13 +2358,13 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       + '这时画面风格必须由下面三个字段写明,否则出来的仍接近写实;要的是油画就直接填 oil,别写描述。'
       + '\n· art_bible_override / visual_lock_override:本集的美术圣经 / 视觉锁,非空时在本集取代剧级那段(出图、设定图、出视频都认)。'
       + '只写画风与美术规则;角色外观的唯一真相源仍是人物档案(update_character),别写进这里。'
-      + '★出图时美术圣经只取**前 600 字符**(出视频取全文):最要紧的规则写在最前面,或写进 visual_lock_override(出图出视频都取全文)。'
+      + '★出图时美术圣经只取**前 600 字符**(出视频取全文):最要紧的规则写在最前面,或写进 visual_lock_override(出图出视频都取全文);超过时回执 notes 会点名。'
       + '\n· video_style_prompt_override:本集出视频时的风格词。本集设了 style_override 而这一项为空时,'
       + '**剧级视频风格词不会带进本集**(它是为剧级画风写的),需要就为本集单独写一段。'
       + '★提示词过长时这段会被截短甚至整段不送:视频也必须守住的画风规则同时写进 visual_lock_override。'
       + '\n★设完之后必须做的事(顺序别跳):① get_episode_style 看 missing_episode_sheets——剧级定妆图是按剧级画风出的,'
       + '直接当参考会把本集画面拉回剧级画风,所以平台要求本集出镜角色先有**本集设定图**:对本集调 generate_character_sheets'
-      + '(收费、没有报价工具;★它会给**全剧**所有还没有本集设定图的角色各出一张,不只本集出镜的——先 get_characters 数清角色数,把「几张 × 单价」讲给客户);② 设定图齐了再 quote_frames / generate_frames。缺设定图时出帧回 400 episode_style.sheet_required 并点名角色,'
+      + '(收费;只给本集出镜、还缺本集设定图的角色出;★先 quote_character_sheets 看几张、给谁、上界多少点,讲给客户);② 设定图齐了再 quote_frames / generate_frames。缺设定图时出帧回 400 episode_style.sheet_required 并点名角色,'
       + '不扣费——补设定图,别重试。'
       + '\n★改画风之前已经出好的素材(顺序别跳,平台**不会**自动重出,重出都收费、先报价给客户):回执里的 stale_style_frames 是旧画风下的首帧 / 尾帧,'
       + '它们不清掉这几镜就出不了视频(400 episode_style.frame_stale,点名镜号,不扣费,别重试)——'
