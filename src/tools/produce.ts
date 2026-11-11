@@ -1727,7 +1727,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '\n★**local_static = 由平台本地渲染成静帧的镜**(回执带该字段时才有):这些镜的描述被判为黑场 / 字卡类画面(origin=black_shot),' +
       '或首帧和尾帧是客户锁定的同一张图(origin=locked_freeze),出视频时不调厂商、视频按 0 点计——已含在 estimated_points 里,' +
       'shot_billing 对应行 points=0 并带 local_static。把 local_static.message 原样讲给客户;origin=black_shot 的镜如果本该有动作,' +
-      '先 update_shot 改掉描述里的黑场 / 黑屏 / 字卡字样再重新报价,否则出来就是一张不动的图。场景组内的镜整组一次出,不适用这一条。' +
+      '先 update_shot 改掉描述里的黑场 / 黑屏 / 字卡字样再重新报价,否则出来就是一张不动的图。场景组内的镜随组一次出,不适用这一条;' +
+      '例外:场景组的**第一镜**是这类镜时,整组会拆成逐镜出(第一镜 0 点,其余组员各按单镜计价),报价已按此计算。' +
       '报价之后若有镜的视频被清空(变成待出视频),generate_videos 会 409 要求重新报价,不按报价外的镜扣费。' +
       '\n★**按镜指定视频引擎**:传 shot_engines={分镜id: 引擎} 即只为这些镜、这一次整集生成换引擎(不改剧级 video_engine,其余镜照旧)。' +
       '报价按它逐镜计价,quote_id 把引擎钉死,generate_videos 派发的就是它——要改引擎必须重新报价。' +
@@ -2941,7 +2942,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     'quote_edit_video_shot',
     '报价:对某镜做就地编辑/区间替换要多少点。返回 quote_id。零扣费。' +
       '本镜须已有视频。★要为本次编辑单独选引擎,model 在报价和 edit_video_shot 里都要传同一个,报价才按实际派发的引擎计价;' +
-      'kling-4.0 编辑按可灵「有输入视频」档计价(输入≤输出时按输出秒×2),比普通出视频约贵两成。',
+      'kling-4.0 编辑按可灵「有输入视频」档计价(输入≤输出时按输出秒×2),比普通出视频约贵两成。' +
+      '★本镜由平台本地渲染静帧(描述被判为黑场 / 字卡类画面,或首尾帧是锁定的同一张图)⇒ 400 不报价:编辑指令对这类镜不生效,把 message 原样讲给客户并按它说的先改镜。',
     {
       storyboard_id: z.number().int().positive(),
       model: z.enum(VIDEO_ENGINES).optional().describe('本次编辑的引擎(缺省=跟随剧 video_engine),须与 edit_video_shot 传的一致'),
@@ -3089,7 +3091,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   )
   server.tool(
     'quote_regenerate_shot_video',
-    '报价:重生某镜视频要多少点。返回 quote_id。零扣费。' +
+    '报价:重生某镜视频要多少点。返回 quote_id。零扣费。旁白卡镜不出视频(成片时渲染黑底文字卡)⇒ 400 不报价。' +
       '\n★**按镜指定视频引擎**:传 model 即只为这一镜这一次重生换引擎(不改剧级 video_engine,其它镜照旧);' +
       '报价按该引擎计价,quote_id 把引擎钉死,regenerate_shot_video 派发的就是它——要换引擎必须重新报价,生成时再传引擎无效。' +
       '回执 video_engine = 实际派发的引擎,engine_overridden=true 表示盖过了剧引擎。' +
@@ -5031,7 +5033,8 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
   server.tool(
     'quote_align_prev_shot',
     '(免费报价)align_prev_shot 会重生**上一镜的视频**(扣一条视频),执行前先报价' + MODE_DECIDES('报价确认') + '。' +
-      '回 quote_id / estimated_points / prev_storyboard_id(被重生的是哪一镜);含首次人像核验费时另列 kyc_first_time_points。',
+      '回 quote_id / estimated_points / prev_storyboard_id(被重生的是哪一镜);含首次人像核验费时另列 kyc_first_time_points。' +
+      '上一镜由平台本地渲染静帧(黑场 / 字卡类画面,或首尾帧是锁定的同一张图)⇒ 400 不报价:尾帧对齐对它不生效,把 message 原样讲给客户。',
     { storyboard_id: z.number().int().positive().describe('缝右侧那一镜(它的首帧将作为上一镜视频的收尾画面)') },
     async ({ storyboard_id }) =>
       jsonResult(await client.producePost(`/storyboards/${storyboard_id}/align-prev/quote`)),
