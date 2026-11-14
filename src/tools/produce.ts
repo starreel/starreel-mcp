@@ -1576,11 +1576,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
         'gpt-image-2.5-flare(默认·基础11点+每张参考图18点)/gpt-image-2.5-sunburst(同价·中文字形与细节更准)/' +
         'gemini-3.1-flash-image(Nano Banana 2·71点)/gemini-3-pro-image(Nano Banana Pro·更精细·175点)/' +
         'gemini-3.1-flash-lite-image(Nano Banana 2 Lite·便宜·31点)/doubao-seedream-5-0-260128(Seedream 5.0)'),
+      confirm_stale_contract: z.boolean().optional().describe('★默认不传。本镜构图契约已过期时出图会被拦下(409 frame_contract.stale,未扣费、报价未消耗):正解是 rederive_shot_contract 重推。只有**客户确认改动只是措辞、画面人数与主体都没变**时才带 true 放行' + ALWAYS_ASK('confirm_stale_contract ')),
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定角色定妆参考与时代设定冲突时,出图会被拦下(未扣费):客户上传的定妆图及其派生图报 400 ERA_USER_REF_CONFLICT,平台生成的定妆图报 era_identity_ref_blocked。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
     },
-    async ({ episode_id, quote_id, frame_type, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge, allow_era_ref_conflict }) =>
+    async ({ episode_id, quote_id, frame_type, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge, allow_era_ref_conflict, confirm_stale_contract }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/frames/generate`, {
-        quote_id, frame_type, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge, allow_era_ref_conflict,
+        quote_id, frame_type, image_model, review_token, asset_review_token, acknowledge_review, auto_acknowledge, allow_era_ref_conflict, confirm_stale_contract,
       })),
   )
 
@@ -1641,11 +1642,12 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       allow_missing_terminal: z.boolean().optional().describe('★逃生门,默认不传。本镜标为「状态改变」却没写终态时,出尾帧会被前置闸拦下;带 true 表示「我知道,照现状出」。正解是先 update_shot 补 last_frame_prompt——那类镜照现状出的成功率 9.4%,这个参数只用于确认本镜就该「几乎不变」的场合'),
       force_independent_last_frame: z.boolean().optional().describe('只对 frame_type=both 有意义:true=客户明确要独立尾帧,绕过平台判据(★须与 quote_shot_frame 传的一致)'),
       continuity_mode: CONTINUITY_MODE_ARG,
+      confirm_stale_contract: z.boolean().optional().describe('★默认不传。本镜构图契约已过期时出图会被拦下(409 frame_contract.stale,未扣费、报价未消耗):正解是 rederive_shot_contract 重推。只有**客户确认改动只是措辞、画面人数与主体都没变**时才带 true 放行' + ALWAYS_ASK('confirm_stale_contract ')),
       allow_era_ref_conflict: z.boolean().optional().describe('★默认不传。时代审核判定角色定妆参考与时代设定冲突时,出图会被拦下(未扣费):客户上传的定妆图及其派生图报 400 ERA_USER_REF_CONFLICT,平台生成的定妆图报 era_identity_ref_blocked。**先把冲突原因告诉客户、由客户确认造型无误**后才带 true' + ALWAYS_ASK('allow_era_ref_conflict ') + ':这些图保留不剔、照常出图。造型真不对就改定妆图,时代设定错了就 set_era_contract'),
       ...SHOT_REGEN_ARG,
     },
-    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, continuity_mode, allow_era_ref_conflict, customer_approved_more_regens }) =>
-      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, continuity_mode, allow_era_ref_conflict, customer_approved_more_regens })),
+    async ({ storyboard_id, quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, continuity_mode, allow_era_ref_conflict, customer_approved_more_regens, confirm_stale_contract }) =>
+      jsonResult(await client.producePost(`/storyboards/${storyboard_id}/frame/generate`, { quote_id, review_token, asset_review_token, acknowledge_review, auto_acknowledge, frame_type, replace_user_frame, reopen_pair_id, image_model, allow_missing_terminal, force_independent_last_frame, continuity_mode, allow_era_ref_conflict, customer_approved_more_regens, confirm_stale_contract })),
   )
 
   // ---------- 镜头图局部返修(只修一小块,其余像素原样保留;按剧灰度) ----------
@@ -2055,8 +2057,15 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
     {
       episode_id: z.number().int().positive(),
       entity_key: z.string().describe('实体标识(与账本里的 entity_key 对齐)'),
-      shot_number: z.number().int().positive().optional().describe('这条事件发生在第几镜'),
-      description: z.string().optional().describe('发生了什么(给人看的说明)'),
+      shot_number: z.number().int().positive().describe('这条事件从第几镜起生效(必填)'),
+      entity_type: z.enum(['scene_anchor', 'prop', 'environment', 'character']).optional()
+        .describe('实体类型,缺省 prop。场景结构受损(墙/门/建筑)用 scene_anchor——关联受损场景变体靠它;角色/生物的身体受损(断肢/伤口)用 character'),
+      state_phrase_en: z.string().max(60).optional()
+        .describe('这一镜之后实体的状态,英文短语(会进后续镜的出图/视频提示词),如 "left foreleg severed"。缺省用 description'),
+      state_phrase_zh: z.string().max(40).optional().describe('同一状态的中文短语(给人看)'),
+      scope: z.enum(['shot', 'scene', 'until_changed', 'episode']).optional()
+        .describe('状态持续多久,缺省 until_changed(直到被改变)'),
+      description: z.string().optional().describe('发生了什么(没给 state_phrase_en 时拿它当状态短语)'),
     },
     async ({ episode_id, ...body }) =>
       jsonResult(await client.producePost(`/episodes/${episode_id}/world-state/manual`, body)),
@@ -2684,6 +2693,66 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       jsonResult(await client.producePost(`/characters/${character_id}/derive-portrait/adopt`, {
         image_generation_id, ...(allow_issues ? { allow_issues: true } : {}),
       })),
+  )
+  // ── 角色形态变体（受伤 / 损毁 / 断肢等「同一身份、不同身体状态」）──
+  const FORM_VARIANT_FLOW = '流程:create_character_form_variant(写状态)→ quote_character_form_variant → 客户同意 → derive_character_form_variant →' +
+    ' get_character_form_variants 看图 → bind_character_form_variant 按分镜号范围绑定 → 命中区间的镜重出首帧/视频。'
+  server.tool(
+    'get_character_form_variants',
+    '列出某角色的形态变体(免费):每条 {variant_id,name,description,image_url,has_image,shot_ranges}。enabled=false 表示本剧未开放此能力(写操作会 403)。' +
+      '形态变体解决的是**同一个角色的身体状态随剧情改变**(受伤、损毁、肢体缺失、铠甲碎裂等):平台默认每镜都把定妆图当身份锚,已发生的变化会被画回完好状态;' +
+      '绑定了形态变体的镜,出图/出视频改用变体图替代定妆图作该角色的身份参考。年龄变化请用 derive_character_portrait,换衣服请用服装(create_wardrobe)。' + FORM_VARIANT_FLOW,
+    { character_id: z.number().int().positive() },
+    async ({ character_id }) => jsonResult(await client.produceGet(`/characters/${character_id}/form-variants`)),
+  )
+  server.tool(
+    'create_character_form_variant',
+    '给角色新建一个形态变体(免费,只建记录不出图)。description 写**与定妆图相比哪里不同**:缺了什么、损伤在哪、程度如何(写可见的状态,不写剧情经过)。' +
+      '状态逐步变化(一次比一次严重)就建多个变体,各自绑定不同的镜号区间。' + FORM_VARIANT_FLOW,
+    {
+      character_id: z.number().int().positive(),
+      name: z.string().describe('形态名,≤32 字,如「受伤」「残破」'),
+      description: z.string().describe('状态描述(≤300 字):与定妆图相比的可见差异'),
+    },
+    async ({ character_id, name, description }) =>
+      jsonResult(await client.producePost(`/characters/${character_id}/form-variants`, { name, description })),
+  )
+  server.tool(
+    'quote_character_form_variant',
+    '形态变体出图的报价(免费,不出图)。以该角色当前定妆图(有基准锚点用锚点)为参考做图生图 1 张:保持同一身份(面部/体型/材质/配色/标志特征),只改成变体描述的状态,' +
+      '状态与人物档案的外貌冲突处以状态为准。拿到 quote_id 后传给 derive_character_form_variant。' + CONFIRM_HINT,
+    { variant_id: z.number().int().positive().describe('get_character_form_variants / create_character_form_variant 返回的 variant_id') },
+    async ({ variant_id }) => jsonResult(await client.producePost(`/character-form-variants/${variant_id}/derive/quote`, {})),
+  )
+  server.tool(
+    'derive_character_form_variant',
+    '按报价给形态变体出图(后台出图,按用量扣点)。出好的图直接成为该变体的图(覆盖旧图,不动定妆图)。' +
+      '用 get_character_form_variants 轮询 has_image,出好后**亲自看图**:是不是同一个角色、状态是否与描述一致(该缺的确实没画),再给客户确认。' +
+      '报价后定妆图、状态描述或剧的图片模型被改 ⇒ 409,重新报价。',
+    { variant_id: z.number().int().positive(), quote_id: z.string().describe('来自 quote_character_form_variant') },
+    async ({ variant_id, quote_id }) => jsonResult(await client.producePost(`/character-form-variants/${variant_id}/derive`, { quote_id })),
+  )
+  server.tool(
+    'bind_character_form_variant',
+    '按分镜号范围绑定形态变体(免费,覆盖式:传全量区间,[] = 解除全部绑定)。区间是 storyboard_number 闭区间,省略 to_shot = 到本集末尾,如「第 5 镜之后都用这个状态」= {episode_id, from_shot:5}。' +
+      '命中的镜之后出图/出视频时,该角色的身份参考改用变体图(定妆图/设定图不再送)。同一镜命中多个变体时,起始镜号最大的生效——逐步加重的状态按顺序各绑一段即可。' +
+      '变体还没出图时绑定不生效。★只影响之后的出图/出视频:命中区间里已出的首帧/视频要用 quote_shot_frame + generate_shot_frame、regenerate_shot_video 逐镜重出才会换成新状态。',
+    {
+      variant_id: z.number().int().positive(),
+      shot_ranges: z.array(z.object({
+        episode_id: z.number().int().positive(),
+        from_shot: z.number().int().min(0).describe('起始分镜号(storyboard_number)'),
+        to_shot: z.number().int().min(0).optional().describe('结束分镜号(含);省略 = 到本集末尾'),
+      })).describe('全量区间列表;[] = 解除绑定'),
+    },
+    async ({ variant_id, shot_ranges }) =>
+      jsonResult(await client.producePut(`/character-form-variants/${variant_id}/shots`, { shot_ranges })),
+  )
+  server.tool(
+    'delete_character_form_variant',
+    '删除一个形态变体(软删,免费)。删除后它绑定的镜回到用定妆图;已出的首帧/视频不会自动重出。',
+    { variant_id: z.number().int().positive() },
+    async ({ variant_id }) => jsonResult(await client.produceDelete(`/character-form-variants/${variant_id}`)),
   )
   server.tool(
     'upload_shot_frame',
@@ -3885,7 +3954,9 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       'mode=cut 骤停(前一段 0.12 秒内收掉)/fade 常规淡出。镜号取 get_storyboards 的 storyboard_number。' +
       '★存好后 get_bgm_plan 与 quote_bgm_candidates 都按新分幕算(幕数变了费用随之变,有候选报价要重新报);' +
       '已生成的配乐不会自己变——要重新 generate_bgm,再 compose_episode 才进成片。' +
-      '整体覆盖:每次传完整的结构;传 structure:null 清除、回到自动分幕。镜号不存在/静音段重叠会 400。',
+      '整体覆盖:每次传完整的结构;传 structure:null 清除、回到自动分幕。镜号不存在/静音段重叠会 400。' +
+      '★镜内亚秒骤停(「致命一击前音乐停 0.3 秒再爆发」):stops=[{shot,at_ms,duration_ms}],第 shot 镜开头起 at_ms 毫秒处配乐静音 duration_ms(100~1000)后恢复;' +
+      '只作用于终拼混音,不改分幕和报价、不用重新 generate_bgm,存好直接 compose_episode 即进成片。整镜不要配乐仍用 silences。',
     {
       episode_id: z.number().int().positive(),
       structure: z.object({
@@ -3895,6 +3966,11 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
           to_shot: z.number().int().positive().optional().describe('静音段结束镜号(含),不传=只静这一镜'),
           mode: z.enum(['cut', 'fade']).optional().describe('cut(默认)=骤停;fade=常规淡出'),
         }).strict()).max(20).optional().describe('这些镜不放配乐'),
+        stops: z.array(z.object({
+          shot: z.number().int().positive().describe('镜号(storyboard_number)'),
+          at_ms: z.number().int().min(0).describe('从本镜开头算起多少毫秒开始骤停'),
+          duration_ms: z.number().int().min(100).max(1000).describe('静音多久后恢复(100~1000ms)'),
+        }).strict()).max(20).optional().describe('镜内亚秒骤停点:只影响终拼混音,改完直接 compose_episode'),
       }).strict().nullable().describe('整体覆盖;null=清除'),
     },
     async ({ episode_id, structure }) =>
@@ -4344,6 +4420,7 @@ export function registerProduceTools(server: McpServer, client: StarReelClient) 
       '返回 pending_questions(必须客户决定的问题:不在自动放行白名单、或自修已到上限;每条带集号、环节、blocking 码与原因)、' +
       'report(交付报告:budget 花费与硬上限、layers 每集每层自修轮数与最后一次审查/质检结论、auto_acknowledged 自动放行了什么、leftovers 遗留瑕疵)、entries(最近 200 条原始记录)。' +
       '★pending_questions 非空就暂停,把它们**汇总后一次性**问客户(别一条一条问),客户答复前别往那一层下游推;客户同意照现状继续 → 下一步带 acknowledge_review:true。' +
+      '★每条 pending_questions 带 next_steps(可选下一步:action 修法/tools 所用工具/estimated_points 预估点数/risk 风险/recommended 平台推荐项):原样摆给客户选;estimated_points=null 的项选定后先调 quote_tool 报价,changes_customer_content=true 的项必须客户点头。' +
       '★出完片调一次,把 report 讲给客户:花了多少、每层自修几轮、自动放行了哪些启发式问题、还留着哪些瑕疵。交付验收 confirm_delivery_acceptance 只能客户本人确认。',
     { drama_id: z.number().int().positive() },
     async ({ drama_id }) => jsonResult(await client.produceGet(`/dramas/${drama_id}/autopilot-log`)),

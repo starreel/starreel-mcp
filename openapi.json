@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StarReel Production API",
-    "version": "0.1.362",
-    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.362 tool surface (operationIds match MCP tool names 1:1)."
+    "version": "0.1.363",
+    "description": "Turn a script into a finished, downloadable short-drama episode over REST.\n\nPipeline: script → AI rewrite → cast/scenes/props extraction → storyboards → portraits & sheets + scene plates → keyframes → video shots → TTS → final cut (.mp4).\n\n**Billing is prepaid and agent-safe**: big-ticket stages are quote-then-generate (`quote_*` returns a `quote_id`). For video, quote == actual charge. For images the quote is a *range* — models billed per reference image are priced before those are assembled, so `estimated_points` is the upper bound (size the balance by it and a run never dies half-way) and `typical_points` is the usual cost; fixed-price models return the two equal. Insufficient balance returns 402 — nothing half-runs and the account never goes negative.\n\nAuth: exchange your API key at `POST /v1/agent/token` for a 15-minute bearer token.\n\nGenerated from the @starreel/mcp v0.1.363 tool surface (operationIds match MCP tool names 1:1)."
   },
   "servers": [
     {
@@ -34,6 +34,10 @@
     {
       "name": "bulk-import",
       "description": "Operations under /bulk-import"
+    },
+    {
+      "name": "character-form-variants",
+      "description": "Operations under /character-form-variants"
     },
     {
       "name": "characters",
@@ -220,6 +224,268 @@
         "tags": [
           "bulk-import"
         ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/character-form-variants/{variant_id}": {
+      "delete": {
+        "operationId": "delete_character_form_variant",
+        "summary": "删除一个形态变体(软删,免费)",
+        "description": "删除一个形态变体(软删,免费)。删除后它绑定的镜回到用定妆图;已出的首帧/视频不会自动重出。",
+        "tags": [
+          "character-form-variants"
+        ],
+        "parameters": [
+          {
+            "name": "variant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/character-form-variants/{variant_id}/derive": {
+      "post": {
+        "operationId": "derive_character_form_variant",
+        "summary": "按报价给形态变体出图(后台出图,按用量扣点)",
+        "description": "按报价给形态变体出图(后台出图,按用量扣点)。出好的图直接成为该变体的图(覆盖旧图,不动定妆图)。用 get_character_form_variants 轮询 has_image,出好后**亲自看图**:是不是同一个角色、状态是否与描述一致(该缺的确实没画),再给客户确认。报价后定妆图、状态描述或剧的图片模型被改 ⇒ 409,重新报价。",
+        "tags": [
+          "character-form-variants"
+        ],
+        "parameters": [
+          {
+            "name": "variant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quote_id": {
+                    "type": "string",
+                    "description": "来自 quote_character_form_variant"
+                  }
+                },
+                "required": [
+                  "quote_id"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/character-form-variants/{variant_id}/derive/quote": {
+      "post": {
+        "operationId": "quote_character_form_variant",
+        "summary": "形态变体出图的报价(免费,不出图)",
+        "description": "形态变体出图的报价(免费,不出图)。以该角色当前定妆图(有基准锚点用锚点)为参考做图生图 1 张:保持同一身份(面部/体型/材质/配色/标志特征),只改成变体描述的状态,状态与人物档案的外貌冲突处以状态为准。拿到 quote_id 后传给 derive_character_form_variant。⚠️ 批量报价确认流程:先调对应的 quote_* 工具拿 estimated_points 与 quote_id,再用 quote_id 调本工具(报价确认按执行模式:专业模式 / 未确认方案 / 本环节由客户把控 → 讲给客户、客户同意才做,别替客户决定;本环节托管 → 不问客户,照 get_production_plan 的 autopilot.default_decisions 执行,平台记进 get_autopilot_log)。托管环节报价须在预算硬上限内,被 402 BUDGET_WOULD_EXCEED 拦下就停下问客户。★**出图类报价(定妆图/场景图/出帧)给的是两个数**:estimated_points 是**上界**(按该模型参考图张数上限估,保证你不会按低了的预算开跑、出到一半 402 中断);同一响应里的 typical_points 是**通常花费**。两个都要告诉客户——只说上界会让人以为贵得多(满参考图的上界可达通常值的 2 倍以上),只说通常值又会让余额准备不足。固定价模型下两者相等,这时说一个数就行。出视频的报价与扣费同函数,不存在这个区间。",
+        "tags": [
+          "character-form-variants"
+        ],
+        "parameters": [
+          {
+            "name": "variant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "description": "get_character_form_variants / create_character_form_variant 返回的 variant_id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/character-form-variants/{variant_id}/shots": {
+      "put": {
+        "operationId": "bind_character_form_variant",
+        "summary": "按分镜号范围绑定形态变体(免费,覆盖式:传全量区间,[] = 解除全部绑定)",
+        "description": "按分镜号范围绑定形态变体(免费,覆盖式:传全量区间,[] = 解除全部绑定)。区间是 storyboard_number 闭区间,省略 to_shot = 到本集末尾,如「第 5 镜之后都用这个状态」= {episode_id, from_shot:5}。命中的镜之后出图/出视频时,该角色的身份参考改用变体图(定妆图/设定图不再送)。同一镜命中多个变体时,起始镜号最大的生效——逐步加重的状态按顺序各绑一段即可。变体还没出图时绑定不生效。★只影响之后的出图/出视频:命中区间里已出的首帧/视频要用 quote_shot_frame + generate_shot_frame、regenerate_shot_video 逐镜重出才会换成新状态。",
+        "tags": [
+          "character-form-variants"
+        ],
+        "parameters": [
+          {
+            "name": "variant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "shot_ranges": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "episode_id": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0
+                        },
+                        "from_shot": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "起始分镜号(storyboard_number)"
+                        },
+                        "to_shot": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "description": "结束分镜号(含);省略 = 到本集末尾"
+                        }
+                      },
+                      "required": [
+                        "episode_id",
+                        "from_shot"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "全量区间列表;[] = 解除绑定"
+                  }
+                },
+                "required": [
+                  "shot_ranges"
+                ]
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "StarReel envelope",
@@ -683,6 +949,122 @@
                 },
                 "required": [
                   "age_stage"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      }
+    },
+    "/characters/{character_id}/form-variants": {
+      "get": {
+        "operationId": "get_character_form_variants",
+        "summary": "列出某角色的形态变体(免费):每条 {variant_id,name,description,image_url,has_image,shot_ranges}",
+        "description": "列出某角色的形态变体(免费):每条 {variant_id,name,description,image_url,has_image,shot_ranges}。enabled=false 表示本剧未开放此能力(写操作会 403)。形态变体解决的是**同一个角色的身体状态随剧情改变**(受伤、损毁、肢体缺失、铠甲碎裂等):平台默认每镜都把定妆图当身份锚,已发生的变化会被画回完好状态;绑定了形态变体的镜,出图/出视频改用变体图替代定妆图作该角色的身份参考。年龄变化请用 derive_character_portrait,换衣服请用服装(create_wardrobe)。流程:create_character_form_variant(写状态)→ quote_character_form_variant → 客户同意 → derive_character_form_variant → get_character_form_variants 看图 → bind_character_form_variant 按分镜号范围绑定 → 命中区间的镜重出首帧/视频。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "StarReel envelope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "description": "Operation result payload"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Insufficient prepaid balance (never overdrafts); response carries `needed` points"
+          }
+        }
+      },
+      "post": {
+        "operationId": "create_character_form_variant",
+        "summary": "给角色新建一个形态变体(免费,只建记录不出图)",
+        "description": "给角色新建一个形态变体(免费,只建记录不出图)。description 写**与定妆图相比哪里不同**:缺了什么、损伤在哪、程度如何(写可见的状态,不写剧情经过)。状态逐步变化(一次比一次严重)就建多个变体,各自绑定不同的镜号区间。流程:create_character_form_variant(写状态)→ quote_character_form_variant → 客户同意 → derive_character_form_variant → get_character_form_variants 看图 → bind_character_form_variant 按分镜号范围绑定 → 命中区间的镜重出首帧/视频。",
+        "tags": [
+          "characters"
+        ],
+        "parameters": [
+          {
+            "name": "character_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "形态名,≤32 字,如「受伤」「残破」"
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "状态描述(≤300 字):与定妆图相比的可见差异"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description"
                 ]
               }
             }
@@ -2101,7 +2483,7 @@
       "get": {
         "operationId": "get_autopilot_log",
         "summary": "一键 / 混合模式的托管决策日志与交付报告(免费·只读)",
-        "description": "一键 / 混合模式的托管决策日志与交付报告(免费·只读)。日志由**服务端**在审查、审查闸、质检提交时写入——你自报的「修了几轮、放行了什么」不算数,以这里为准。返回 pending_questions(必须客户决定的问题:不在自动放行白名单、或自修已到上限;每条带集号、环节、blocking 码与原因)、report(交付报告:budget 花费与硬上限、layers 每集每层自修轮数与最后一次审查/质检结论、auto_acknowledged 自动放行了什么、leftovers 遗留瑕疵)、entries(最近 200 条原始记录)。★pending_questions 非空就暂停,把它们**汇总后一次性**问客户(别一条一条问),客户答复前别往那一层下游推;客户同意照现状继续 → 下一步带 acknowledge_review:true。★出完片调一次,把 report 讲给客户:花了多少、每层自修几轮、自动放行了哪些启发式问题、还留着哪些瑕疵。交付验收 confirm_delivery_acceptance 只能客户本人确认。",
+        "description": "一键 / 混合模式的托管决策日志与交付报告(免费·只读)。日志由**服务端**在审查、审查闸、质检提交时写入——你自报的「修了几轮、放行了什么」不算数,以这里为准。返回 pending_questions(必须客户决定的问题:不在自动放行白名单、或自修已到上限;每条带集号、环节、blocking 码与原因)、report(交付报告:budget 花费与硬上限、layers 每集每层自修轮数与最后一次审查/质检结论、auto_acknowledged 自动放行了什么、leftovers 遗留瑕疵)、entries(最近 200 条原始记录)。★pending_questions 非空就暂停,把它们**汇总后一次性**问客户(别一条一条问),客户答复前别往那一层下游推;客户同意照现状继续 → 下一步带 acknowledge_review:true。★每条 pending_questions 带 next_steps(可选下一步:action 修法/tools 所用工具/estimated_points 预估点数/risk 风险/recommended 平台推荐项):原样摆给客户选;estimated_points=null 的项选定后先调 quote_tool 报价,changes_customer_content=true 的项必须客户点头。★出完片调一次,把 report 讲给客户:花了多少、每层自修几轮、自动放行了哪些启发式问题、还留着哪些瑕疵。交付验收 confirm_delivery_acceptance 只能客户本人确认。",
         "tags": [
           "dramas"
         ],
@@ -7060,7 +7442,7 @@
       "put": {
         "operationId": "set_bgm_structure",
         "summary": "按镜号指定本集 AI 配乐的分幕点与静音段(免费,只存设置、不生成)",
-        "description": "按镜号指定本集 AI 配乐的分幕点与静音段(免费,只存设置、不生成)。自动分幕只看分镜的情绪强度/场景,客户想「从第 N 镜起换一首」「第 N 镜音乐骤停」「第 N~M 镜不要配乐」时用这个。act_breaks=[镜号]:从这些镜开始换一首新曲子(新的一幕);silences=[{from_shot,to_shot?,mode}]:这些镜不放配乐,mode=cut 骤停(前一段 0.12 秒内收掉)/fade 常规淡出。镜号取 get_storyboards 的 storyboard_number。★存好后 get_bgm_plan 与 quote_bgm_candidates 都按新分幕算(幕数变了费用随之变,有候选报价要重新报);已生成的配乐不会自己变——要重新 generate_bgm,再 compose_episode 才进成片。整体覆盖:每次传完整的结构;传 structure:null 清除、回到自动分幕。镜号不存在/静音段重叠会 400。",
+        "description": "按镜号指定本集 AI 配乐的分幕点与静音段(免费,只存设置、不生成)。自动分幕只看分镜的情绪强度/场景,客户想「从第 N 镜起换一首」「第 N 镜音乐骤停」「第 N~M 镜不要配乐」时用这个。act_breaks=[镜号]:从这些镜开始换一首新曲子(新的一幕);silences=[{from_shot,to_shot?,mode}]:这些镜不放配乐,mode=cut 骤停(前一段 0.12 秒内收掉)/fade 常规淡出。镜号取 get_storyboards 的 storyboard_number。★存好后 get_bgm_plan 与 quote_bgm_candidates 都按新分幕算(幕数变了费用随之变,有候选报价要重新报);已生成的配乐不会自己变——要重新 generate_bgm,再 compose_episode 才进成片。整体覆盖:每次传完整的结构;传 structure:null 清除、回到自动分幕。镜号不存在/静音段重叠会 400。★镜内亚秒骤停(「致命一击前音乐停 0.3 秒再爆发」):stops=[{shot,at_ms,duration_ms}],第 shot 镜开头起 at_ms 毫秒处配乐静音 duration_ms(100~1000)后恢复;只作用于终拼混音,不改分幕和报价、不用重新 generate_bgm,存好直接 compose_episode 即进成片。整镜不要配乐仍用 silences。",
         "tags": [
           "episodes"
         ],
@@ -7127,6 +7509,38 @@
                             },
                             "maxItems": 20,
                             "description": "这些镜不放配乐"
+                          },
+                          "stops": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "shot": {
+                                  "type": "integer",
+                                  "exclusiveMinimum": 0,
+                                  "description": "镜号(storyboard_number)"
+                                },
+                                "at_ms": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "description": "从本镜开头算起多少毫秒开始骤停"
+                                },
+                                "duration_ms": {
+                                  "type": "integer",
+                                  "minimum": 100,
+                                  "maximum": 1000,
+                                  "description": "静音多久后恢复(100~1000ms)"
+                                }
+                              },
+                              "required": [
+                                "shot",
+                                "at_ms",
+                                "duration_ms"
+                              ],
+                              "additionalProperties": false
+                            },
+                            "maxItems": 20,
+                            "description": "镜内亚秒骤停点:只影响终拼混音,改完直接 compose_episode"
                           }
                         },
                         "additionalProperties": false
@@ -8696,6 +9110,9 @@
                     "type": "boolean"
                   },
                   "allow_era_ref_conflict": {
+                    "type": "boolean"
+                  },
+                  "confirm_stale_contract": {
                     "type": "boolean"
                   }
                 },
@@ -13876,14 +14293,42 @@
                   },
                   "shot_number": {
                     "type": "integer",
-                    "exclusiveMinimum": 0
+                    "exclusiveMinimum": 0,
+                    "description": "这条事件从第几镜起生效(必填)"
+                  },
+                  "entity_type": {
+                    "type": "string",
+                    "enum": [
+                      "scene_anchor",
+                      "prop",
+                      "environment",
+                      "character"
+                    ]
+                  },
+                  "state_phrase_en": {
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "state_phrase_zh": {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "shot",
+                      "scene",
+                      "until_changed",
+                      "episode"
+                    ]
                   },
                   "description": {
                     "type": "string"
                   }
                 },
                 "required": [
-                  "entity_key"
+                  "entity_key",
+                  "shot_number"
                 ]
               }
             }
@@ -17098,6 +17543,9 @@
                     "type": "boolean"
                   },
                   "customer_approved_more_regens": {
+                    "type": "boolean"
+                  },
+                  "confirm_stale_contract": {
                     "type": "boolean"
                   }
                 },
